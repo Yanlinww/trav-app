@@ -7,6 +7,8 @@ export default function Home() {
         Welcome 羅傑ROGER!!!!!!!!!
         大家好！歡迎來到我的個人網站！這裡是我分享我的興趣、經歷和想法的地方。希望你能在這裡找到有趣的內容，並且享受瀏覽的過程！
         AAAAAAAAAAAAAABBBBBB
+
+        智障push
       </h1>
     </div>
   );
