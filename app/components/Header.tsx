@@ -1,124 +1,61 @@
-import React from 'react';
-import { FaBars, FaBell } from 'react-icons/fa';
+'use client';
 
-interface HeaderProps {
-  title?: string;
-  onMenuClick?: () => void;
-  onNotificationClick?: () => void;
-}
+import { useState } from "react";
+import { Link } from "./Link";
+import { Plane, Menu, X } from "lucide-react";
+import { TopNav } from "./TopNav";
 
-const Header: React.FC<HeaderProps> = ({ 
-  title = "獨旅達人", 
-  onMenuClick, 
-  onNotificationClick 
-}) => {
+export function Header() {
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
   return (
-    <header style={styles.header}>
-      {/* 左側：漢堡選單按鈕 */}
-      <button onClick={onMenuClick} style={styles.iconButton} aria-label="選單">
-        <FaBars style={styles.icon} />
-      </button>
+    <header className="sticky top-0 z-50 bg-white border-b">
+      <nav className="container mx-auto px-4 h-16 flex items-center justify-between">
+        <Link to="/" className="flex items-center gap-2">
+          <Plane className="size-6 text-blue-600" />
+          <span className="font-bold text-xl">旅遊探索</span>
+        </Link>
 
-      {/* 中間：APP 標題 Logo */}
-      <div style={styles.titleContainer}>
-        <h1 style={styles.title}>{title}</h1>
-      </div>
-
-      {/* 右側：通知中心與頭像 */}
-      <div style={styles.rightContainer}>
-        <button onClick={onNotificationClick} style={styles.iconButton} aria-label="通知">
-          <div style={styles.badgeContainer}>
-            <FaBell style={styles.icon} />
-            {/* 模擬未讀通知紅點 */}
-            <span style={styles.badge}></span>
-          </div>
-        </button>
-        
-        {/* 個人微型頭像 */}
-        <div style={styles.avatar}>
-          <img 
-            src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=100" 
-            alt="User Avatar" 
-            style={styles.avatarImg}
-          />
+        {/* Desktop Navigation */}
+        <div className="hidden md:flex items-center gap-6">
+          <TopNav />
         </div>
-      </div>
+
+        <div className="hidden md:flex items-center gap-3">
+          <Link to="/login">
+            <button className="px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors">
+              登入
+            </button>
+          </Link>
+          <button className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors">
+            註冊
+          </button>
+        </div>
+
+        {/* Mobile Menu Button */}
+        <button className="md:hidden p-2" onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>
+          {mobileMenuOpen ? <X className="size-6" /> : <Menu className="size-6" />}
+        </button>
+      </nav>
+
+      {/* Mobile Navigation */}
+      {mobileMenuOpen && (
+        <div className="md:hidden border-t bg-white">
+          <div className="container mx-auto px-4 py-4 flex flex-col gap-2">
+            <TopNav />
+            <div className="flex gap-2 mt-2">
+              <Link to="/login" className="flex-1">
+                <button className="w-full px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors">
+                  登入
+                </button>
+              </Link>
+              <button className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors">
+                註冊
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </header>
   );
-};
-
-const styles: { [key: string]: React.CSSProperties } = {
-  header: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    height: '64px',
-    padding: '0 16px',
-    backgroundColor: '#ffffff',
-    borderBottom: '1px solid #e2e8f0',
-    boxShadow: '0 2px 4px rgba(0, 0, 0, 0.04)',
-    position: 'sticky',
-    top: 0,
-    zIndex: 1000,
-  },
-  iconButton: {
-    background: 'none',
-    border: 'none',
-    padding: '8px',
-    cursor: 'pointer',
-    display: 'flex',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderRadius: '50%',
-    transition: 'background-color 0.2s',
-  },
-  icon: {
-    color: '#334155',
-    fontSize: '20px',
-  },
-  titleContainer: {
-    flex: 1,
-    textAlign: 'center',
-  },
-  title: {
-    fontSize: '18px',
-    fontWeight: 'bold',
-    color: '#0f172a',
-    margin: 0,
-    letterSpacing: '0.5px',
-  },
-  rightContainer: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '8px',
-  },
-  badgeContainer: {
-    position: 'relative',
-    display: 'inline-block',
-  },
-  badge: {
-    position: 'absolute',
-    top: '2px',
-    right: '2px',
-    width: '8px',
-    height: '8px',
-    backgroundColor: '#ef4444', // 紅點提醒
-    borderRadius: '50%',
-    border: '1px solid #fff',
-  },
-  avatar: {
-    width: '32px',
-    height: '32px',
-    borderRadius: '50%',
-    overflow: 'hidden',
-    border: '2px solid #fb923c', // 核心橘色外圈
-    marginLeft: '4px',
-  },
-  avatarImg: {
-    width: '100%',
-    height: '100%',
-    objectFit: 'cover',
-  }
-};
-
-export default Header;
+}
