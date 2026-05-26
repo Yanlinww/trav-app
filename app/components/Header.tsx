@@ -1,128 +1,97 @@
 'use client';
-
 import { useState } from "react";
+import { usePathname } from "next/navigation"; // 1. 引入官方 Hook
 import { Link } from "./Link";
-import { Plane, Menu, X, User, LogOut, ChevronDown } from "lucide-react";
-import { TopNav } from "./TopNav";
-import { useAuth } from "../context/AuthContext"; // 確保路徑正確
+import { Plane, Map, Calendar, User, Menu, X } from "lucide-react";
 
 export function Header() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [userMenuOpen, setUserMenuOpen] = useState(false);
-  const { user, logout } = useAuth();
+  
+  // 2. 用 usePathname() 取代 window.location.pathname
+  const currentPath = usePathname(); 
+
+  const navItems = [
+    { path: "/", label: "首頁", icon: Plane },
+    { path: "/destinations", label: "旅遊景點", icon: Map },
+    { path: "/planner", label: "行程規劃", icon: Calendar },
+    { path: "/profile", label: "個人中心", icon: User },
+  ];
 
   return (
-    <header className="sticky top-0 z-50 bg-white border-b shadow-sm">
-      <nav className="container mx-auto px-4 h-16 flex items-center justify-between">
-        {/* Logo 區域 */}
-        <Link to="/" className="flex items-center gap-2">
-          <Plane className="size-6 text-blue-600" />
-          <span className="font-bold text-xl tracking-tight text-gray-800">獨旅達人</span>
+    <header className="sticky top-0 z-50 bg-white border-b border-gray-200">
+      <nav className="container mx-auto px-6 h-20 flex items-center justify-between">
+        <Link to="/" className="flex items-center gap-3">
+          <Plane className="size-5 text-black" />
+          <span className="font-light text-black text-lg tracking-wider">VOYAGE</span>
         </Link>
 
-        {/* 電腦版導覽列 */}
-        <div className="hidden md:flex items-center gap-6">
-          <TopNav />
+        {/* Desktop Navigation */}
+        <div className="hidden md:flex items-center gap-8">
+          {navItems.map((item) => (
+            <Link
+              key={item.path}
+              to={item.path}
+              className={`text-sm tracking-wide transition-colors ${
+                currentPath === item.path
+                  ? "text-black border-b-2 border-black pb-1"
+                  : "text-gray-500 hover:text-black"
+              }`}
+            >
+              <span>{item.label}</span>
+            </Link>
+          ))}
         </div>
 
-        {/* 右側按鈕區域 */}
-        <div className="hidden md:flex items-center gap-3">
-          {user ? (
-            /* --- 已登入狀態 --- */
-            <div className="relative flex items-center gap-4">
-              <div 
-                className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-1 rounded-lg transition-all"
-                onClick={() => setUserMenuOpen(!userMenuOpen)}
-              >
-                <div className="size-9 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 border border-blue-200">
-                  <User className="size-5" />
-                </div>
-                <div className="flex flex-col">
-                  <span className="text-sm font-medium text-gray-700">{user.nickname}</span>
-                  <span className="text-[10px] text-gray-400">已登入</span>
-                </div>
-                <ChevronDown className={`size-4 text-gray-400 transition-transform ${userMenuOpen ? 'rotate-180' : ''}`} />
-              </div>
+        <div className="hidden md:flex items-center gap-4">
+          <Link to="/login">
+            <button className="px-5 py-2 text-sm tracking-wide text-gray-700 hover:text-black transition-colors">
+              登入
+            </button>
+          </Link>
+          <button className="px-5 py-2 text-sm tracking-wide bg-black text-white hover:bg-gray-800 transition-colors">
+            註冊
+          </button>
+        </div>
 
-              {/* 使用者下拉選單 */}
-              {userMenuOpen && (
-                <div className="absolute top-12 right-0 w-48 bg-white border rounded-xl shadow-xl py-2 z-50">
-                  <Link to="/profile">
-                    <div className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 cursor-pointer">
-                      <User className="size-4" /> 個人資料
-                    </div>
-                  </Link>
-                  <button 
-                    onClick={() => { logout(); setUserMenuOpen(false); }}
-                    className="w-full flex items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50 text-left"
-                  >
-                    <LogOut className="size-4" /> 登出帳號
-                  </button>
-                </div>
-              )}
-            </div>
+        {/* Mobile Menu Button */}
+        <button
+          className="md:hidden p-2"
+          onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+        >
+          {mobileMenuOpen ? (
+            <X className="size-5 text-black" />
           ) : (
-            /* --- 未登入狀態 --- */
-            <>
-              <Link to="/auth/login">
-                <button className="px-5 py-2 text-sm font-medium text-gray-600 hover:text-blue-600 transition-colors">
-                  登入
-                </button>
-              </Link>
-              <Link to="/auth/register">
-                <button className="px-5 py-2 bg-blue-600 text-white text-sm font-medium rounded-full hover:bg-blue-700 shadow-md hover:shadow-lg transition-all">
-                  立即註冊
-                </button>
-              </Link>
-            </>
+            <Menu className="size-5 text-black" />
           )}
-        </div>
-
-        {/* 手機版選單按鈕 */}
-        <button className="md:hidden p-2 text-gray-600" onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>
-          {mobileMenuOpen ? <X className="size-6" /> : <Menu className="size-6" />}
         </button>
       </nav>
 
-      {/* 手機版下拉選單 */}
+      {/* Mobile Navigation */}
       {mobileMenuOpen && (
-        <div className="md:hidden border-t bg-white animate-in slide-in-from-top duration-300">
-          <div className="container mx-auto px-4 py-6 flex flex-col gap-4">
-            <TopNav />
-            
-            <div className="h-[1px] bg-gray-100 my-2"></div>
-
-            {user ? (
-              <div className="flex flex-col gap-3">
-                <Link to="/profile">
-                  <div className="flex items-center gap-3 px-3 py-2">
-                    <div className="size-10 bg-blue-100 rounded-full flex items-center justify-center text-blue-600">
-                      <User className="size-6" />
-                    </div>
-                    <span className="font-medium text-gray-700">{user.nickname}</span>
-                  </div>
-                </Link>
-                <button 
-                  onClick={logout}
-                  className="w-full text-left px-3 py-2 text-red-500 font-medium flex items-center gap-2"
-                >
-                  <LogOut className="size-4" /> 登出
+        <div className="md:hidden border-t border-gray-200 bg-white">
+          <div className="container mx-auto px-6 py-6 flex flex-col gap-4">
+            {navItems.map((item) => (
+              <Link
+                key={item.path}
+                to={item.path}
+                onClick={() => setMobileMenuOpen(false)}
+                className={`text-sm tracking-wide transition-colors ${
+                  currentPath === item.path ? "text-black" : "text-gray-500"
+                }`}
+              >
+                <span>{item.label}</span>
+              </Link>
+            ))}
+            <div className="flex gap-3 mt-4">
+              <Link to="/login" className="flex-1">
+                <button className="w-full px-4 py-2 text-sm text-gray-700 border border-gray-300 hover:border-black transition-colors">
+                  登入
                 </button>
-              </div>
-            ) : (
-              <div className="flex flex-col gap-3">
-                <Link to="/login">
-                  <button className="w-full px-4 py-3 border border-gray-300 rounded-xl text-gray-700 font-medium">
-                    登入
-                  </button>
-                </Link>
-                <Link to="/register">
-                  <button className="w-full px-4 py-3 bg-blue-600 text-white rounded-xl font-medium shadow-lg">
-                    註冊
-                  </button>
-                </Link>
-              </div>
-            )}
+              </Link>
+              <button className="flex-1 px-4 py-2 text-sm bg-black text-white hover:bg-gray-800 transition-colors">
+                註冊
+              </button>
+            </div>
           </div>
         </div>
       )}
