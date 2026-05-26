@@ -100,7 +100,6 @@ export default function ProfilePage() {
               </div>
             </div>
           )}
-
           {/* 分頁三：帳號設定 */}
           {activeTab === 'settings' && (
             <div>
@@ -124,7 +123,6 @@ export default function ProfilePage() {
               </form>
             </div>
           )}
-
         </div>
       </div>
     </div>
