@@ -15,14 +15,32 @@ export default function RegisterPage() {
   const { login } = useAuth();
   const router = useRouter();
 
-  const handleRegister = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsLoading(true);
-    // 未來串接 register.php
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    login({ id: "2", email, nickname }, "token_abc");
-    router.push("/");
-  };
+const handleRegister = async (e: React.FormEvent) => {
+  e.preventDefault();
+  setIsLoading(true);
+
+  try {
+    const res = await fetch("http://localhost/trav-api/register.php", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password, nickname }),
+    });
+    
+    const data = await res.json();
+
+    if (data.success) {
+      alert("註冊成功！快去登入吧");
+      router.push("/auth/login");
+    } else {
+      alert(data.message); // 例如顯示「Email 已被使用」
+    }
+  } catch (err) {
+    console.error(err);
+    alert("後端伺服器沒反應，請檢查 XAMPP 是否啟動 Apache");
+  } finally {
+    setIsLoading(false);
+  }
+};
 
   return (
     <div className="min-h-[90vh] flex items-center justify-center bg-gray-50 px-4 py-12">
