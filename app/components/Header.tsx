@@ -1,6 +1,6 @@
 'use client';
 import { useState } from "react";
-import { usePathname } from "next/navigation"; // 1. 引入官方 Hook
+import { usePathname } from "next/navigation"; 
 import { Link } from "./Link";
 import { Plane, Map, Calendar, User, Menu, X } from "lucide-react";
 

@@ -11,6 +11,9 @@ export interface Destination {
     category: string;
     highlights: string[];
     bestTime: string;
+    // ⬇️ 新增以支援 Home.tsx 獨旅首頁功能
+    tags: string[];         // 獨旅專屬標籤
+    safetyRating: string;   // 獨旅安全評分
 }
 
 export const destinations: Destination[] = [
@@ -27,6 +30,8 @@ export const destinations: Destination[] = [
         category: "文化探索",
         highlights: ["金閣寺", "伏見稻荷大社", "嵐山竹林", "茶道體驗"],
         bestTime: "3-5月、9-11月",
+        tags: ["安全首選", "交通便利", "慢活探索"],
+        safetyRating: "9.8"
     },
     {
         id: "2",
@@ -41,13 +46,14 @@ export const destinations: Destination[] = [
         category: "海島度假",
         highlights: ["水上別墅", "潛水探險", "SPA療程", "私人沙灘"],
         bestTime: "11月-4月",
+        tags: ["慢活探索", "自然療癒"],
+        safetyRating: "9.0"
     },
     {
         id: "3",
         name: "歐洲古城漫遊",
         country: "義大利/法國",
-        description:
-            "穿梭於羅馬、佛羅倫斯和巴黎的歷史街道，品味歐洲文藝復興的輝煌",
+        description: "穿梭於羅馬、佛羅倫斯和巴黎的歷史街道，品味歐洲文藝復興的輝煌",
         image: "https://images.unsplash.com/photo-1616036902568-fa623d8f0c0a?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxldXJvcGVhbiUyMGNpdHklMjBzdHJlZXR8ZW58MXx8fHwxNzc5NjA0MDI2fDA&ixlib=rb-4.1.0&q=80&w=1080",
         price: 65900,
         rating: 4.7,
@@ -56,13 +62,15 @@ export const destinations: Destination[] = [
         category: "文化探索",
         highlights: ["羅馬競技場", "艾菲爾鐵塔", "烏菲茲美術館", "美食品鑑"],
         bestTime: "4-6月、9-10月",
+        tags: ["交通便利", "社交青旅"],
+        safetyRating: "8.8"
     },
     {
         id: "4",
         name: "阿爾卑斯山健行",
         country: "瑞士",
         description: "挑戰壯麗的阿爾卑斯山脈，享受純淨的山間空氣和絕美風景",
-        image: "https://images.unsplash.com/photo-1604223190546-a43e4c7f29d7?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxtb3VudGFpbiUyMGxhbmRzY2FwZSUyMGhpa2luZ3xlbnwxfHx8fDE3Nzk0MzU0ODJ8MA&ixlib=rb-4.1.0&q=80&w=1080",
+        image: "https://images.unsplash.com/photo-1604223190546-a43e4c7f29d7?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxtb3VudGFpbiUyMGxhbmRzY2FwZSUyMGhpa2luZ3xlbnwxfHx8fDE3Nzkautodestinations48Micw&ixlib=rb-4.1.0&q=80&w=1080",
         price: 45900,
         rating: 4.6,
         reviews: 654,
@@ -70,13 +78,14 @@ export const destinations: Destination[] = [
         category: "戶外探險",
         highlights: ["少女峰", "馬特洪峰", "登山纜車", "山間小鎮"],
         bestTime: "6-9月",
+        tags: ["安全首選", "慢活探索", "自然療癒"],
+        safetyRating: "9.9"
     },
     {
         id: "5",
         name: "峇里島奢華度假",
         country: "印尼",
-        description:
-            "在峇里島的頂級渡假村中放鬆身心，體驗印尼傳統文化與熱帶風情",
+        description: "在峇里島的頂級渡假村中放鬆身心，體驗印尼傳統文化與熱帶風情",
         image: "https://images.unsplash.com/photo-1549294413-26f195200c16?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxsdXh1cnklMjBob3RlbCUyMHJlc29ydHxlbnwxfHx8fDE3Nzk0NjA3OTR8MA&ixlib=rb-4.1.0&q=80&w=1080",
         price: 35900,
         rating: 4.7,
@@ -85,6 +94,8 @@ export const destinations: Destination[] = [
         category: "海島度假",
         highlights: ["無邊際泳池", "傳統舞蹈", "稻田美景", "衝浪體驗"],
         bestTime: "4-10月",
+        tags: ["社交青旅", "慢活探索", "自然療癒"],
+        safetyRating: "9.3"
     },
     {
         id: "6",
@@ -99,6 +110,8 @@ export const destinations: Destination[] = [
         category: "戶外探險",
         highlights: ["動物大遷徙", "草原獵遊", "馬賽部落", "日出熱氣球"],
         bestTime: "7-10月",
+        tags: ["慢活探索", "自然療癒"],
+        safetyRating: "9.1"
     },
     {
         id: "7",
@@ -113,6 +126,8 @@ export const destinations: Destination[] = [
         category: "美食文化",
         highlights: ["烹飪課程", "夜市探索", "水上市場", "古城巡禮"],
         bestTime: "11月-2月",
+        tags: ["交通便利", "社交青旅", "慢活探索"],
+        safetyRating: "9.4"
     },
     {
         id: "8",
@@ -127,5 +142,7 @@ export const destinations: Destination[] = [
         category: "自然奇觀",
         highlights: ["極光觀賞", "藍湖溫泉", "黃金圈", "冰川健行"],
         bestTime: "9月-3月",
-    },
+        tags: ["安全首選", "交通便利", "自然療癒"],
+        safetyRating: "9.9"
+    }
 ];
