@@ -12,9 +12,9 @@ export function Header() {
 
   const navItems = [
     { path: "/", label: "首頁", icon: Plane },
-    { path: "/destinations", label: "旅遊景點", icon: Map },
-    { path: "/planner", label: "行程規劃", icon: Calendar },
-    { path: "/profile", label: "個人中心", icon: User },
+    { path: "/destinations", label: "計畫", icon: Map },
+    { path: "/planner", label: "工具", icon: Calendar },
+    { path: "/profile", label: "旅遊討論區", icon: User },
   ];
 
   return (
@@ -43,14 +43,16 @@ export function Header() {
         </div>
 
         <div className="hidden md:flex items-center gap-4">
-          <Link to="/login">
+          <Link to="../auth/login">
             <button className="px-5 py-2 text-sm tracking-wide text-gray-700 hover:text-black transition-colors">
               登入
             </button>
           </Link>
+          <Link to="../auth/register">
           <button className="px-5 py-2 text-sm tracking-wide bg-black text-white hover:bg-gray-800 transition-colors">
             註冊
           </button>
+          </Link>
         </div>
 
         {/* Mobile Menu Button */}

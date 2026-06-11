@@ -12,6 +12,8 @@ import {
     Compass,
     Sparkles,
     Filter,
+    MessageSquare, // ⬇️ 新增 AI 助手需要的圖標
+    X,
 } from "lucide-react";
 import { destinations } from "./data/destinations";
 
@@ -19,6 +21,9 @@ export default function Home() {
     // 狀態管理：用於熱門標籤與地圖/列表模式切換
     const [selectedTag, setSelectedTag] = useState<string | null>(null);
     const [isMapMode, setIsMapMode] = useState<boolean>(false);
+    
+    // ⬇️ 新增狀態：控制 AI 視窗開啟/關閉
+    const [isAiOpen, setIsAiOpen] = useState<boolean>(false);
 
     const soloTags = [
         "安全首選",
@@ -34,14 +39,12 @@ export default function Home() {
         "💡 獨旅貼士：歐洲火車通行證最新優惠與防偷指南",
     ];
 
-    // 【融合邏輯】根據上方點擊的標籤動態篩選行程，若無篩選則預設顯示前 6 筆
-    // 備註：這裡假設你的 destination 資料結構中有 tags 陣列。若無，可改用 category 判斷
     const filteredDestinations = selectedTag
         ? destinations.filter((dest) => dest.tags?.includes(selectedTag))
         : destinations.slice(0, 6);
 
     return (
-        <div className="flex flex-col bg-white text-neutral-900">
+        <div className="flex flex-col bg-white text-neutral-900 relative">
             {/* Hero Section & 全域搜尋與篩選 */}
             <section className="relative min-h-[90vh] flex items-center justify-center bg-[#F8F8F8] pt-20 pb-16">
                 <div className="relative z-10 container mx-auto px-6 text-center">
@@ -139,7 +142,7 @@ export default function Home() {
                 </div>
             </div>
 
-            {/* 【融合後的區塊】推薦牆 X 精選行程 */}
+            {/* 推薦牆 X 精選行程 */}
             <section className="py-32 bg-[#FBFBFB]">
                 <div className="container mx-auto px-6">
                     <div className="flex flex-col md:flex-row md:items-end justify-between mb-16 gap-6">
@@ -170,7 +173,7 @@ export default function Home() {
                     {filteredDestinations.length === 0 ? (
                         <div className="text-center py-12 text-neutral-400 font-light text-sm">
                             沒有找到符合 #{selectedTag}{" "}
-                            的推薦行程，試試其他標籤吧！
+                            試試其他標籤吧！
                         </div>
                     ) : (
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-16">
@@ -181,31 +184,26 @@ export default function Home() {
                                 >
                                     <div className="group cursor-pointer flex flex-col h-full justify-between">
                                         <div>
-                                            {/* 圖片與類別標籤 */}
                                             <div className="relative h-[420px] overflow-hidden mb-6 bg-neutral-100 rounded-sm">
                                                 <img
                                                     src={destination.image}
                                                     alt={destination.name}
                                                     className="w-full h-full object-cover grayscale-[15%] group-hover:grayscale-0 group-hover:scale-105 transition-all duration-1000"
                                                 />
-                                                {/* 左上角：旅行類別 */}
                                                 <div className="absolute top-6 left-6 bg-white/90 backdrop-blur-md px-3 py-1.5 shadow-sm border border-neutral-100">
                                                     <span className="text-[10px] tracking-[0.15em] uppercase font-semibold text-neutral-800">
                                                         {destination.category}
                                                     </span>
                                                 </div>
-                                                {/* 【融入點】右上角：帶入原推薦牆的獨旅安全評分（若資料無此欄位可給預設值，例如 9.5） */}
                                                 <div className="absolute top-6 right-6 bg-neutral-900/80 backdrop-blur-md px-3 py-1.5 text-white flex items-center gap-1 rounded-sm text-xs font-light">
                                                     <Star className="size-3 text-amber-400 fill-amber-400" />
                                                     <span>
                                                         安全{" "}
-                                                        {destination.safetyRating ||
-                                                            "9.5"}
+                                                        {destination.safetyRating || "9.5"}
                                                     </span>
                                                 </div>
                                             </div>
 
-                                            {/* 標題與簡介 */}
                                             <div className="space-y-3 px-1">
                                                 <div className="flex justify-between items-baseline">
                                                     <h3 className="text-2xl font-light tracking-wide text-neutral-900">
@@ -221,15 +219,13 @@ export default function Home() {
                                             </div>
                                         </div>
 
-                                        {/* 底部價格與 Detail 按鈕 */}
                                         <div className="flex items-center justify-between pt-6 mt-6 border-t border-neutral-100 px-1">
                                             <div className="flex flex-col">
                                                 <span className="text-[9px] text-neutral-400 tracking-widest uppercase mb-0.5">
                                                     Starting from
                                                 </span>
                                                 <span className="text-lg font-light tracking-tight text-neutral-900">
-                                                    NT${" "}
-                                                    {destination.price.toLocaleString()}
+                                                    NT${" "}{destination.price.toLocaleString()}
                                                 </span>
                                             </div>
                                             <span className="text-[10px] tracking-widest uppercase font-medium border-b border-neutral-900 pb-1 group-hover:pr-2 transition-all">
@@ -258,7 +254,6 @@ export default function Home() {
                             </p>
                         </div>
 
-                        {/* 模式切換按鈕 */}
                         <div className="flex border border-neutral-200 p-1 rounded-sm bg-neutral-50 self-start md:self-auto">
                             <button
                                 onClick={() => setIsMapMode(false)}
@@ -275,18 +270,15 @@ export default function Home() {
                         </div>
                     </div>
 
-                    {/* 地圖與列表的條件渲染視覺呈現 */}
                     {!isMapMode ? (
                         <div className="bg-neutral-50 border border-neutral-100 p-8 md:p-12 text-center rounded-sm">
                             <div className="max-w-md mx-auto space-y-6 py-12">
                                 <Compass className="size-10 mx-auto text-neutral-300" />
-                                <h3 className="text-lg font-light tracking-wide text-neutral-800">
+                                <h3 className="text-lg font-light tracking-wide text-neutral-885">
                                     探索您周邊的獨旅友善地標
                                 </h3>
                                 <p className="text-sm text-neutral-400 font-light leading-relaxed">
-                                    系統偵測到您目前的位置，點擊下方按鈕或切換至地圖模式，即可解鎖方圓
-                                    5
-                                    公里內最受獨旅者歡迎的極簡咖啡廳、安全文創街區與英語友善背包客棧。
+                                    系統偵測到您目前的位置，點擊下方按鈕或切換至地圖模式，即可解鎖方圓 5 公里內最受獨旅者歡迎的極簡咖啡廳、安全文創街區與英語友善背包客棧。
                                 </p>
                                 <button className="px-8 py-3 bg-neutral-900 text-white text-xs tracking-widest uppercase hover:bg-neutral-800 transition-all">
                                     允許定位探索
@@ -394,6 +386,69 @@ export default function Home() {
                     </div>
                 </div>
             </section>
+
+            {/* ⬇️ ==================== 固定右下角 AI 助手區塊 ==================== */}
+            <div className="fixed bottom-8 right-8 z-50 flex flex-col items-end gap-4">
+                
+                {/* AI 彈出對話小視窗 */}
+                {isAiOpen && (
+                    <div className="w-80 md:w-96 h-[450px] bg-white/90 backdrop-blur-xl border border-neutral-200 shadow-[0_20px_50px_rgba(0,0,0,0.1)] rounded-sm flex flex-col overflow-hidden transition-all duration-300 animate-in fade-in slide-in-from-bottom-5">
+                        {/* 視窗頂部 */}
+                        <div className="bg-neutral-900 text-white px-5 py-4 flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                <Sparkles className="size-4 text-amber-400 fill-amber-400" />
+                                <span className="text-xs tracking-[0.2em] uppercase font-light">Solo Concierge AI</span>
+                            </div>
+                            <button 
+                                onClick={() => setIsAiOpen(false)} 
+                                className="text-neutral-400 hover:text-white transition-colors"
+                            >
+                                <X className="size-4" />
+                            </button>
+                        </div>
+                        
+                        {/* 對話內容區 (示意) */}
+                        <div className="flex-1 p-5 overflow-y-auto text-sm font-light space-y-4">
+                            <div className="bg-neutral-50 p-3 rounded-sm text-neutral-600 leading-relaxed border border-neutral-100">
+                                您好！我是您的獨旅專屬顧問。正在尋找安全、適合獨自放鬆、或是交通方便的頂級奢華行程嗎？隨時告訴我您的想法。
+                            </div>
+                        </div>
+
+                        {/* 輸入欄位 */}
+                        <div className="p-3 border-t border-neutral-100 bg-white flex gap-2">
+                            <input 
+                                type="text" 
+                                placeholder="問問 AI...（例如：推薦適合女性獨旅的國家）" 
+                                className="w-full h-10 px-3 bg-neutral-50 text-xs border border-neutral-100 focus:outline-none focus:border-neutral-900 transition-colors placeholder:text-neutral-300 font-light"
+                            />
+                            <button className="h-10 px-4 bg-neutral-900 text-white text-[10px] tracking-widest uppercase hover:bg-neutral-800 transition-colors">
+                                發送
+                            </button>
+                        </div>
+                    </div>
+                )}
+
+                {/* 圓形固定懸浮按鈕 */}
+                <button
+                    onClick={() => setIsAiOpen(!isAiOpen)}
+                    className="w-14 h-14 bg-neutral-900 text-white rounded-full shadow-lg flex items-center justify-center hover:bg-neutral-800 hover:scale-105 transition-all duration-300 border border-neutral-800 group relative"
+                    aria-label="AI Travel Assistant"
+                >
+                    {isAiOpen ? (
+                        <X className="size-5 transition-transform duration-300 rotate-90" />
+                    ) : (
+                        <>
+                            <MessageSquare className="size-5" />
+                            {/* 小提示紅點（表示有 Live 線上感） */}
+                            <span className="absolute top-0 right-0 flex h-2 w-2">
+                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                                <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
+                            </span>
+                        </>
+                    )}
+                </button>
+            </div>
+            {/* ⬆️ ============================================================= */}
         </div>
     );
 }
