@@ -15,32 +15,42 @@ export default function RegisterPage() {
   const { login } = useAuth();
   const router = useRouter();
 
-const handleRegister = async (e: React.FormEvent) => {
-  e.preventDefault();
-  setIsLoading(true);
+  const handleRegister = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
 
-  try {
-    const res = await fetch("http://localhost/trav-api/register.php", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password, nickname }),
-    });
-    
-    const data = await res.json();
+    try {
+      // 🌟 修改 1：換成你本機 XAMPP 真正正確的網址 (加上 8080 與 trav-app)
+      const res = await fetch("http://localhost:8080/trav-app/backend/trav-api/register.php", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        // 🌟 修改 2：這裡的屬性名稱必須完全對齊 PHP 裡寫的大寫名稱
+        // 因為前端畫面沒有獨立的「帳號」欄位，我們直接把 email 當作登入帳號存入
+        body: JSON.stringify({ 
+            Account: email,     
+            Password: password, 
+            Email: email,       
+            Name: nickname,     
+            Gender: ""          
+        }),
+      });
+      
+      const data = await res.json();
 
-    if (data.success) {
-      alert("註冊成功！快去登入吧");
-      router.push("/auth/login");
-    } else {
-      alert(data.message); // 例如顯示「Email 已被使用」
+      // 🌟 修改 3：判斷方式改成我們 PHP 格式回傳的 status
+      if (data.status === 'success') {
+        alert(data.message); // 顯示 PHP 給的：🎉 恭喜！帳號註冊成功...
+        router.push("/auth/login"); // 成功後自動跳轉到登入頁
+      } else {
+        alert("❌ 註冊失敗：" + data.message); 
+      }
+    } catch (err) {
+      console.error(err);
+      alert("後端伺服器沒反應");
+    } finally {
+      setIsLoading(false);
     }
-  } catch (err) {
-    console.error(err);
-    alert("後端伺服器沒反應，請檢查 XAMPP 是否啟動 Apache");
-  } finally {
-    setIsLoading(false);
-  }
-};
+  };
 
   return (
     <div className="min-h-[90vh] flex items-center justify-center bg-gray-50 px-4 py-12">
