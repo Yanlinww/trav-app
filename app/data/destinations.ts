@@ -11,6 +11,8 @@ export interface Destination {
     category: string;
     highlights: string[];
     bestTime: string;
+    tags?: string[];        
+    safetyRating?: string;  
 }
 
 export const destinations: Destination[] = [
