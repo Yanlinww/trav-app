@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  # 1. 前端貨櫃：負責跑 Next.js (取代你自己輸入 npm run dev)
+  frontend:
+    image: node:18-alpine
+    working_dir: /app
+    # 把本機的程式碼同步到貨櫃裡
+    volumes:
+      - ./:/app
+      - /app/node_modules # 保護 node_modules 不被覆蓋
+    ports:
+      - "3000:3000" # 對外開放 3000 port
+    command: npm run dev
+    environment:
+      # 確保在 Windows 上存檔時，網頁會自動熱更新
+      - CHOKIDAR_USEPOLLING=true 
+
+  # 2. 後端貨櫃：負責跑 PHP + Apache (完美取代 XAMPP)
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      # ✨ 魔鬼細節：我們刻意在貨櫃裡創造 trav-app/backend 的路徑
+      # 這樣你的前端 fetch("http://localhost:8080/trav-app/backend/...") 就完全不用改網址！
+      - ./backend:/var/www/html/trav-app/backend
+    ports:
+      - "8080:80" # 把貨櫃內的 80 port 對應到你電腦的 8080 port
