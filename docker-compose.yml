@@ -11,7 +11,7 @@ services:
       - /app/node_modules # 保護 node_modules 不被覆蓋
     ports:
       - "3000:3000" # 對外開放 3000 port
-    command: npm run dev
+    command: sh -c "npm install && npm run dev"
     environment:
       # 確保在 Windows 上存檔時，網頁會自動熱更新
       - CHOKIDAR_USEPOLLING=true 
