@@ -15,7 +15,7 @@ export function TopNav() {
     { path: "/", label: "首頁", icon: Plane },
     { path: "/destinations", label: "旅遊景點", icon: Map },
     { path: "/planner", label: "行程規劃", icon: Calendar },
-    { path: "/profile", label: "個人中心", icon: User },
+    { path: "/profile", label: "討論區", icon: User },
   ];
 
   return (

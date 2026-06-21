@@ -17,7 +17,7 @@ export function Header() {
         {/* Logo 區域 */}
         <Link to="/" className="flex items-center gap-2">
           <Plane className="size-6 text-blue-600" />
-          <span className="font-bold text-xl tracking-tight text-gray-800">YOYAGA</span>
+          <span className="font-bold text-xl tracking-tight text-gray-800">VOYAGE</span>
         </Link>
 
         {/* 電腦版導覽列 */}
