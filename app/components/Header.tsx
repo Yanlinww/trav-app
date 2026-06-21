@@ -9,7 +9,9 @@ import { useAuth } from "../context/AuthContext";
 export function Header() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
-  const { user, logout } = useAuth();
+  
+  // 🌟 從 useAuth 解構出 loading 狀態
+  const { user, logout, loading } = useAuth();
 
   // 取得全域狀態中的大頭貼
   const avatarUrl = (user as any)?.avatar;
@@ -30,13 +32,17 @@ export function Header() {
 
         {/* 桌面版右側會員選單 */}
         <div className="hidden md:flex items-center gap-3">
-          {user ? (
+          {loading ? (
+            /* 🌟 1. 載入中：顯示低調的灰色骨架屏 (Skeleton)，防止畫面閃爍跳動 */
+            <div className="w-24 h-10 animate-pulse bg-slate-100 rounded-full"></div>
+          ) : user ? (
+            /* 🌟 2. 確定有登入：顯示會員頭像與選單 */
             <div className="relative flex items-center gap-4">
               <div 
                 className="flex items-center gap-2 cursor-pointer hover:bg-slate-50 p-1.5 rounded-lg transition-all"
                 onClick={() => setUserMenuOpen(!userMenuOpen)}
               >
-                {/* 🌟 這裡同步大頭貼 🌟 */}
+                {/* 大頭貼顯示邏輯 */}
                 <div className="size-9 bg-emerald-50 rounded-full flex items-center justify-center text-emerald-600 border border-emerald-200 overflow-hidden shadow-sm">
                   {avatarUrl ? (
                     <img src={avatarUrl} alt="Avatar" className="w-full h-full object-cover" />
@@ -70,6 +76,7 @@ export function Header() {
               )}
             </div>
           ) : (
+            /* 🌟 3. 確定未登入：顯示登入/註冊按鈕 */
             <>
               <Link to="/auth/login">
                 <button className="px-5 py-2 text-xs font-bold tracking-widest text-slate-500 hover:text-emerald-700 transition-colors uppercase">
@@ -99,11 +106,17 @@ export function Header() {
             
             <div className="h-[1px] bg-slate-100 my-2"></div>
             
-            {user ? (
+            {loading ? (
+              /* 🌟 手機版載入中的骨架屏 */
+              <div className="flex flex-col gap-3">
+                <div className="h-12 w-full animate-pulse bg-slate-100 rounded-xl"></div>
+                <div className="h-12 w-full animate-pulse bg-slate-100 rounded-xl"></div>
+              </div>
+            ) : user ? (
               <div className="flex flex-col gap-3">
                 <Link to="/profile">
                   <div className="flex items-center gap-3 px-3 py-2">
-                    {/* 🌟 手機版也同步大頭貼 🌟 */}
+                    {/* 手機版也同步大頭貼 */}
                     <div className="size-10 bg-emerald-50 rounded-full flex items-center justify-center text-emerald-600 overflow-hidden shadow-sm">
                       {avatarUrl ? (
                         <img src={avatarUrl} alt="Avatar" className="w-full h-full object-cover" />
