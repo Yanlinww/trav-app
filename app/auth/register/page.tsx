@@ -48,7 +48,7 @@ export default function RegisterPage() {
       }
     } catch (err) {
       console.error(err);
-      alert("後端伺服器沒反應，請確認 XAMPP 的 Apache 有亮綠燈！");
+      alert("無法連線至後端伺服器！請確認 Docker Desktop 中的 backend 容器是否已亮綠燈並正常運作");
     } finally {
       setIsLoading(false);
     }
