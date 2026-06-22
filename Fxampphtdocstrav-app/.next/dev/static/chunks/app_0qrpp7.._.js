@@ -151,43 +151,62 @@ var __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist
 var _s = __turbopack_context__.k.signature(), _s1 = __turbopack_context__.k.signature();
 'use client';
 ;
+// 建立 Context
 const AuthContext = /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["createContext"])(undefined);
 function AuthProvider({ children }) {
     _s();
     const [user, setUser] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])(null);
     const [loading, setLoading] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])(true);
+    // 🌟 初始化檢查：網頁一打開時，檢查 localStorage 有沒有暫存的登入資料
     (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useEffect"])({
         "AuthProvider.useEffect": ()=>{
-            // 初始化時檢查本地儲存的 Token
-            const savedToken = localStorage.getItem('auth_token');
-            const savedUser = localStorage.getItem('user_info');
-            if (savedToken && savedUser) {
-                setUser(JSON.parse(savedUser));
-            }
-            setLoading(false);
+            const checkLoginStatus = {
+                "AuthProvider.useEffect.checkLoginStatus": ()=>{
+                    try {
+                        const savedUser = localStorage.getItem('user_info');
+                        const savedToken = localStorage.getItem('auth_token');
+                        if (savedUser && savedToken) {
+                            setUser(JSON.parse(savedUser));
+                        }
+                    } catch (error) {
+                        console.error("讀取登入狀態失敗:", error);
+                    } finally{
+                        // 🌟 關鍵修復：無論 try 成功還是進到 catch，最後一定會執行這裡
+                        // 這樣網頁就絕對不會永遠卡在灰色的 Loading 骨架屏！
+                        setLoading(false);
+                    }
+                }
+            }["AuthProvider.useEffect.checkLoginStatus"];
+            checkLoginStatus();
         }
     }["AuthProvider.useEffect"], []);
+    // 登入功能：把後端傳來的資料與 Token 存起來
     const login = (userData, token)=>{
-        localStorage.setItem('auth_token', token);
-        localStorage.setItem('user_info', JSON.stringify(userData));
         setUser(userData);
+        localStorage.setItem('user_info', JSON.stringify(userData));
+        localStorage.setItem('auth_token', token);
     };
+    // 登出功能：清空所有暫存資料
     const logout = ()=>{
-        localStorage.removeItem('auth_token');
-        localStorage.removeItem('user_info');
         setUser(null);
+        localStorage.removeItem('user_info');
+        localStorage.removeItem('auth_token');
+        // 登出後強制把畫面導回首頁，確保安全
+        if ("TURBOPACK compile-time truthy", 1) {
+            window.location.href = '/';
+        }
     };
     return /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(AuthContext.Provider, {
         value: {
             user,
+            loading,
             login,
-            logout,
-            loading
+            logout
         },
         children: children
     }, void 0, false, {
         fileName: "[project]/app/context/AuthContext.tsx",
-        lineNumber: 46,
+        lineNumber: 74,
         columnNumber: 5
     }, this);
 }
@@ -196,7 +215,9 @@ _c = AuthProvider;
 const useAuth = ()=>{
     _s1();
     const context = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useContext"])(AuthContext);
-    if (!context) throw new Error('useAuth must be used within AuthProvider');
+    if (context === undefined) {
+        throw new Error('useAuth 必須在 AuthProvider 的範圍內使用');
+    }
     return context;
 };
 _s1(useAuth, "b9L3QQ+jgeyIrH0NfHrJ8nn7VMU=");
