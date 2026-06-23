@@ -1,29 +1,38 @@
 version: '3.8'
 
 services:
-  # 1. 前端貨櫃：負責跑 Next.js (取代你自己輸入 npm run dev)
+  # 前端服務 (Next.js)
   frontend:
     image: node:20-alpine
+    container_name: trav-app-frontend
     working_dir: /app
-    # 把本機的程式碼同步到貨櫃裡
-    volumes:
-      - ./:/app
-      - /app/node_modules # 保護 node_modules 不被覆蓋
     ports:
-      - "3001:3000" # 對外開放 3000 port
-    command: sh -c "npm install && npm run dev"
+      - "3001:3000"  # 本地電腦用 3001 連線，映射到容器內的 3000
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/.next
     environment:
-      # 確保在 Windows 上存檔時，網頁會自動熱更新
-      - CHOKIDAR_USEPOLLING=true 
+      - NODE_ENV=development
+      # 🔥 解決 Windows 檔案變更無法同步到 Docker 的關鍵雙核心輪詢設定
+      - WATCHPACK_POLLING=true
+      - CHOKIDAR_USEPOLLING=true
+    command: sh -c "npm install && npm run dev"
+    restart: always
 
-  # 2. 後端貨櫃：負責跑 PHP + Apache (完美取代 XAMPP)
+  # 後端服務 (PHP API)
   backend:
+    # 這裡假設你的 Dockerfile 放在根目錄或 backend 資料夾
+    # 如果是用現成的 Image，可以改成 image: php:8.x-apache
     build:
       context: .
-      dockerfile: Dockerfile
-    volumes:
-      # ✨ 魔鬼細節：我們刻意在貨櫃裡創造 trav-app/backend 的路徑
-      # 這樣你的前端 fetch("http://localhost:8080/trav-app/backend/...") 就完全不用改網址！
-      - ./backend:/var/www/html/trav-app/backend
+      dockerfile: Dockerfile  
+    container_name: trav-app-backend
     ports:
-      - "8080:80" # 把貨櫃內的 80 port 對應到你電腦的 8080 port
+      - "8080:80"    # 本地電腦用 8080 連線，映射到容器內的 80
+    volumes:
+    - .:/app
+      - .:/var/www/html
+      - /app/node_modules
+      - /app/.next
+    restart: always

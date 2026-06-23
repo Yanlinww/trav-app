@@ -4,11 +4,15 @@
     // 如需詳細資訊，請瀏覽: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
     "configurations": [
+        
+        
+        
+        
         {
             "type": "chrome",
             "request": "launch",
             "name": "對 localhost 啟動 Chrome",
-            "url": "http://localhost:3000",
+            "url": "http://localhost:3001",
             "webRoot": "${workspaceFolder}"
         }
     ]
