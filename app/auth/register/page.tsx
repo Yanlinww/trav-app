@@ -74,7 +74,7 @@ export default function RegisterPage() {
         <div className="hidden md:flex flex-col w-1/2 bg-gray-50 p-10 items-center justify-center text-center border-r border-gray-100">
           <div className="space-y-6 flex flex-col items-center">
             <h3 className="text-2xl font-light text-gray-900 tracking-wider">
-              加入 VOYAGE！<br />開啟你的專屬獨旅！
+              加入 旅伴travmade！<br />開啟你的專屬獨旅！
             </h3>
             <p className="text-sm text-gray-500 font-light tracking-wide">
               只需幾秒鐘，輕鬆打造你的洗滌心靈旅程
@@ -163,7 +163,7 @@ export default function RegisterPage() {
                   onChange={(e) => setAgreeTerms(e.target.checked)}
                 />
                 <span className="text-xs text-gray-500 font-light group-hover:text-gray-800 transition-colors">
-                  我已閱讀並同意 <span className="font-medium underline underline-offset-2">VOYAGE 會員服務條款</span>
+                  我已閱讀並同意 <span className="font-medium underline underline-offset-2">旅伴travmade 會員服務條款</span>
                 </span>
               </label>
             </div>

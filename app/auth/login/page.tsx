@@ -42,7 +42,7 @@ export default function LoginPage() {
       const data = await res.json();
 
       if (data.status === 'success') {
-        alert(data.message); // 顯示：「🎉 登入成功！歡迎回來 VOYAGE！」
+        alert(data.message); // 顯示：「🎉 登入成功！歡迎回來 旅伴travmade！」
         
         // 將後端資料庫回傳的真實使用者資料（id, email, nickname）寫入前端全域狀態
         login(data.user, "auth_token_from_php");
@@ -80,7 +80,7 @@ export default function LoginPage() {
         <div className="hidden md:flex flex-col w-1/2 bg-gray-50 p-10 items-center justify-center text-center border-r border-gray-100">
           <div className="space-y-6 flex flex-col items-center">
             <h3 className="text-2xl font-light text-gray-900 tracking-wider">
-              輕鬆規劃旅行！<br />從 VOYAGE 開始！
+              輕鬆規劃旅行！<br />從 旅伴travmade 開始！
             </h3>
             <p className="text-sm text-gray-500 font-light tracking-wide">
               跨裝置使用，隨時隨地展開專屬獨旅
@@ -112,7 +112,7 @@ export default function LoginPage() {
             <div className="flex items-center gap-2 mb-4 text-black">
               <Plane className="size-8" />
             </div>
-            <h2 className="text-2xl font-light text-gray-900 tracking-widest mb-1">歡迎使用 VOYAGE</h2>
+            <h2 className="text-2xl font-light text-gray-900 tracking-widest mb-1">歡迎使用 旅伴travmade</h2>
             <p className="text-xs text-gray-400 uppercase tracking-widest font-medium">Your Exclusive Solo Journey</p>
           </div>
 
@@ -166,7 +166,7 @@ export default function LoginPage() {
                   onChange={(e) => setAgreeTerms(e.target.checked)}
                 />
                 <span className="text-xs text-gray-500 font-light group-hover:text-gray-800 transition-colors">
-                  我已閱讀並同意 <span className="font-medium underline underline-offset-2">VOYAGE 會員服務條款</span>
+                  我已閱讀並同意 <span className="font-medium underline underline-offset-2">旅伴travmade 會員服務條款</span>
                 </span>
               </label>
             </div>
