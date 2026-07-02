@@ -1,6 +1,7 @@
 version: '3.8'
 
 services:
+  # 前端：強制使用 Node.js 映像檔，不要 Build 本地的 Dockerfile
   frontend:
     image: node:20-alpine
     container_name: trav-app-frontend
@@ -17,6 +18,7 @@ services:
     command: sh -c "npm install && npm run dev"
     restart: always
 
+  # 後端：這才是真正需要 Build PHP Dockerfile 的地方
   backend:
     build:
       context: .

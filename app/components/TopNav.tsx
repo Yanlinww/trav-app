@@ -10,7 +10,7 @@ export function TopNav() {
   const pathname = usePathname(); 
 
   const navItems = [
-    { path: "/", label: "首頁", icon: Plane },
+    { path: "/", label: "首頁999", icon: Plane },
     { path: "/destinations", label: "旅遊景點", icon: Map },
     { path: "/planner", label: "行程規劃", icon: Calendar },
     { path: "/community", label: "討論區", icon: User },
