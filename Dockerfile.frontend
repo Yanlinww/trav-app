@@ -1,0 +1,17 @@
+# Dockerfile.frontend
+FROM node:20-alpine
+
+# 設定工作目錄
+WORKDIR /app
+
+# 複製 package.json 與 package-lock.json 到容器內
+COPY package*.json ./
+
+# 安裝依賴
+RUN npm install
+
+# 複製其餘程式碼
+COPY . .
+
+# 執行開發環境指令
+CMD ["npm", "run", "dev"]

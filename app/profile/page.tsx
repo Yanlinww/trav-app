@@ -39,7 +39,7 @@ const handleSaveProfile = async () => {
   setIsSaving(true);
   try {
     // 呼叫後端更新 API
-    const res = await fetch("http://localhost:8080/trav-app/backend/trav-api/update_profile.php", {
+    const res = await fetch("http://localhost:8080/trav-app/backend/trav-api/profile/update_profile.php", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -75,7 +75,7 @@ const handleSaveProfile = async () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#FBFBFB] text-neutral-900 pb-24 font-sans relative overflow-hidden">
+    <div className="relative w-full h-[320px] bg-slate-900 overflow-hidden">
       {/* 極簡黑背景裝飾 */}
       <div className="absolute top-0 left-0 w-full h-80 bg-neutral-900 rounded-b-[60px] shadow-inner z-0 overflow-hidden">
          <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/stardust.png')] opacity-10"></div>

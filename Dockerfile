@@ -1,7 +1,10 @@
 FROM php:8.2-apache
 
-# 執行指令：安裝並啟用 mysqli 擴充套件，這樣才能連上 Aiven 雲端資料庫
+# 安裝 mysqli
 RUN docker-php-ext-install mysqli && docker-php-ext-enable mysqli
 
-# 賦予資料夾權限 (避免寫入錯誤)
+# 關鍵：改成對應你現有的 backend/trav-api 資料夾
+COPY backend/trav-api/ /var/www/html/
+
+# 賦予權限
 RUN chown -R www-data:www-data /var/www/html

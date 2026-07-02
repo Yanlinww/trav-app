@@ -30,7 +30,7 @@ export default function LoginPage() {
 
     try {
       // 🌟 連通真正的後端 login.php API (包含正確的 Port 與資料夾路徑)
-      const res = await fetch("http://localhost:8080/trav-app/backend/trav-api/login.php", {
+      const res = await fetch("http://localhost:8080/login.php", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
@@ -53,7 +53,7 @@ export default function LoginPage() {
       }
     } catch (err) {
       console.error(err);
-      alert("後端伺服器沒反應，請確認 XAMPP 的 Apache 有亮綠燈，且 CORS 設定已調整！");
+      alert("後端伺服器沒反應");
     } finally {
       setIsLoading(false);
     }

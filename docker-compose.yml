@@ -1,38 +1,29 @@
 version: '3.8'
 
 services:
-  # 前端服務 (Next.js)
   frontend:
     image: node:20-alpine
     container_name: trav-app-frontend
     working_dir: /app
     ports:
-      - "3001:3000"  # 本地電腦用 3001 連線，映射到容器內的 3000
+      - "3001:3000"
     volumes:
       - .:/app
       - /app/node_modules
-      - /app/.next
     environment:
       - NODE_ENV=development
-      # 🔥 解決 Windows 檔案變更無法同步到 Docker 的關鍵雙核心輪詢設定
       - WATCHPACK_POLLING=true
       - CHOKIDAR_USEPOLLING=true
     command: sh -c "npm install && npm run dev"
     restart: always
 
-  # 後端服務 (PHP API)
   backend:
-    # 這裡假設你的 Dockerfile 放在根目錄或 backend 資料夾
-    # 如果是用現成的 Image，可以改成 image: php:8.x-apache
     build:
       context: .
-      dockerfile: Dockerfile  
+      dockerfile: Dockerfile
     container_name: trav-app-backend
     ports:
-      - "8080:80"    # 本地電腦用 8080 連線，映射到容器內的 80
+      - "8080:80"
     volumes:
-    - .:/app
-      - .:/var/www/html
-      - /app/node_modules
-      - /app/.next
+      - ./backend/trav-api:/var/www/html
     restart: always

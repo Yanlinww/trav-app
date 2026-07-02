@@ -9,7 +9,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'OPTIONS') {
     exit();
 }
 
-require_once 'db_connect.php';
+require_once '../db_connect.php';
 $data = json_decode(file_get_contents("php://input"));
 
 if (!empty($data->Account)) {
