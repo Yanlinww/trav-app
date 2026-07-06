@@ -3,7 +3,8 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "../context/AuthContext";
 import { useRouter } from "next/navigation";
-import { Plus, MoreHorizontal, Loader2, X, Pin, Trash2, MapPin, Share } from "lucide-react";
+// 新增引入 Train, Car, Bike, Compass 作為交通圖示
+import { Plus, MoreHorizontal, Loader2, X, Pin, Trash2, MapPin, Share, Train, Car, Bike, Compass } from "lucide-react";
 
 interface Itinerary {
   id: string;
@@ -26,9 +27,18 @@ export default function PlannerDashboard() {
   const [title, setTitle] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
+  const [transport, setTransport] = useState("public"); // 預設大眾運輸
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [itineraries, setItineraries] = useState<Itinerary[]>([]);
+
+  // 交通工具選項資料
+  const transportOptions = [
+    { id: 'public', label: '大眾運輸', icon: Train },
+    { id: 'car', label: '汽車', icon: Car },
+    { id: 'motorcycle', label: '機車', icon: Bike },
+    { id: 'other', label: '其他', icon: Compass },
+  ];
 
   // ================= 運作機制：資料庫讀取 =================
   const fetchItineraries = async () => {
@@ -88,7 +98,6 @@ export default function PlannerDashboard() {
     e.stopPropagation();
     const targetPinStatus = !isCurrentlyPinned;
 
-    // 樂觀 UI 更新：瞬間變更畫面
     setItineraries(itineraries.map(it => it.id === id ? { ...it, isPinned: targetPinStatus } : it));
     setActiveDropdown(null);
 
@@ -101,7 +110,6 @@ export default function PlannerDashboard() {
       const data = await res.json();
       
       if (data.status !== 'success') {
-        // 更新失敗，畫面退回原狀
         setItineraries(itineraries.map(it => it.id === id ? { ...it, isPinned: isCurrentlyPinned } : it));
         alert(data.message);
       }
@@ -135,7 +143,13 @@ export default function PlannerDashboard() {
       const res = await fetch("http://localhost:8080/itinerary/create_itinerary.php", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ Account: user?.id || (user as any)?.Account, Title: title, StartDate: startDate, EndDate: endDate, Transport: "train" }),
+        body: JSON.stringify({ 
+          Account: user?.id || (user as any)?.Account, 
+          Title: title, 
+          StartDate: startDate, 
+          EndDate: endDate, 
+          Transport: transport 
+        }),
       });
       const data = await res.json();
       
@@ -145,6 +159,7 @@ export default function PlannerDashboard() {
         setTitle("");
         setStartDate("");
         setEndDate("");
+        setTransport("public");
       } else {
         alert("建立失敗：" + data.message);
       }
@@ -162,11 +177,9 @@ export default function PlannerDashboard() {
 
   return (
     <div className="min-h-screen bg-[#FAFAFA] relative">
-      {/* 防穿透遮罩 */}
       {activeDropdown && <div className="fixed inset-0 z-10" onClick={() => setActiveDropdown(null)} />}
 
       <div className="max-w-7xl mx-auto px-6 py-12">
-        {/* 頂部標題區 */}
         <div className="flex justify-between items-center mb-12">
           <h1 className="text-3xl font-bold text-slate-900 tracking-wide">我的行程</h1>
           {itineraries.length > 0 && (
@@ -179,7 +192,6 @@ export default function PlannerDashboard() {
           )}
         </div>
 
-        {/* 行程列表區 */}
         {itineraries.length === 0 ? (
           <div className="text-center py-28 bg-white border border-slate-100 rounded-2xl shadow-sm">
             <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-6">
@@ -204,10 +216,8 @@ export default function PlannerDashboard() {
               <div 
                 key={itinerary.id} 
                 onClick={() => router.push(`/planner/${itinerary.id}`)}
-                // 移除 hover:-translate-y-1.5 解決邊緣抖動死循環，保留陰影回饋
                 className="bg-white border border-slate-100 rounded-xl group cursor-pointer transition-shadow duration-300 hover:shadow-xl relative"
               >
-                {/* 1. 圖片容器 (負責 overflow-hidden 與放大特效) */}
                 <div className="relative aspect-[4/3] overflow-hidden bg-slate-100 rounded-t-xl">
                   <img 
                     src={itinerary.coverImage} 
@@ -220,7 +230,6 @@ export default function PlannerDashboard() {
                     </div>
                   )}
                   
-                  {/* 下拉選單觸發按鈕 */}
                   <button 
                     onClick={(e) => { e.stopPropagation(); setActiveDropdown(activeDropdown === itinerary.id ? null : itinerary.id); }}
                     className="absolute top-3 right-3 size-8 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center text-slate-600 opacity-0 group-hover:opacity-100 transition-all duration-300 hover:bg-white hover:text-slate-900 z-20"
@@ -229,10 +238,9 @@ export default function PlannerDashboard() {
                   </button>
                 </div>
 
-                {/* 2. 獨立出來的選單本體 (移出圖片容器，絕對定位於整張卡片之上) */}
                 {activeDropdown === itinerary.id && (
                   <div 
-                    onClick={(e) => e.stopPropagation()} // 攔截點擊，避免按到空白處觸發跳頁
+                    onClick={(e) => e.stopPropagation()} 
                     className="absolute right-3 top-14 w-36 bg-white border border-gray-100 shadow-xl rounded-lg py-1.5 z-50 flex flex-col"
                   >
                     <button 
@@ -258,7 +266,6 @@ export default function PlannerDashboard() {
                   </div>
                 )}
 
-                {/* 3. 文字資訊區 */}
                 <div className="p-5">
                   <h3 className="text-lg font-medium text-slate-900 mb-1.5 tracking-wide truncate group-hover:text-amber-600 transition-colors duration-300">
                     {itinerary.title}
@@ -284,6 +291,7 @@ export default function PlannerDashboard() {
               </button>
             </div>
             <form onSubmit={handleCreateItinerary} className="p-8 space-y-6">
+              
               <div className="space-y-2">
                 <label className="text-[10px] font-bold text-slate-400 tracking-widest uppercase">Destination / Title</label>
                 <input 
@@ -295,6 +303,7 @@ export default function PlannerDashboard() {
                   className="w-full p-4 bg-slate-50 border border-slate-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-600/20 focus:border-amber-600 transition-all duration-300" 
                 />
               </div>
+
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <label className="text-[10px] font-bold text-slate-400 tracking-widest uppercase">Start Date</label>
@@ -321,6 +330,27 @@ export default function PlannerDashboard() {
                   />
                 </div>
               </div>
+
+              {/* 重構：圖示化卡片點擊選單 */}
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-slate-400 tracking-widest uppercase">Transportation</label>
+                <div className="grid grid-cols-4 gap-3 mt-1">
+                  {transportOptions.map((opt) => (
+                    <div
+                      key={opt.id}
+                      onClick={() => setTransport(opt.id)}
+                      className={`flex flex-col items-center justify-center p-3 rounded-xl border cursor-pointer transition-all duration-200 ${
+                        transport === opt.id
+                          ? 'border-amber-600 bg-amber-50 text-amber-600 shadow-sm'
+                          : 'border-slate-100 bg-slate-50 text-slate-400 hover:border-slate-300 hover:text-slate-600'
+                      }`}
+                    >
+                      <opt.icon className="w-5 h-5 mb-1.5" />
+                      <span className="text-[11px] font-medium tracking-wide">{opt.label}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
               
               <button 
                 type="submit" 
@@ -329,6 +359,7 @@ export default function PlannerDashboard() {
               >
                 {isSubmitting ? <><Loader2 className="size-4 animate-spin" /> 處理中...</> : "建立專屬行程"}
               </button>
+
             </form>
           </div>
         </div>
