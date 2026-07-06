@@ -12,11 +12,18 @@ export default function SettingsPage() {
   // 分頁狀態：對照你的架構圖設計
   const [activeTab, setActiveTab] = useState<'profile' | 'security' | 'preferences' | 'social'>('profile');
   
-  // 表單輸入狀態
+  // ================= 表單輸入狀態 =================
+  // 1. 大頭貼與暱稱
   const [editName, setEditName] = useState('');
   const [editAvatar, setEditAvatar] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [showSuccessHint, setShowSuccessHint] = useState(false);
+
+  // 2. 更改密碼
+  const [oldPassword, setOldPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
 
   // 阻擋未登入使用者
   useEffect(() => {
@@ -28,6 +35,7 @@ export default function SettingsPage() {
     }
   }, [user, loading, router]);
 
+  // ================= 處理函式 =================
   // 處理大頭貼轉 Base64
   const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -51,7 +59,7 @@ export default function SettingsPage() {
 
     setIsSaving(true);
     try {
-     const res = await fetch("http://localhost:8080/profile/update_profile.php", {
+      const res = await fetch("http://localhost:8080/profile/update_profile.php", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -78,6 +86,45 @@ export default function SettingsPage() {
       alert("連線後端 API 發生錯誤");
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  // 呼叫後端 update_password.php 更改密碼
+  const handleUpdatePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newPassword !== confirmPassword) {
+      alert("❌ 新密碼與確認密碼不一致！");
+      return;
+    }
+    if (!user) return;
+
+    setIsUpdatingPassword(true);
+    try {
+      const res = await fetch("http://localhost:8080/profile/update_password.php", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          Account: user.id || (user as any).Account,
+          OldPassword: oldPassword,
+          NewPassword: newPassword
+        }),
+      });
+      const data = await res.json();
+
+      if (data.status === 'success') {
+        alert("🎉 密碼更新成功！");
+        // 清空輸入框
+        setOldPassword('');
+        setNewPassword('');
+        setConfirmPassword('');
+      } else {
+        alert("❌ 更新失敗：" + data.message);
+      }
+    } catch (error) {
+      console.error(error);
+      alert("連線後端 API 發生錯誤");
+    } finally {
+      setIsUpdatingPassword(false);
     }
   };
 
@@ -156,7 +203,7 @@ export default function SettingsPage() {
 
             {/* TAB 1: 大頭貼與暱稱 */}
             {activeTab === 'profile' && (
-              <form onSubmit={handleSaveProfile} className="space-y-8">
+              <form onSubmit={handleSaveProfile} className="space-y-8 animate-in fade-in duration-300">
                 <div>
                   <h2 className="text-xl font-light text-neutral-900 mb-1">基本資料修改</h2>
                   <p className="text-xs text-neutral-400 font-light">設定您在 TRAVMADE 獨旅社群中顯示的公開暱稱與通行證頭像。</p>
@@ -224,92 +271,154 @@ export default function SettingsPage() {
               </form>
             )}
 
-            {/* TAB 2, 3, 4: 預留未來的樣式結構 */}
+            {/* TAB 2: 安全與合規 (修改密碼) */}
             {activeTab === 'security' && (
-              <div className="py-12 text-center space-y-3">
-                <Shield className="size-8 mx-auto text-neutral-300" />
-                <h3 className="text-base font-light tracking-wider text-neutral-700">安全與合規設定</h3>
-                <p className="text-xs text-neutral-400 font-light max-w-xs mx-auto">修改登入密碼、雙重驗證以及個人資料隱私合規面板即將上線。</p>
-              </div>
+              <form onSubmit={handleUpdatePassword} className="space-y-8 animate-in fade-in duration-300">
+                <div>
+                  <h2 className="text-xl font-light text-neutral-900 mb-1">安全與合規設定</h2>
+                  <p className="text-xs text-neutral-400 font-light">定期更新您的密碼以保護 TRAVMADE 帳號安全。</p>
+                </div>
+
+                <div className="space-y-4 max-w-md border-b border-neutral-100 pb-8">
+                  <div className="space-y-2">
+                    <label className="block text-[10px] font-mono font-bold text-neutral-400 tracking-widest uppercase">
+                      CURRENT PASSWORD (目前密碼)
+                    </label>
+                    <input
+                      type="password"
+                      value={oldPassword}
+                      onChange={(e) => setOldPassword(e.target.value)}
+                      className="w-full px-4 py-3 bg-neutral-50 border border-neutral-200 focus:bg-white focus:border-neutral-900 outline-none transition-all text-neutral-900 font-light tracking-wider rounded-sm text-sm"
+                      placeholder="請輸入目前的密碼"
+                      required
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="block text-[10px] font-mono font-bold text-neutral-400 tracking-widest uppercase">
+                      NEW PASSWORD (新密碼)
+                    </label>
+                    <input
+                      type="password"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      className="w-full px-4 py-3 bg-neutral-50 border border-neutral-200 focus:bg-white focus:border-neutral-900 outline-none transition-all text-neutral-900 font-light tracking-wider rounded-sm text-sm"
+                      placeholder="請設定新密碼"
+                      required
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="block text-[10px] font-mono font-bold text-neutral-400 tracking-widest uppercase">
+                      CONFIRM NEW PASSWORD (確認新密碼)
+                    </label>
+                    <input
+                      type="password"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      className="w-full px-4 py-3 bg-neutral-50 border border-neutral-200 focus:bg-white focus:border-neutral-900 outline-none transition-all text-neutral-900 font-light tracking-wider rounded-sm text-sm"
+                      placeholder="請再次輸入新密碼"
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div className="pt-4">
+                  <button
+                    type="submit"
+                    disabled={isUpdatingPassword}
+                    className="px-8 py-3.5 bg-neutral-900 text-white text-xs tracking-widest uppercase hover:bg-neutral-800 transition-colors disabled:opacity-70 flex items-center justify-center gap-2 rounded-sm font-medium"
+                  >
+                    {isUpdatingPassword ? (
+                      <>
+                        <Loader2 className="size-3 animate-spin" />
+                        <span>驗證中...</span>
+                      </>
+                    ) : (
+                      "更新密碼"
+                    )}
+                  </button>
+                </div>
+              </form>
             )}
+
+            {/* TAB 3: 個人化旅遊偏好 */}
             {activeTab === 'preferences' && (
-              <div className="py-12 text-center space-y-3">
+              <div className="py-12 text-center space-y-3 animate-in fade-in duration-300">
                 <Compass className="size-8 mx-auto text-neutral-300" />
                 <h3 className="text-base font-light tracking-wider text-neutral-700">個人化旅遊偏好</h3>
                 <p className="text-xs text-neutral-400 font-light max-w-xs mx-auto">調整您的獨旅偏好標籤，讓 Solo Concierge AI 更精準地為您挑選目的地。</p>
               </div>
             )}
+
             {/* TAB 4: 社群帳號設定 */}
-{activeTab === 'social' && (
-  <div className="space-y-8 animate-in fade-in duration-300">
-    <div>
-      <h2 className="text-xl font-light text-neutral-900 mb-1">社群帳號連結</h2>
-      <p className="text-xs text-neutral-400 font-light">授權綁定您的社群平台，將動態同步於您的旅客卡片中，並可啟用快速登入。</p>
-    </div>
+            {activeTab === 'social' && (
+              <div className="space-y-8 animate-in fade-in duration-300">
+                <div>
+                  <h2 className="text-xl font-light text-neutral-900 mb-1">社群帳號連結</h2>
+                  <p className="text-xs text-neutral-400 font-light">授權綁定您的社群平台，將動態同步於您的旅客卡片中，並可啟用快速登入。</p>
+                </div>
 
-    <div className="space-y-4 max-w-xl">
-      
-      {/* Facebook 綁定狀態 (尚未綁定) */}
-      <div className="flex items-center justify-between p-5 bg-white border border-neutral-100 rounded-sm hover:border-neutral-200 transition-colors">
-        <div className="flex items-center gap-4">
-          <div className="w-10 h-10 bg-neutral-50 flex items-center justify-center text-neutral-700 text-sm font-semibold">
-            F
-          </div>
-          <div>
-            <h4 className="text-sm font-medium text-neutral-800">Facebook</h4>
-            <p className="text-[11px] text-neutral-400 font-light">尚未綁定</p>
-          </div>
-        </div>
-        <button
-          type="button"
-          className="px-5 py-2 border border-neutral-200 text-neutral-600 text-[10px] tracking-widest uppercase hover:bg-neutral-900 hover:text-white hover:border-neutral-900 transition-all rounded-sm font-medium"
-        >
-          連結帳號
-        </button>
-      </div>
+                <div className="space-y-4 max-w-xl">
+                  {/* Facebook 綁定狀態 */}
+                  <div className="flex items-center justify-between p-5 bg-white border border-neutral-100 rounded-sm hover:border-neutral-200 transition-colors">
+                    <div className="flex items-center gap-4">
+                      <div className="w-10 h-10 bg-neutral-50 flex items-center justify-center text-neutral-700 text-sm font-semibold">
+                        F
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-medium text-neutral-800">Facebook</h4>
+                        <p className="text-[11px] text-neutral-400 font-light">尚未綁定</p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      className="px-5 py-2 border border-neutral-200 text-neutral-600 text-[10px] tracking-widest uppercase hover:bg-neutral-900 hover:text-white hover:border-neutral-900 transition-all rounded-sm font-medium"
+                    >
+                      連結帳號
+                    </button>
+                  </div>
 
-      {/* Instagram 綁定狀態 (尚未綁定) */}
-      <div className="flex items-center justify-between p-5 bg-white border border-neutral-100 rounded-sm hover:border-neutral-200 transition-colors">
-        <div className="flex items-center gap-4">
-          <div className="w-10 h-10 bg-neutral-50 flex items-center justify-center text-neutral-700 text-sm font-semibold">
-            I
-          </div>
-          <div>
-            <h4 className="text-sm font-medium text-neutral-800">Instagram</h4>
-            <p className="text-[11px] text-neutral-400 font-light">尚未綁定</p>
-          </div>
-        </div>
-        <button
-          type="button"
-          className="px-5 py-2 border border-neutral-200 text-neutral-600 text-[10px] tracking-widest uppercase hover:bg-neutral-900 hover:text-white hover:border-neutral-900 transition-all rounded-sm font-medium"
-        >
-          連結帳號
-        </button>
-      </div>
+                  {/* Instagram 綁定狀態 */}
+                  <div className="flex items-center justify-between p-5 bg-white border border-neutral-100 rounded-sm hover:border-neutral-200 transition-colors">
+                    <div className="flex items-center gap-4">
+                      <div className="w-10 h-10 bg-neutral-50 flex items-center justify-center text-neutral-700 text-sm font-semibold">
+                        I
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-medium text-neutral-800">Instagram</h4>
+                        <p className="text-[11px] text-neutral-400 font-light">尚未綁定</p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      className="px-5 py-2 border border-neutral-200 text-neutral-600 text-[10px] tracking-widest uppercase hover:bg-neutral-900 hover:text-white hover:border-neutral-900 transition-all rounded-sm font-medium"
+                    >
+                      連結帳號
+                    </button>
+                  </div>
 
-      {/* Google 綁定狀態 (示範：已綁定狀態) */}
-      <div className="flex items-center justify-between p-5 bg-white border border-neutral-100 rounded-sm hover:border-neutral-200 transition-colors">
-        <div className="flex items-center gap-4">
-          {/* 已綁定時，Icon 顏色可以變黑以示區別 */}
-          <div className="w-10 h-10 bg-neutral-900 text-white flex items-center justify-center text-sm font-semibold shadow-sm">
-            G
-          </div>
-          <div>
-            <h4 className="text-sm font-medium text-neutral-800">Google</h4>
-            <p className="text-[11px] text-emerald-600 font-medium tracking-wide">已綁定</p>
-          </div>
-        </div>
-        <button
-          type="button"
-          className="px-4 py-2 text-neutral-400 text-[10px] tracking-widest uppercase hover:text-red-500 transition-all font-medium"
-        >
-          解除綁定
-        </button>
-      </div>
-
-    </div>
-  </div>
-)}
+                  {/* Google 綁定狀態 */}
+                  <div className="flex items-center justify-between p-5 bg-white border border-neutral-100 rounded-sm hover:border-neutral-200 transition-colors">
+                    <div className="flex items-center gap-4">
+                      <div className="w-10 h-10 bg-neutral-900 text-white flex items-center justify-center text-sm font-semibold shadow-sm">
+                        G
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-medium text-neutral-800">Google</h4>
+                        <p className="text-[11px] text-emerald-600 font-medium tracking-wide">已綁定</p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      className="px-4 py-2 text-neutral-400 text-[10px] tracking-widest uppercase hover:text-red-500 transition-all font-medium"
+                    >
+                      解除綁定
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
 
           </main>
         </div>
