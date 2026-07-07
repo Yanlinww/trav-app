@@ -1,31 +1,32 @@
-version: '3.8'
-
 services:
-  # 前端：強制使用 Node.js 映像檔，不要 Build 本地的 Dockerfile
-  frontend:
-    image: node:20-alpine
-    container_name: trav-app-frontend
-    working_dir: /app
-    ports:
-      - "3001:3000"
-    volumes:
-      - .:/app
-      - /app/node_modules
-    environment:
-      - NODE_ENV=development
-      - WATCHPACK_POLLING=true
-      - CHOKIDAR_USEPOLLING=true
-    command: sh -c "npm install && npm run dev"
-    restart: always
+    frontend:
+        image: node:20-alpine
+        container_name: trav-app-frontend
+        working_dir: /app
+        ports:
+            - "3001:3000"
+        volumes:
+            - .:/app
+            - frontend_node_modules:/app/node_modules
+            - frontend_next_cache:/app/.next
+        environment:
+            - NODE_ENV=development
+            - WATCHPACK_POLLING=true
+            - CHOKIDAR_USEPOLLING=true
+        command: sh -c "npm install && npm run dev:docker"
+        restart: always
 
-  # 後端：這才是真正需要 Build PHP Dockerfile 的地方
-  backend:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: trav-app-backend
-    ports:
-      - "8080:80"
-    volumes:
-      - ./backend/trav-api:/var/www/html
-    restart: always
+    backend:
+        build:
+            context: .
+            dockerfile: Dockerfile
+        container_name: trav-app-backend
+        ports:
+            - "8080:80"
+        volumes:
+            - ./backend/trav-api:/var/www/html
+        restart: always
+
+volumes:
+    frontend_node_modules:
+    frontend_next_cache:
