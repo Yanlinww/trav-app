@@ -3113,6 +3113,10 @@
     opacity: .3;
   }
 
+  .disabled\:opacity-50:disabled {
+    opacity: .5;
+  }
+
   .disabled\:opacity-70:disabled {
     opacity: .7;
   }
