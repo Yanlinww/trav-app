@@ -16,8 +16,15 @@ if (!empty($data->Account)) {
     $account = $data->Account;
     
     // 依據釘選狀態優先排序，再依出發日期近到遠排序
-    $stmt = $conn->prepare("SELECT * FROM `Itinerary` WHERE `Account` = ? ORDER BY `Is_Pinned` DESC, `Start_Date` ASC");
-    $stmt->bind_param("s", $account);
+    $stmt = $conn->prepare("
+    SELECT i.* 
+    FROM Itinerary i 
+    LEFT JOIN Itinerary_Members m ON i.Itinerary_ID = m.Itinerary_ID 
+    WHERE i.Account = ? OR m.Account = ? 
+    GROUP BY i.Itinerary_ID 
+    ORDER BY i.Start_Date ASC
+");
+    $stmt->bind_param("ss", $data->Account, $data->Account);
     $stmt->execute();
     $result = $stmt->get_result();
     

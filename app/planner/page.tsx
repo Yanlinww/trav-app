@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useEffect } from "react";
-import { useAuth } from "../context/AuthContext";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-// 新增引入 Train, Car, Bike, Compass 作為交通圖示
-import { Plus, MoreHorizontal, Loader2, X, Pin, Trash2, MapPin, Share, Train, Car, Bike, Compass } from "lucide-react";
+import { useAuth } from "../context/AuthContext";
+import { 
+  Plus, UserPlus, X, Calendar, MapPin, Share2, Loader2, User, Pin, Trash2, MoreHorizontal, Train, Car, Bike, Compass, ChevronLeft, CheckCircle2
+} from "lucide-react";
 
 interface Itinerary {
   id: string;
@@ -12,7 +13,8 @@ interface Itinerary {
   startDate: string;
   endDate: string;
   coverImage: string;
-  isPinned: boolean; 
+  isPinned: boolean;
+  Account: string;
 }
 
 export default function PlannerDashboard() {
@@ -23,16 +25,25 @@ export default function PlannerDashboard() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
   const [isFetching, setIsFetching] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   
   const [title, setTitle] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
-  const [transport, setTransport] = useState("public"); // 預設大眾運輸
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [transport, setTransport] = useState("public"); 
 
   const [itineraries, setItineraries] = useState<Itinerary[]>([]);
 
-  // 交通工具選項資料
+  // 加入行程 (6 宮格) 狀態
+  const [isJoinModalOpen, setIsJoinModalOpen] = useState(false); 
+  const [inviteCodeArray, setInviteCodeArray] = useState<string[]>(Array(6).fill(""));
+  const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
+
+  // 顯示邀請碼狀態
+  const [generatedCodeInfo, setGeneratedCodeInfo] = useState<{ isOpen: boolean; code: string; copied: boolean }>({
+    isOpen: false, code: "", copied: false
+  });
+
   const transportOptions = [
     { id: 'public', label: '大眾運輸', icon: Train },
     { id: 'car', label: '汽車', icon: Car },
@@ -70,26 +81,98 @@ export default function PlannerDashboard() {
 
   const sortedItineraries = [...itineraries].sort((a, b) => (a.isPinned === b.isPinned ? 0 : a.isPinned ? -1 : 1));
 
-  // ================= 運作機制：行程卡片操作 =================
+  // ================= 邀請碼邏輯 (自訂 Modal 版) =================
+  const handleGetInviteCode = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      const res = await fetch("http://localhost:8080/itinerary/get_or_create_invite_code.php", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ Itinerary_ID: id })
+      });
+      const data = await res.json();
+      if (data.status === 'success') {
+        setGeneratedCodeInfo({ isOpen: true, code: data.code, copied: false });
+        navigator.clipboard.writeText(data.code).then(() => {
+          setGeneratedCodeInfo(prev => ({ ...prev, copied: true }));
+          setTimeout(() => setGeneratedCodeInfo(prev => ({ ...prev, copied: false })), 3000);
+        });
+      } else { alert(data.message); }
+    } catch (error) { alert("獲取邀請碼失敗"); }
+    setActiveDropdown(null);
+  };
+
+  // 6 宮格輸入與貼上處理邏輯
+  const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+    e.preventDefault(); // 阻擋原生貼上行為以突破 maxLength 限制
+    const pastedText = e.clipboardData.getData('text/plain');
+    const cleanedText = pastedText.replace(/[^a-zA-Z0-9]/g, '').slice(0, 6).toUpperCase();
+
+    if (cleanedText) {
+      const newArray = [...inviteCodeArray];
+      for (let i = 0; i < cleanedText.length; i++) {
+        newArray[i] = cleanedText[i];
+      }
+      setInviteCodeArray(newArray);
+
+      // 將焦點移至最後一個輸入框，或下一個空白框
+      const nextIndex = Math.min(cleanedText.length, 5);
+      inputRefs.current[nextIndex]?.focus();
+    }
+  };
+
+  const handleCodeChange = (index: number, value: string) => {
+    // 確保只取最後輸入的單一字元
+    const char = value.slice(-1).toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+    const newArray = [...inviteCodeArray];
+    newArray[index] = char;
+    setInviteCodeArray(newArray);
+
+    // 如果有輸入且不是最後一格，自動跳下一格
+    if (char && index < 5) {
+      inputRefs.current[index + 1]?.focus();
+    }
+  };
+
+  const handleKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Backspace' && !inviteCodeArray[index] && index > 0) {
+      inputRefs.current[index - 1]?.focus();
+    }
+  };
+
+  const handleJoinItinerary = async () => {
+    const finalCode = inviteCodeArray.join('');
+    if (finalCode.length < 6) return;
+    
+    setIsSubmitting(true);
+    try {
+      const res = await fetch("http://localhost:8080/itinerary/join_itinerary.php", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ Invite_Code: finalCode, Account: user?.id || (user as any)?.Account })
+      });
+      const data = await res.json();
+      if (data.status === 'success') {
+        alert("成功加入行程！");
+        setIsJoinModalOpen(false);
+        setInviteCodeArray(Array(6).fill(""));
+        fetchItineraries();
+      } else { alert(data.message); }
+    } catch (error) { alert("連線失敗"); } finally { setIsSubmitting(false); }
+  };
+
+  // ================= 行程卡片基本操作 =================
   const handleDelete = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     if (confirm("確定刪除此行程？此動作無法復原。")) {
       try {
         const res = await fetch("http://localhost:8080/itinerary/delete_itinerary.php", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
+          method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ Account: user?.id || (user as any)?.Account, Itinerary_ID: id }),
         });
         const data = await res.json();
-        
-        if (data.status === 'success') {
-          setItineraries(itineraries.filter(it => it.id !== id));
-        } else {
-          alert(data.message);
-        }
-      } catch (error) {
-        alert("連線異常，無法刪除行程。");
-      }
+        if (data.status === 'success') { setItineraries(itineraries.filter(it => it.id !== id)); } 
+        else { alert(data.message); }
+      } catch (error) { alert("連線異常"); }
       setActiveDropdown(null);
     }
   };
@@ -97,83 +180,39 @@ export default function PlannerDashboard() {
   const handlePin = async (id: string, isCurrentlyPinned: boolean, e: React.MouseEvent) => {
     e.stopPropagation();
     const targetPinStatus = !isCurrentlyPinned;
-
     setItineraries(itineraries.map(it => it.id === id ? { ...it, isPinned: targetPinStatus } : it));
     setActiveDropdown(null);
-
     try {
       const res = await fetch("http://localhost:8080/itinerary/pin_itinerary.php", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+        method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ Account: user?.id || (user as any)?.Account, Itinerary_ID: id, Is_Pinned: targetPinStatus }),
       });
       const data = await res.json();
-      
       if (data.status !== 'success') {
         setItineraries(itineraries.map(it => it.id === id ? { ...it, isPinned: isCurrentlyPinned } : it));
         alert(data.message);
       }
     } catch (error) {
       setItineraries(itineraries.map(it => it.id === id ? { ...it, isPinned: isCurrentlyPinned } : it));
-      alert("連線異常，釘選狀態未儲存。");
+      alert("連線異常");
     }
   };
 
-  const handleShare = (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    const shareUrl = `${window.location.origin}/planner/${id}`;
-    navigator.clipboard.writeText(shareUrl).then(() => {
-      alert("行程連結已複製！快去邀請旅伴吧：\n" + shareUrl);
-    }).catch(() => {
-      alert("複製失敗，請手動分享此連結：" + shareUrl);
-    });
-    setActiveDropdown(null);
-  };
-
-  // ================= 運作機制：寫入資料庫 =================
   const handleCreateItinerary = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (new Date(endDate) < new Date(startDate)) {
-      alert("結束日期不能早於出發日期。");
-      return;
-    }
-
     setIsSubmitting(true);
     try {
       const res = await fetch("http://localhost:8080/itinerary/create_itinerary.php", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-          Account: user?.id || (user as any)?.Account, 
-          Title: title, 
-          StartDate: startDate, 
-          EndDate: endDate, 
-          Transport: transport 
-        }),
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ Account: user?.id || (user as any)?.Account, Title: title, StartDate: startDate, EndDate: endDate, Transport: transport }),
       });
       const data = await res.json();
-      
-      if (data.status === 'success') {
-        await fetchItineraries();
-        setIsModalOpen(false);
-        setTitle("");
-        setStartDate("");
-        setEndDate("");
-        setTransport("public");
-      } else {
-        alert("建立失敗：" + data.message);
-      }
-    } catch (error) {
-      console.error(error);
-      alert("系統連線異常，請稍後再試。");
-    } finally {
-      setIsSubmitting(false);
-    }
+      if (data.status === 'success') { await fetchItineraries(); setIsModalOpen(false); setTitle(""); setStartDate(""); setEndDate(""); setTransport("public"); } 
+      else { alert("建立失敗：" + data.message); }
+    } catch (error) { alert("系統連線異常"); } finally { setIsSubmitting(false); }
   };
 
-  if (loading || isFetching) {
-    return <div className="min-h-screen flex items-center justify-center bg-[#FAFAFA]"><Loader2 className="animate-spin size-8 text-slate-300" /></div>;
-  }
+  if (loading || isFetching) return <div className="min-h-screen flex items-center justify-center bg-[#FAFAFA]"><Loader2 className="animate-spin size-8 text-slate-300" /></div>;
 
   return (
     <div className="min-h-screen bg-[#FAFAFA] relative">
@@ -182,97 +221,45 @@ export default function PlannerDashboard() {
       <div className="max-w-7xl mx-auto px-6 py-12">
         <div className="flex justify-between items-center mb-12">
           <h1 className="text-3xl font-bold text-slate-900 tracking-wide">我的行程</h1>
-          {itineraries.length > 0 && (
-            <button 
-              onClick={() => setIsModalOpen(true)} 
-              className="flex items-center gap-2 px-5 py-2.5 bg-slate-900 text-white rounded-lg text-sm font-medium transition-all duration-300 hover:bg-amber-600 hover:-translate-y-0.5 hover:shadow-md active:scale-95 z-20"
-            >
+          <div className="flex gap-3">
+             <button onClick={() => setIsJoinModalOpen(true)} className="flex items-center gap-2 px-5 py-2.5 bg-white border border-slate-200 rounded-lg text-sm font-medium hover:border-[#F04D79] transition-all">
+              <UserPlus size={16} /> 輸入邀請碼
+            </button>
+            <button onClick={() => setIsModalOpen(true)} className="flex items-center gap-2 px-5 py-2.5 bg-slate-900 text-white rounded-lg text-sm font-medium hover:bg-amber-600 transition-all">
               <Plus size={16} /> 建立新行程
             </button>
-          )}
+          </div>
         </div>
 
         {itineraries.length === 0 ? (
           <div className="text-center py-28 bg-white border border-slate-100 rounded-2xl shadow-sm">
-            <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-6">
-              <MapPin className="text-slate-300" size={28} />
-            </div>
+            <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-6"><MapPin className="text-slate-300" size={28} /></div>
             <p className="text-slate-500 mb-8 tracking-wide">立即體驗行程規劃的樂趣，為您的下一趟獨旅輕鬆做準備。</p>
-            <div className="flex justify-center gap-4">
-              <button 
-                onClick={() => setIsModalOpen(true)} 
-                className="px-7 py-3 bg-slate-900 text-white font-medium rounded-lg transition-all duration-300 hover:bg-amber-600 hover:-translate-y-1 hover:shadow-lg active:scale-95"
-              >
-                開始規劃
-              </button>
-              <button className="px-7 py-3 bg-white text-slate-700 border border-slate-200 font-medium rounded-lg transition-all duration-300 hover:bg-slate-50 hover:-translate-y-1 hover:shadow-md active:scale-95">
-                透過邀請碼加入
-              </button>
-            </div>
+            <button onClick={() => setIsModalOpen(true)} className="px-7 py-3 bg-slate-900 text-white font-medium rounded-lg">開始規劃</button>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6">
            {sortedItineraries.map((itinerary) => (
-              <div 
-                key={itinerary.id} 
-                onClick={() => router.push(`/planner/${itinerary.id}`)}
-                className="bg-white border border-slate-100 rounded-xl group cursor-pointer transition-shadow duration-300 hover:shadow-xl relative"
-              >
+              <div key={itinerary.id} onClick={() => router.push(`/planner/${itinerary.id}`)} className="bg-white border border-slate-100 rounded-xl group cursor-pointer hover:shadow-xl relative">
                 <div className="relative aspect-[4/3] overflow-hidden bg-slate-100 rounded-t-xl">
-                  <img 
-                    src={itinerary.coverImage} 
-                    alt={itinerary.title}
-                    className="w-full h-full object-cover grayscale-[40%] transition-all duration-700 group-hover:grayscale-0 group-hover:scale-105" 
-                  />
-                  {itinerary.isPinned && (
-                    <div className="absolute top-3 left-3 bg-slate-900/90 backdrop-blur-sm text-white p-1.5 rounded-full shadow-sm z-10">
-                      <Pin className="size-3.5" />
-                    </div>
-                  )}
-                  
-                  <button 
-                    onClick={(e) => { e.stopPropagation(); setActiveDropdown(activeDropdown === itinerary.id ? null : itinerary.id); }}
-                    className="absolute top-3 right-3 size-8 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center text-slate-600 opacity-0 group-hover:opacity-100 transition-all duration-300 hover:bg-white hover:text-slate-900 z-20"
-                  >
-                    <MoreHorizontal className="size-4" />
-                  </button>
+                  <img src={itinerary.coverImage} className="w-full h-full object-cover grayscale-[40%] group-hover:grayscale-0 transition-all" />
+                  {itinerary.isPinned && <div className="absolute top-3 left-3 bg-slate-900/90 text-white p-1.5 rounded-full"><Pin className="size-3.5" /></div>}
+                  <button onClick={(e) => { e.stopPropagation(); setActiveDropdown(activeDropdown === itinerary.id ? null : itinerary.id); }} className="absolute top-3 right-3 size-8 bg-white/90 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100"><MoreHorizontal className="size-4" /></button>
                 </div>
 
                 {activeDropdown === itinerary.id && (
-                  <div 
-                    onClick={(e) => e.stopPropagation()} 
-                    className="absolute right-3 top-14 w-36 bg-white border border-gray-100 shadow-xl rounded-lg py-1.5 z-50 flex flex-col"
-                  >
-                    <button 
-                      onClick={(e) => handleShare(itinerary.id, e)} 
-                      className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 transition-colors hover:bg-gray-100 hover:text-black"
-                    >
-                      <Share className="size-4" /> 分享行程
-                    </button>
-                    <button 
-                      onClick={(e) => handlePin(itinerary.id, itinerary.isPinned, e)} 
-                      className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 transition-colors hover:bg-gray-100 hover:text-black"
-                    >
-                      <Pin className={`size-4 ${itinerary.isPinned ? 'fill-black' : ''}`} /> 
-                      {itinerary.isPinned ? '取消釘選' : '釘選行程'}
-                    </button>
-                    <div className="h-px bg-gray-100 my-1 mx-2"></div>
-                    <button 
-                      onClick={(e) => handleDelete(itinerary.id, e)} 
-                      className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-500 transition-colors hover:bg-red-50 hover:text-red-600"
-                    >
-                      <Trash2 className="size-4" /> 刪除行程
-                    </button>
+                  <div onClick={(e) => e.stopPropagation()} className="absolute right-3 top-14 w-36 bg-white border border-gray-100 shadow-xl rounded-lg py-1.5 z-50">
+                    <button onClick={(e) => handleGetInviteCode(itinerary.id, e)} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-100"><Share2 className="size-4" /> 分享行程</button>
+                    <button onClick={(e) => handlePin(itinerary.id, itinerary.isPinned, e)} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-100"><Pin className="size-4" /> {itinerary.isPinned ? '取消釘選' : '釘選行程'}</button>
+                    <button onClick={(e) => handleDelete(itinerary.id, e)} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-500 hover:bg-red-50"><Trash2 className="size-4" /> 刪除行程</button>
                   </div>
                 )}
-
                 <div className="p-5">
-                  <h3 className="text-lg font-medium text-slate-900 mb-1.5 tracking-wide truncate group-hover:text-amber-600 transition-colors duration-300">
-                    {itinerary.title}
-                  </h3>
-                  <p className="text-xs text-slate-400 font-mono tracking-wider">
-                    {itinerary.startDate} - {itinerary.endDate}
-                  </p>
+                  <h3 className="text-lg font-medium text-slate-900 mb-1.5 truncate">{itinerary.title}</h3>
+                  <div className="flex items-center justify-between mt-2">
+                    <p className="text-xs text-slate-400 font-mono">{itinerary.startDate} - {itinerary.endDate}</p>
+                    <span className="text-[10px] font-bold text-slate-300 uppercase">{itinerary.Account === (user?.id || (user as any)?.Account) ? 'Owner' : 'Member'}</span>
+                  </div>
                 </div>
               </div>
             ))}
@@ -280,87 +267,97 @@ export default function PlannerDashboard() {
         )}
       </div>
 
-      {/* 新增行程 Modal */}
+      {/* ================= 建立行程 Modal ================= */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-            <div className="flex items-center justify-between p-6 border-b border-slate-100">
-              <h2 className="text-sm font-bold text-slate-900 tracking-widest uppercase">Start Planning</h2>
-              <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-amber-600 transition-colors duration-300 hover:rotate-90">
-                <X size={20} />
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-[60]">
+          <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95">
+             <div className="p-6 border-b border-slate-100 flex justify-between items-center"><h2 className="text-sm font-bold tracking-widest uppercase">Start Planning</h2><button onClick={() => setIsModalOpen(false)}><X size={20} /></button></div>
+             <form onSubmit={handleCreateItinerary} className="p-8 space-y-6">
+                <input type="text" required value={title} onChange={(e) => setTitle(e.target.value)} placeholder="行程標題" className="w-full p-4 bg-slate-50 border rounded-xl" />
+                <div className="grid grid-cols-2 gap-4">
+                  <input type="date" required value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-full p-4 bg-slate-50 border rounded-xl" />
+                  <input type="date" required value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-full p-4 bg-slate-50 border rounded-xl" />
+                </div>
+                <button type="submit" disabled={isSubmitting} className="w-full py-4 bg-slate-900 text-white rounded-xl">{isSubmitting ? "處理中..." : "建立行程"}</button>
+             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ================= 顯示邀請碼 Modal (取代 alert) ================= */}
+      {generatedCodeInfo.isOpen && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
+          <div className="bg-white w-full max-w-sm rounded-3xl shadow-xl p-8 text-center animate-in zoom-in-95 duration-200">
+            <h3 className="text-xl font-bold text-slate-800 mb-2">專屬邀請碼</h3>
+            <p className="text-sm text-slate-500 mb-6">將下方代碼分享給朋友，邀請他們加入！</p>
+            <div className="bg-slate-50 py-5 rounded-2xl mb-2 flex items-center justify-center relative border border-slate-100">
+              <span className="text-3xl font-mono font-bold tracking-[0.2em] text-[#F04D79] ml-2">
+                {generatedCodeInfo.code}
+              </span>
+            </div>
+            <div className="h-6 mb-4 flex items-center justify-center">
+              {generatedCodeInfo.copied && (
+                <span className="text-xs font-bold text-green-500 flex items-center gap-1 animate-in fade-in slide-in-from-bottom-2">
+                  <CheckCircle2 size={14} /> 已自動複製到剪貼簿
+                </span>
+              )}
+            </div>
+            <button 
+              onClick={() => setGeneratedCodeInfo({ isOpen: false, code: "", copied: false })} 
+              className="w-full py-3.5 bg-slate-900 hover:bg-[#F04D79] text-white rounded-xl font-bold transition-colors shadow-sm"
+            >
+              完成
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ================= 透過邀請碼加入 Modal (6 宮格) ================= */}
+      {isJoinModalOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
+          <div className="bg-white w-full max-w-md rounded-[32px] shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200 p-8">
+            <div className="mb-8 text-center">
+              <h2 className="text-2xl font-bold text-slate-800 mb-3 text-left">透過邀請碼加入</h2>
+              <p className="text-sm text-slate-500 font-medium">請輸入朋友分享的 6 位數碼來加入行程</p>
+            </div>
+
+            {/* 6 宮格輸入區塊 */}
+            <div className="flex justify-center gap-3 mb-10">
+              {inviteCodeArray.map((char, index) => (
+                <input
+                  key={index}
+                  ref={(el) => { inputRefs.current[index] = el; }}
+                  type="text"
+                  maxLength={1}
+                  value={char}
+                  onPaste={handlePaste}
+                  onChange={(e) => handleCodeChange(index, e.target.value)}
+                  onKeyDown={(e) => handleKeyDown(index, e)}
+                  className={`w-12 h-14 text-center text-2xl font-bold rounded-2xl outline-none transition-all duration-200 shadow-sm ${
+                    char 
+                      ? 'border-2 border-[#F04D79] text-[#F04D79] bg-pink-50/30' 
+                      : 'border-2 border-slate-200 text-slate-700 focus:border-[#F04D79] focus:ring-4 focus:ring-pink-100 bg-white'
+                  }`}
+                />
+              ))}
+            </div>
+
+            {/* 操作按鈕 */}
+            <div className="flex justify-end gap-6 items-center">
+              <button 
+                onClick={() => { setIsJoinModalOpen(false); setInviteCodeArray(Array(6).fill("")); }} 
+                className="text-[17px] font-bold text-[#F04D79] hover:opacity-70 transition-opacity"
+              >
+                取消
+              </button>
+              <button 
+                onClick={handleJoinItinerary} 
+                disabled={isSubmitting || inviteCodeArray.join('').length < 6} 
+                className="px-8 py-3 rounded-xl text-[17px] font-bold transition-all shadow-sm flex items-center gap-2 disabled:bg-slate-200 disabled:text-white disabled:shadow-none bg-[#F04D79] text-white hover:bg-pink-600"
+              >
+                {isSubmitting ? <Loader2 size={20} className="animate-spin" /> : "完成"}
               </button>
             </div>
-            <form onSubmit={handleCreateItinerary} className="p-8 space-y-6">
-              
-              <div className="space-y-2">
-                <label className="text-[10px] font-bold text-slate-400 tracking-widest uppercase">Destination / Title</label>
-                <input 
-                  type="text" 
-                  required
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  placeholder="例如：一個人漫步京都秋季追楓" 
-                  className="w-full p-4 bg-slate-50 border border-slate-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-600/20 focus:border-amber-600 transition-all duration-300" 
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-slate-400 tracking-widest uppercase">Start Date</label>
-                  <input 
-                    type="date" 
-                    required
-                    min={new Date().toISOString().split('T')[0]} 
-                    value={startDate}
-                    onChange={(e) => setStartDate(e.target.value)}
-                    onClick={(e) => e.currentTarget.showPicker && e.currentTarget.showPicker()} 
-                    className="w-full p-4 bg-slate-50 border border-slate-100 rounded-xl cursor-pointer focus:outline-none focus:ring-2 focus:ring-amber-600/20 focus:border-amber-600 transition-all duration-300 text-slate-700" 
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-slate-400 tracking-widest uppercase">End Date</label>
-                  <input 
-                    type="date" 
-                    required
-                    min={startDate || new Date().toISOString().split('T')[0]} 
-                    value={endDate}
-                    onChange={(e) => setEndDate(e.target.value)}
-                    onClick={(e) => e.currentTarget.showPicker && e.currentTarget.showPicker()} 
-                    className="w-full p-4 bg-slate-50 border border-slate-100 rounded-xl cursor-pointer focus:outline-none focus:ring-2 focus:ring-amber-600/20 focus:border-amber-600 transition-all duration-300 text-slate-700" 
-                  />
-                </div>
-              </div>
-
-              {/* 重構：圖示化卡片點擊選單 */}
-              <div className="space-y-2">
-                <label className="text-[10px] font-bold text-slate-400 tracking-widest uppercase">Transportation</label>
-                <div className="grid grid-cols-4 gap-3 mt-1">
-                  {transportOptions.map((opt) => (
-                    <div
-                      key={opt.id}
-                      onClick={() => setTransport(opt.id)}
-                      className={`flex flex-col items-center justify-center p-3 rounded-xl border cursor-pointer transition-all duration-200 ${
-                        transport === opt.id
-                          ? 'border-amber-600 bg-amber-50 text-amber-600 shadow-sm'
-                          : 'border-slate-100 bg-slate-50 text-slate-400 hover:border-slate-300 hover:text-slate-600'
-                      }`}
-                    >
-                      <opt.icon className="w-5 h-5 mb-1.5" />
-                      <span className="text-[11px] font-medium tracking-wide">{opt.label}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              
-              <button 
-                type="submit" 
-                disabled={isSubmitting}
-                className="w-full flex justify-center items-center gap-2 py-4 mt-4 bg-slate-900 text-white font-medium tracking-wide rounded-xl transition-all duration-300 hover:bg-amber-600 hover:shadow-lg hover:-translate-y-0.5 active:scale-95 disabled:opacity-70 disabled:hover:translate-y-0"
-              >
-                {isSubmitting ? <><Loader2 className="size-4 animate-spin" /> 處理中...</> : "建立專屬行程"}
-              </button>
-
-            </form>
           </div>
         </div>
       )}

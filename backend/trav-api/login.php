@@ -35,7 +35,7 @@ if (!empty($data->Account) && !empty($data->Password)) {
             // 登入成功！回傳成功狀態與會員資料給 React
             echo json_encode([
                 "status" => "success",
-                "message" => "🎉 登入成功！歡迎回來 VOYAGE！",
+                "message" => "登入成功！歡迎回來 TRAVMADE！",
                 "user" => [
                     "id" => $user['Account'],
                     "email" => $user['Email'],
