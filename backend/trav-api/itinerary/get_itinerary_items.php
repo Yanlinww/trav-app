@@ -27,7 +27,10 @@ if (!empty($data->Itinerary_ID)) {
             "title" => $row['Title'],
             "startTime" => $row['Start_Time'] ? substr($row['Start_Time'], 0, 5) : "",
             "endTime" => $row['End_Time'] ? substr($row['End_Time'], 0, 5) : "",
-            "sortOrder" => (int)$row['Sort_Order']
+            "sortOrder" => (int)$row['Sort_Order'],
+            // 【新增這兩行】將資料庫的座標數據封裝進 JSON 回傳給前端
+            "Latitude" => $row['Latitude'],
+            "Longitude" => $row['Longitude']
         ];
     }
     

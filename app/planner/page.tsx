@@ -31,6 +31,38 @@ export default function PlannerDashboard() {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [transport, setTransport] = useState("public"); 
+  // 【新增】綁定使用者選擇的地點
+  const [destination, setDestination] = useState("taipei");
+
+  // 【新增】預設城市座標字典
+const CITY_COORDINATES: Record<string, { lat: number, lng: number }> = {
+    "keelung": { lat: 25.1276, lng: 121.7392 },
+    "taipei": { lat: 25.0478, lng: 121.5170 },
+    "new_taipei": { lat: 25.0119, lng: 121.4654 },
+    "taoyuan": { lat: 24.9936, lng: 121.3010 },
+    "hsinchu_city": { lat: 24.8138, lng: 120.9675 },
+    "hsinchu_county": { lat: 24.8383, lng: 121.0177 },
+    "miaoli": { lat: 24.5602, lng: 120.8214 },
+    "taichung": { lat: 24.1477, lng: 120.6736 },
+    "changhua": { lat: 24.0755, lng: 120.5447 },
+    "nantou": { lat: 23.9111, lng: 120.6872 },
+    "yunlin": { lat: 23.7092, lng: 120.4313 },
+    "chiayi_city": { lat: 23.4795, lng: 120.4414 },
+    "chiayi_county": { lat: 23.4518, lng: 120.2555 },
+    "tainan": { lat: 22.9997, lng: 120.2270 },
+    "kaohsiung": { lat: 22.6273, lng: 120.3014 },
+    "pingtung": { lat: 22.6690, lng: 120.4862 },
+    "yilan": { lat: 24.7570, lng: 121.7530 },
+    "hualien": { lat: 23.9872, lng: 121.6016 },
+    "taitung": { lat: 22.7583, lng: 121.1444 },
+    "penghu": { lat: 23.5711, lng: 119.5815 },
+    "kinmen": { lat: 24.4327, lng: 118.3225 },
+    "matsu": { lat: 26.1505, lng: 119.9334 },
+    
+    // 保留國際常用選項供防呆或擴充
+    "tokyo": { lat: 35.6812, lng: 139.7671 },
+    "osaka": { lat: 34.6937, lng: 135.5023 },
+  };
 
   const [itineraries, setItineraries] = useState<Itinerary[]>([]);
 
@@ -198,16 +230,37 @@ export default function PlannerDashboard() {
     }
   };
 
-  const handleCreateItinerary = async (e: React.FormEvent) => {
+const handleCreateItinerary = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
+    
+    // 【新增】透過字典取得對應經緯度
+    const coords = CITY_COORDINATES[destination];
+
     try {
       const res = await fetch("http://localhost:8080/itinerary/create_itinerary.php", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ Account: user?.id || (user as any)?.Account, Title: title, StartDate: startDate, EndDate: endDate, Transport: transport }),
+        body: JSON.stringify({ 
+          Account: user?.id || (user as any)?.Account, 
+          Title: title, 
+          StartDate: startDate, 
+          EndDate: endDate, 
+          Transport: transport,
+          // 【新增】傳送座標至後端
+          Dest_Lat: coords.lat, 
+          Dest_Lng: coords.lng 
+        }),
       });
       const data = await res.json();
-      if (data.status === 'success') { await fetchItineraries(); setIsModalOpen(false); setTitle(""); setStartDate(""); setEndDate(""); setTransport("public"); } 
+      if (data.status === 'success') { 
+        await fetchItineraries(); 
+        setIsModalOpen(false); 
+        setTitle(""); 
+        setStartDate(""); 
+        setEndDate(""); 
+        setTransport("public"); 
+        setDestination("taipei"); // 【新增】成功後重置為預設地點
+      } 
       else { alert("建立失敗：" + data.message); }
     } catch (error) { alert("系統連線異常"); } finally { setIsSubmitting(false); }
   };
@@ -274,6 +327,51 @@ export default function PlannerDashboard() {
              <div className="p-6 border-b border-slate-100 flex justify-between items-center"><h2 className="text-sm font-bold tracking-widest uppercase">Start Planning</h2><button onClick={() => setIsModalOpen(false)}><X size={20} /></button></div>
              <form onSubmit={handleCreateItinerary} className="p-8 space-y-6">
                 <input type="text" required value={title} onChange={(e) => setTitle(e.target.value)} placeholder="行程標題" className="w-full p-4 bg-slate-50 border rounded-xl" />
+                
+                {/* 【新增】地點選擇下拉選單 */}
+<select 
+                  value={destination} 
+                  onChange={(e) => setDestination(e.target.value)} 
+                  className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl text-slate-700 outline-none focus:border-[#F04D79]"
+                >
+                  <optgroup label="北部">
+                    <option value="keelung">基隆市</option>
+                    <option value="taipei">台北市</option>
+                    <option value="new_taipei">新北市</option>
+                    <option value="taoyuan">桃園市</option>
+                    <option value="hsinchu_city">新竹市</option>
+                    <option value="hsinchu_county">新竹縣</option>
+                  </optgroup>
+                  <optgroup label="中部">
+                    <option value="miaoli">苗栗縣</option>
+                    <option value="taichung">台中市</option>
+                    <option value="changhua">彰化縣</option>
+                    <option value="nantou">南投縣</option>
+                    <option value="yunlin">雲林縣</option>
+                  </optgroup>
+                  <optgroup label="南部">
+                    <option value="chiayi_city">嘉義市</option>
+                    <option value="chiayi_county">嘉義縣</option>
+                    <option value="tainan">台南市</option>
+                    <option value="kaohsiung">高雄市</option>
+                    <option value="pingtung">屏東縣</option>
+                  </optgroup>
+                  <optgroup label="東部">
+                    <option value="yilan">宜蘭縣</option>
+                    <option value="hualien">花蓮縣</option>
+                    <option value="taitung">台東縣</option>
+                  </optgroup>
+                  <optgroup label="外島">
+                    <option value="penghu">澎湖縣</option>
+                    <option value="kinmen">金門縣</option>
+                    <option value="matsu">連江縣 (馬祖)</option>
+                  </optgroup>
+                  <optgroup label="國際">
+                    <option value="tokyo">日本 - 東京</option>
+                    <option value="osaka">日本 - 大阪</option>
+                  </optgroup>
+                </select>
+
                 <div className="grid grid-cols-2 gap-4">
                   <input type="date" required value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-full p-4 bg-slate-50 border rounded-xl" />
                   <input type="date" required value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-full p-4 bg-slate-50 border rounded-xl" />

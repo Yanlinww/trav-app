@@ -14,6 +14,7 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [agreeTerms, setAgreeTerms] = useState(false);
+  const [failureInfo, setFailureInfo] = useState<{ isOpen: boolean; message: string }>({ isOpen: false, message: "" });
 
   const { login } = useAuth();
   const router = useRouter();
@@ -46,9 +47,10 @@ export default function LoginPage() {
         setTimeout(() => {
           router.push("/");
         }, 1500);
-      } else {
-        alert("❌ 登入失敗：" + data.message);
-      }
+        } else {
+          // 不再使用 alert，改為設定錯誤訊息狀態
+          setFailureInfo({ isOpen: true, message: data.message || "帳號或密碼錯誤" });
+        }
     } catch (err) {
       console.error(err);
       alert("後端伺服器沒反應");
@@ -78,6 +80,27 @@ export default function LoginPage() {
           </div>
         </div>
       )}
+
+      {/* ================= 客製化登入失敗彈窗 ================= */}
+{failureInfo.isOpen && (
+  <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
+    <div className="bg-white border-2 border-red-500 w-full max-w-sm rounded-3xl shadow-2xl p-8 text-center animate-in zoom-in-95 duration-200">
+      <div className="size-16 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-4">
+        <X className="text-red-500 size-8" />
+      </div>
+      <h3 className="text-xl font-bold text-slate-800 mb-2">登入失敗</h3>
+      <p className="text-sm text-slate-500 font-medium tracking-wide mb-6">
+        {failureInfo.message}
+      </p>
+      <button 
+        onClick={() => setFailureInfo({ isOpen: false, message: "" })}
+        className="w-full py-3.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-bold transition-colors shadow-sm"
+      >
+        我知道了
+      </button>
+    </div>
+  </div>
+)}
 
       <div className="relative w-full max-w-4xl bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col md:flex-row z-10 animate-in fade-in zoom-in-95 duration-300">
         <button type="button" onClick={() => router.push('/')} className="absolute top-4 right-4 text-gray-400 hover:text-gray-900 transition-colors z-20">
