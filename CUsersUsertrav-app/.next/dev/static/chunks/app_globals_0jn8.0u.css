@@ -762,6 +762,10 @@
     margin-block: calc(var(--spacing) * 3);
   }
 
+  .my-6 {
+    margin-block: calc(var(--spacing) * 6);
+  }
+
   .-mt-1 {
     margin-top: calc(var(--spacing) * -1);
   }
@@ -1824,6 +1828,10 @@
 
   .bg-gray-50 {
     background-color: var(--color-gray-50);
+  }
+
+  .bg-gray-100 {
+    background-color: var(--color-gray-100);
   }
 
   .bg-gray-200 {
@@ -3127,6 +3135,12 @@
   @media (hover: hover) {
     .hover\:bg-amber-600:hover {
       background-color: var(--color-amber-600);
+    }
+  }
+
+  @media (hover: hover) {
+    .hover\:bg-gray-50:hover {
+      background-color: var(--color-gray-50);
     }
   }
 
