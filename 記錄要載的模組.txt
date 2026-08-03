@@ -1,0 +1,5 @@
+1.
+npm install
+
+2.
+npm install @react-google-maps/api
