@@ -5,15 +5,15 @@ import { useParams, useRouter } from "next/navigation";
 import { useAuth } from "../../context/AuthContext";
 import { 
   Map as MapIcon, Calendar, DollarSign, BaggageClaim, Ticket, 
-  GripVertical, Plus, Train, Hotel, Coffee, Camera,
+  GripVertical, Plus, Train, Hotel, Coffee, Camera, Search,
   ChevronLeft, Wallet, Loader2, MapPin, Trash2, Check, Edit2,Copy, Link2, Share2,
   LayoutGrid, Folder, Image as ImageIcon, MapPinned, 
   ChevronUp, ChevronDown, XCircle, Save,
   Receipt, Utensils, TrainFront, Bed, ShoppingBag, MoreHorizontal, X, User
 } from "lucide-react";
-import { GoogleMap, useJsApiLoader, Marker } from '@react-google-maps/api';
+// 注意：已徹底移除舊版 Autocomplete
+import { GoogleMap, useJsApiLoader, Marker, InfoWindow } from '@react-google-maps/api';
 import PlaceAutocomplete from '../../components/PlaceAutocomplete';
-
 
 import { 
   DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent
@@ -27,20 +27,17 @@ import { CSS } from '@dnd-kit/utilities';
 function BudgetPanel({ itineraryId }: { itineraryId: string }) {
   const [activeTab, setActiveTab] = useState<'group' | 'personal' | 'pending'>('group');
   const [expenses, setExpenses] = useState<any[]>([]); 
-  const [members, setMembers] = useState<any[]>([]); // 新增：群組成員狀態
+  const [members, setMembers] = useState<any[]>([]); 
   const [isLoadingExpenses, setIsLoadingExpenses] = useState(true);
   
-  // 新增狀態
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [addStep, setAddStep] = useState<1 | 2>(1); 
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // 就地編輯狀態 (Inline Editing)
   const [editingExpId, setEditingExpId] = useState<string | null>(null);
   const [editExpTitle, setEditExpTitle] = useState("");
   const [editExpAmount, setEditExpAmount] = useState("");
   
-  // 表單資料狀態
   const [category, setCategory] = useState("food");
   const [title, setTitle] = useState("");
   const [currency, setCurrency] = useState("TWD");
@@ -50,21 +47,17 @@ function BudgetPanel({ itineraryId }: { itineraryId: string }) {
   const [isSplit, setIsSplit] = useState(false);
   const [splitUsers, setSplitUsers] = useState([{ name: "User (自己)", id: "u1" }]);
   
-  // ================= 新增：邀請模組狀態 =================
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
   const [inviteCode, setInviteCode] = useState("");
   const [isFetchingCode, setIsFetchingCode] = useState(false);
   const [copiedType, setCopiedType] = useState<'none' | 'code' | 'link'>('none');
-  // =====================================================
 
-// ================= 新增：成員簡介浮窗狀態 =================
   const [selectedMember, setSelectedMember] = useState<{
     id: string;
     name: string;
     role: string;
-    avatar?: string; // 新增：允許接收頭像網址屬性
+    avatar?: string; 
   } | null>(null);
-  // =========================================================
 
   const categories = [
     { id: 'food', icon: Utensils, label: '食', color: 'bg-[#BCA484]' },
@@ -75,15 +68,12 @@ function BudgetPanel({ itineraryId }: { itineraryId: string }) {
     { id: 'other', icon: Receipt, label: '其他', color: 'bg-[#909090]' }
   ];
 
-// 1. 讀取資料庫帳單與群組成員
   const fetchData = useCallback(async () => {
     try {
-      // ===== 讀取帳單 =====
       const expRes = await fetch("http://localhost:8080/itinerary/get_expenses.php", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ Itinerary_ID: itineraryId })
       });
-      // 防呆：先讀取為純文字，確認可被解析再轉 JSON
       const expText = await expRes.text();
       try {
         const expData = JSON.parse(expText);
@@ -92,12 +82,10 @@ function BudgetPanel({ itineraryId }: { itineraryId: string }) {
         console.error("帳單 API 回傳錯誤格式:", expText);
       }
 
-      // ===== 讀取群組成員 =====
       const memRes = await fetch("http://localhost:8080/itinerary/get_itinerary_members.php", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ Itinerary_ID: itineraryId })
       });
-      // 防呆：先讀取為純文字，確認可被解析再轉 JSON
       const memText = await memRes.text();
       try {
         const memData = JSON.parse(memText);
@@ -115,19 +103,17 @@ function BudgetPanel({ itineraryId }: { itineraryId: string }) {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  // 監聽 members 變化，自動將真實成員帶入分帳名單與付款人選項
   useEffect(() => {
     if (members && members.length > 0) {
       const defaultUsers = members.map(m => ({ name: m.name, id: m.id }));
       setSplitUsers(defaultUsers);
-      setPayer(defaultUsers[0].name); // 預設付款人設為第一位成員
+      setPayer(defaultUsers[0].name); 
     }
   }, [members]);
 
-  // 開啟邀請浮框並取得邀請碼
   const handleOpenInviteModal = async () => {
     setIsInviteModalOpen(true);
-    if (inviteCode) return; // 如果已經拿過就不用重拿
+    if (inviteCode) return; 
 
     setIsFetchingCode(true);
     try {
@@ -148,24 +134,22 @@ function BudgetPanel({ itineraryId }: { itineraryId: string }) {
     }
   };
 
-  // 處理複製至剪貼簿
   const handleCopy = (type: 'code' | 'link', text: string) => {
     navigator.clipboard.writeText(text).then(() => {
       setCopiedType(type);
-      setTimeout(() => setCopiedType('none'), 2000); // 2 秒後重置複製狀態
+      setTimeout(() => setCopiedType('none'), 2000); 
     }).catch(() => {
       alert("瀏覽器不支援自動複製，請手動複製。");
     });
   };
 
-
   const handleCategorySelect = (catId: string) => { setCategory(catId); setAddStep(2); };
-const closeAndResetForm = () => {
+
+  const closeAndResetForm = () => {
     setIsAddOpen(false);
     setTimeout(() => {
       setAddStep(1); setAmount(""); setTitle(""); setLocation(""); setIsSplit(false); setIsSubmitting(false);
       
-      // 動態重置為真實成員
       if (members.length > 0) {
         setSplitUsers(members.map(m => ({ name: m.name, id: m.id })));
         setPayer(members[0].name);
@@ -175,13 +159,13 @@ const closeAndResetForm = () => {
       }
     }, 200); 
   };
+
   const handleAddFriend = () => {
     const name = window.prompt("請輸入朋友名稱：");
     if (name && name.trim()) setSplitUsers([...splitUsers, { name: name.trim(), id: `u_${Date.now()}` }]);
   };
 
-const handleSaveExpense = async () => {
-    // 1. 防呆驗證：檢查必填欄位
+  const handleSaveExpense = async () => {
     if (!title.trim()) {
       alert("請輸入標題");
       return;
@@ -191,7 +175,6 @@ const handleSaveExpense = async () => {
       return;
     }
     
-    // 2. 邏輯防呆：若開啟分帳，人數必須大於 1
     if (isSplit && splitUsers.length <= 1) {
       alert("開啟分帳時，請至少新增一位參與分帳的朋友。若僅為個人花費，請關閉分帳開關。");
       return;
@@ -200,7 +183,6 @@ const handleSaveExpense = async () => {
     setIsSubmitting(true);
 
     try {
-      // 3. 組合傳送至後端的資料結構
       const expenseData = {
               Itinerary_ID: itineraryId,
               Category: category,
@@ -209,12 +191,11 @@ const handleSaveExpense = async () => {
               Amount: Number(amount),
               Location: location,
               Payer: payer,
-              IsSplit: isSplit, // 修改：移除底線，對齊 PHP 的 $data->IsSplit
-              SplitUsers: isSplit ? splitUsers.map(u => u.name) : [], // 預防性修改：移除底線以維持駝峰式命名的一致性
-              Type: isSplit ? 'group' : 'personal' // 預防性防呆：若後端需要，直接由前端明確給定此筆帳單的 Type
+              IsSplit: isSplit, 
+              SplitUsers: isSplit ? splitUsers.map(u => u.name) : [], 
+              Type: isSplit ? 'group' : 'personal' 
             };
 
-      // 4. 呼叫後端 API (請確保此 PHP 檔名與你的後端實際名稱相符)
       const res = await fetch("http://localhost:8080/itinerary/create_expense.php", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -224,7 +205,6 @@ const handleSaveExpense = async () => {
       const data = await res.json();
 
       if (data.status === 'success') {
-        // 5. 儲存成功：關閉 Modal、重置表單並重新抓取最新帳單列表
         closeAndResetForm();
         fetchData();
       } else {
@@ -237,9 +217,8 @@ const handleSaveExpense = async () => {
       setIsSubmitting(false);
     }
   };
-  // 處理更新帳單
+
   const handleUpdateExpense = async (expenseId: string) => {
-    // 防呆驗證：確保有輸入修改內容
     if (!editExpTitle.trim() || !editExpAmount) {
       alert("請輸入標題與金額");
       return;
@@ -259,8 +238,8 @@ const handleSaveExpense = async () => {
       const data = await res.json();
       
       if (data.status === 'success') {
-        setEditingExpId(null); // 關閉編輯模式
-        fetchData();           // 重新讀取資料庫，刷新畫面
+        setEditingExpId(null); 
+        fetchData();           
       } else {
         alert("更新失敗：" + data.message);
       }
@@ -270,9 +249,7 @@ const handleSaveExpense = async () => {
     }
   };
 
-  // 處理刪除帳單
   const handleDeleteExpense = async (expenseId: string) => {
-    // 邏輯防呆：防止誤觸刪除
     if (!window.confirm("確定要刪除這筆帳單嗎？此動作無法復原。")) {
       return;
     }
@@ -287,7 +264,7 @@ const handleSaveExpense = async () => {
       const data = await res.json();
       
       if (data.status === 'success') {
-        fetchData(); // 重新讀取資料庫，刷新畫面以移除該項目
+        fetchData(); 
       } else {
         alert("刪除失敗：" + data.message);
       }
@@ -303,25 +280,22 @@ const handleSaveExpense = async () => {
   return (
     <div className="h-full flex flex-col relative animate-in fade-in slide-in-from-right-4 duration-200 bg-[#FAFAFA]">
       
-      {/* 頂部資訊區 (成員與帳單總數) */}
+      {/* 頂部資訊區 */}
       <div className="flex justify-between items-end px-4 pt-2 pb-4 shrink-0">
         <div>
           <div className="text-xs font-bold text-slate-500 mb-2 tracking-wide">分帳群組</div>
           
           <div className="flex items-center">
-            {/* 動態群組頭像區塊 */}
             {members.length > 0 ? (
               <div className="flex -space-x-3 mr-3 relative z-0 hover:z-10">
                   {members.map((member, index) => (
                     <div 
                       key={member.id} 
                       onClick={() => setSelectedMember(member)} 
-                      // 這裡加上了 overflow-hidden 確保圖片被裁切成完美的圓形
                       className="size-10 rounded-full border-2 border-white bg-pink-100 text-[#F04D79] flex items-center justify-center text-sm font-bold shadow-sm relative hover:scale-110 hover:z-50 transition-all cursor-pointer uppercase overflow-hidden" 
                       title={`${member.name} (${member.role})`}
                       style={{ zIndex: members.length - index }}
                     >
-                      {/* 條件渲染：如果有 avatar 屬性就顯示 img，否則顯示名字的第一個字 */}
                       {member.avatar ? (
                         <img src={member.avatar} alt={member.name} className="w-full h-full object-cover" />
                       ) : (
@@ -334,7 +308,6 @@ const handleSaveExpense = async () => {
               <div className="size-10 rounded-full border-2 border-white bg-slate-100 animate-pulse mr-3"></div>
             )}
             
-            {/* 邀請按鈕 */}
             <button 
               onClick={handleOpenInviteModal}
               className="size-10 rounded-full bg-white border border-slate-200 shadow-sm flex items-center justify-center text-slate-600 hover:bg-slate-50 hover:text-[#F04D79] transition-colors z-20"
@@ -350,15 +323,13 @@ const handleSaveExpense = async () => {
         </div>
       </div>
 
-      {/* 頁籤區塊 */}
       <div className="flex px-4 border-b border-slate-200 shrink-0">
         <button onClick={() => setActiveTab('group')} className={`flex-1 py-3 text-sm font-bold transition-colors ${activeTab === 'group' ? 'text-[#F04D79] border-b-2 border-[#F04D79]' : 'text-slate-400'}`}>群組花費</button>
         <button onClick={() => setActiveTab('personal')} className={`flex-1 py-3 text-sm font-bold transition-colors ${activeTab === 'personal' ? 'text-[#F04D79] border-b-2 border-[#F04D79]' : 'text-slate-400'}`}>個人花費</button>
         <button onClick={() => setActiveTab('pending')} className={`flex-1 py-3 text-sm font-bold transition-colors ${activeTab === 'pending' ? 'text-[#F04D79] border-b-2 border-[#F04D79]' : 'text-slate-400'}`}>待收付款項</button>
       </div>
 
-      {/* 帳單列表 (此處保留空殼供你填入原本渲染列表的邏輯) */}
-<div className="flex-1 overflow-y-auto p-4 pb-24">
+      <div className="flex-1 overflow-y-auto p-4 pb-24">
         {isLoadingExpenses ? (
           <div className="flex justify-center py-10"><Loader2 className="animate-spin text-slate-300 size-8" /></div>
         ) : expenses.length === 0 ? (
@@ -367,33 +338,21 @@ const handleSaveExpense = async () => {
           <div className="space-y-3">
             {expenses
               .filter((exp) => {
-                // 1. 若為「待收付款項」頁籤，先暫不顯示 (保留擴充空間)
                 if (activeTab === 'pending') return false; 
-                
-                // 2. 判斷帳單屬性：優先抓取 Type，若無 Type 則透過 Is_Split 反推
-                // (相容後端可能回傳的 1/0, true/false 或字串 '1')
                 const isGroupExp = exp.Type === 'group' || exp.type === 'group' || exp.Is_Split == 1 || exp.IsSplit == 1 || exp.Is_Split === true;
                 const expType = isGroupExp ? 'group' : 'personal';
-                
-                // 3. 只保留與目前頁籤狀態相符的帳單
                 return expType === activeTab;
               })
               .map((exp) => {
-              // 匹配對應的分類圖示與顏色 (容錯處理大小寫屬性)
               const catObj = categories.find(c => c.id === (exp.category || exp.Category)) || categories[0];
               
               return (
                 <div key={exp.id || exp.Expense_ID} className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex items-center gap-4 group hover:border-[#F04D79]/30 transition-all">
-                  
-                  {/* 左側 Icon */}
                   <div className={`size-12 rounded-xl flex items-center justify-center text-white shrink-0 shadow-sm ${catObj.color}`}>
                     <catObj.icon size={22} strokeWidth={1.5} />
                   </div>
-                  
-                  {/* 右側資訊與編輯區 */}
                   <div className="flex-1 min-w-0">
                     {editingExpId === (exp.id || exp.Expense_ID) ? (
-                      // ===== 編輯模式 =====
                       <div className="flex items-center gap-2">
                         <input 
                           type="text" value={editExpTitle} onChange={(e) => setEditExpTitle(e.target.value)} 
@@ -407,7 +366,6 @@ const handleSaveExpense = async () => {
                         <button onClick={() => setEditingExpId(null)} className="p-1.5 bg-slate-100 text-slate-500 rounded-lg hover:bg-slate-200 transition-colors"><X size={16} /></button>
                       </div>
                     ) : (
-                      // ===== 瀏覽模式 =====
                       <>
                         <div className="flex justify-between items-start mb-1">
                           <h4 className="text-[15px] font-bold text-slate-800 truncate pr-2">{exp.title || exp.Title}</h4>
@@ -420,8 +378,6 @@ const handleSaveExpense = async () => {
                           <span className="flex items-center gap-1.5 truncate">
                             <User size={12} className="text-slate-300" /> {exp.payer || exp.Payer} 付款
                           </span>
-                          
-                          {/* 隱藏的編輯/刪除按鈕 (Hover 時顯示) */}
                           <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                             <button 
                               onClick={() => { 
@@ -440,7 +396,6 @@ const handleSaveExpense = async () => {
                       </>
                     )}
                   </div>
-
                 </div>
               );
             })}
@@ -448,21 +403,18 @@ const handleSaveExpense = async () => {
         )}
       </div>
 
-      {/* 新增帳單按鈕 (FAB) */}
       <div className="absolute bottom-6 right-6 z-30">
         <button onClick={() => setIsAddOpen(true)} className="size-14 bg-[#F04D79] text-white rounded-full flex items-center justify-center shadow-lg hover:bg-pink-600 hover:scale-105 transition-all">
           <Plus size={28} />
         </button>
       </div>
 
-      {/* ================= 邀請朋友 Modal ================= */}
       {isInviteModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
           <div className="bg-white w-full max-w-sm rounded-3xl shadow-2xl p-6 relative animate-in zoom-in-95 duration-200">
             <button onClick={() => setIsInviteModalOpen(false)} className="absolute top-4 right-4 text-slate-400 hover:text-slate-700 bg-slate-50 rounded-full p-1">
               <X size={20} />
             </button>
-
             <div className="text-center mb-6 mt-2">
               <div className="size-12 bg-pink-50 rounded-full flex items-center justify-center mx-auto mb-3">
                 <Share2 className="text-[#F04D79] size-6" />
@@ -470,9 +422,7 @@ const handleSaveExpense = async () => {
               <h3 className="text-xl font-bold text-slate-800">邀請旅伴加入</h3>
               <p className="text-sm text-slate-500 mt-1">選擇適合的方式分享給朋友</p>
             </div>
-
             <div className="space-y-4">
-              {/* 方法一：邀請碼 */}
               <div className="p-4 border border-slate-100 rounded-2xl bg-slate-50">
                 <div className="text-xs font-bold text-slate-500 mb-2 tracking-widest uppercase">Method 1: Invite Code</div>
                 <div className="flex items-center justify-between">
@@ -492,8 +442,6 @@ const handleSaveExpense = async () => {
                   </button>
                 </div>
               </div>
-
-              {/* 方法二：專屬連結 */}
               <div className="p-4 border border-slate-100 rounded-2xl bg-slate-50">
                 <div className="text-xs font-bold text-slate-500 mb-2 tracking-widest uppercase">Method 2: Share Link</div>
                 <div className="flex items-center justify-between gap-3">
@@ -509,17 +457,14 @@ const handleSaveExpense = async () => {
                 </div>
               </div>
             </div>
-            
           </div>
         </div>
       )}
 
-      {/* ================= 雙階段 Modal ================= */}
       {isAddOpen && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={closeAndResetForm}></div>
           <div className={`bg-white rounded-2xl shadow-2xl relative z-30 overflow-hidden transition-all duration-300 flex flex-col max-h-[90vh] ${addStep === 1 ? 'w-full max-w-[340px] animate-in zoom-in-95 fade-in' : 'w-full max-w-[500px] animate-in slide-in-from-right-8 fade-in'}`}>
-            
             {addStep === 1 && (
               <div className="p-6 pb-8 text-center overflow-y-auto">
                 <div className="flex justify-between items-center mb-6"><div className="w-6"></div><h3 className="text-[17px] font-bold text-slate-800 tracking-widest">請選擇分類</h3><button onClick={closeAndResetForm} className="text-slate-400 hover:text-slate-600"><X size={20}/></button></div>
@@ -530,7 +475,6 @@ const handleSaveExpense = async () => {
                 </div>
               </div>
             )}
-
             {addStep === 2 && (
               <div className="flex flex-col h-full overflow-hidden">
                 <div className="p-6 pb-2 border-b border-slate-50 flex justify-between items-center shrink-0">
@@ -569,7 +513,6 @@ const handleSaveExpense = async () => {
                     <label className="text-sm font-bold text-slate-600"><span className="text-[#F04D79] mr-1">*</span>付款人</label>
                     <div className="relative border border-slate-300 rounded-md bg-white">
                       <select value={payer} onChange={(e) => setPayer(e.target.value)} className="w-full appearance-none pl-3 pr-8 py-2.5 text-sm text-slate-700 bg-transparent focus:outline-none cursor-pointer">
-                        {/* 移除寫死的 User (自己)，直接動態渲染所有群組成員 */}
                         {splitUsers.map(u => <option key={u.id} value={u.name}>{u.name}</option>)}
                       </select>
                       <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#F04D79] pointer-events-none" />
@@ -597,28 +540,20 @@ const handleSaveExpense = async () => {
                 </div>
               </div>
             )}
-
           </div>
         </div>
       )}
 
-      {/* ================= 成員簡介 Modal ================= */}
       {selectedMember && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
           <div className="bg-white w-full max-w-sm rounded-3xl shadow-2xl p-6 relative animate-in zoom-in-95 duration-200 text-center">
-            
-            {/* 關閉按鈕 */}
             <button 
               onClick={() => setSelectedMember(null)}
               className="absolute top-4 right-4 text-slate-400 hover:text-slate-700 bg-slate-50 rounded-full p-1 transition-colors"
             >
               <X size={20} />
             </button>
-
-            {/* 大頭像 */}
-            {/* 新增 overflow-hidden 屬性 */}
             <div className="size-24 bg-pink-100 rounded-full flex items-center justify-center mx-auto mb-4 border-4 border-white shadow-sm mt-4 overflow-hidden">
-               {/* 條件渲染：有圖片就顯示圖片，沒有就顯示首字母 */}
                {selectedMember?.avatar ? (
                  <img src={selectedMember.avatar} alt={selectedMember.name} className="w-full h-full object-cover" />
                ) : (
@@ -627,10 +562,7 @@ const handleSaveExpense = async () => {
                  </span>
                )}
             </div>
-
-            {/* 名稱與角色 */}
             <h3 className="text-xl font-bold text-slate-800 tracking-wide">
-              {/* 加上 ?. 確保安全讀取 */}
               {selectedMember?.name}
             </h3>
             <span className={`inline-block mt-2 px-3 py-1 rounded-full text-xs font-bold ${
@@ -640,36 +572,25 @@ const handleSaveExpense = async () => {
             }`}>
               {selectedMember?.role === 'Owner' ? '行程建立者 (Owner)' : '旅伴 (Member)'}
             </span>
-
-            {/* 詳細資訊卡片 */}
             <div className="mt-6 p-4 bg-slate-50 rounded-2xl text-left space-y-3 border border-slate-100">
                <div className="flex items-center gap-3">
                  <div className="p-2 bg-white rounded-lg shadow-sm">
-                   {/* 如果有引入 User Icon 記得保留，沒有的話這行可刪或換成別的 Icon */}
                    <User className="size-4 text-[#F04D79]" />
                  </div>
                  <div>
                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">帳號 ID</div>
                    <div className="text-sm font-medium text-slate-700">
-                     {/* 加上 ?. 確保安全讀取 */}
                      {selectedMember?.id}
                    </div>
                  </div>
                </div>
             </div>
-            
           </div>
         </div>
       )}
-      {/* ================================================== */}
-
-      
-
     </div>
   );
 }
-
-
 
 // ================= 行李清單獨立模組 =================
 function LuggagePanel({ itineraryId }: { itineraryId: string }) {
@@ -792,57 +713,13 @@ export default function ItineraryEditor() {
   const router = useRouter();
   const params = useParams(); 
   const { user, loading: authLoading } = useAuth();
-  const [searchMarkers, setSearchMarkers] = useState<any[]>([]);
-
-  const handleKeywordSearch = async (keyword: string) => {
-    if (!keyword.trim()) return;
-    try {
-      const res = await fetch('/api/textsearch', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          query: keyword,
-          lat: Number(itineraryData?.destLat) || 25.0478, 
-          lng: Number(itineraryData?.destLng) || 121.5170
-        }),
-      });
-      const data = await res.json();
-      if (data.places) setSearchMarkers(data.places);
-      else setSearchMarkers([]);
-    } catch (error) {
-      console.error("Text search error:", error);
-    }
-  };
   
-
-  const handlePlaceSelect = async (placeId: string) => {
-    try {
-      const res = await fetch('/api/placedetails', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ placeId }),
-      });
-      const data = await res.json();
-      
-      if (data.location) {
-        setNewItemLat(data.location.latitude);
-        setNewItemLng(data.location.longitude);
-        setNewItemTitle(data.displayName?.text || '');
-      } else {
-        alert("無法取得地點座標");
-      }
-    } catch (error) {
-      console.error("Fetch place details error:", error);
-    }
-  };
-
-  // 【核心修復】將地圖載入器放在所有 Hook 的最頂端宣告，絕對不可包覆在條件式或 () => {} 內部
-// 【修改】將 libraries 參數加入載入器
-const { isLoaded } = useJsApiLoader({
+  const { isLoaded } = useJsApiLoader({
     id: 'google-map-script',
     googleMapsApiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY as string,
-    // 【關鍵】：完全移除 libraries: ["places"]，這是造成 Legacy API 錯誤的元兇
-});
+    language: 'zh-TW',
+    region: 'TW',
+  });
 
   const [isLoading, setIsLoading] = useState(true);
   const [itineraryData, setItineraryData] = useState<any>(null);
@@ -862,12 +739,12 @@ const { isLoaded } = useJsApiLoader({
   const [rightPanelTab, setRightPanelTab] = useState('budget'); 
 
   const [newItemTitle, setNewItemTitle] = useState("");
+  const availableTags = ["適合獨旅", "單人吧台", "寵物友善", "深夜營業", "有插座"];
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [newItemStartTime, setNewItemStartTime] = useState("");
   const [newItemEndTime, setNewItemEndTime] = useState("");
-  // 【新增】管理新行程的座標與 Autocomplete 實體
   const [newItemLat, setNewItemLat] = useState<number | null>(null);
   const [newItemLng, setNewItemLng] = useState<number | null>(null);
-  const autocompleteRef = useRef<google.maps.places.Autocomplete | null>(null);
 
   const [isSubmittingItem, setIsSubmittingItem] = useState(false);
 
@@ -878,6 +755,131 @@ const { isLoaded } = useJsApiLoader({
   const [editingTimeId, setEditingTimeId] = useState<string | null>(null);
   const [editStartTime, setEditStartTime] = useState("");
   const [editEndTime, setEditEndTime] = useState("");
+
+  const [selectedPlace, setSelectedPlace] = useState<any | null>(null);
+  const [searchMarkers, setSearchMarkers] = useState<any[]>([]);
+  const mapRef = useRef<google.maps.Map | null>(null);
+  const [mapCenter, setMapCenter] = useState({ lat: 25.0478, lng: 121.5170 });
+  const [mapZoom, setMapZoom] = useState(12);
+
+  useEffect(() => {
+    if (itineraryData) {
+      setMapCenter({
+        lat: Number(itineraryData.destLat) || 25.0478,
+        lng: Number(itineraryData.destLng) || 121.5170,
+      });
+      setMapZoom(12);
+    }
+  }, [itineraryData?.destLat, itineraryData?.destLng]);
+
+const handleKeywordSearch = async (keyword: string) => {
+    if (!keyword.trim() && selectedTags.length === 0) return;
+    
+    setIsAddItemOpen(false);
+
+    const tagString = selectedTags.join(" ");
+    // 策略：利用字串權重覆蓋座標權重，強制引導 Google 進行全台檢索
+    const finalQuery = `${keyword} ${tagString}`.trim(); 
+
+    try {
+      const res = await fetch('/api/textsearch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          query: finalQuery,
+          lat: Number(itineraryData?.destLat) || 25.0478, 
+          lng: Number(itineraryData?.destLng) || 121.5170
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Text search failed');
+      
+      if (data.places && data.places.length > 0) {
+        setSearchMarkers(data.places);
+        
+        // 👇 核心邏輯：計算所有地標的邊界，並讓地圖自動縮放包覆
+        if (mapRef.current && window.google) {
+          const bounds = new window.google.maps.LatLngBounds();
+          data.places.forEach((place: any) => {
+            if (place.location?.latitude && place.location?.longitude) {
+              bounds.extend(
+                new window.google.maps.LatLng(place.location.latitude, place.location.longitude)
+              );
+            }
+          });
+          
+          // 自動縮放以適應所有標記點
+          mapRef.current.fitBounds(bounds);
+          if (data.places.length === 1) {
+            setMapCenter({
+              lat: data.places[0].location.latitude,
+              lng: data.places[0].location.longitude,
+            });
+            mapRef.current.setCenter({
+              lat: data.places[0].location.latitude,
+              lng: data.places[0].location.longitude,
+            });
+          }
+          
+          // 防呆：如果搜尋結果只有一個，避免地圖被放得太大
+          if (data.places.length === 1) {
+            // fitBounds 執行後會有延遲，需透過 listener 或簡單延遲設定 zoom
+            setTimeout(() => {
+              setMapZoom(16);
+              if (mapRef.current) mapRef.current.setZoom(16);
+            }, 100);
+          }
+        }
+      } else {
+        setSearchMarkers([]);
+      }
+    } catch (error) {
+      console.error("Text search error:", error);
+    }
+  };
+
+  // 把這段貼在 handleKeywordSearch 結束的大括號下方
+  const handlePlaceSelect = async (placeId: string) => {
+    try {
+      const res = await fetch('/api/placedetails', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ placeId }),
+      });
+      const data = await res.json();
+      
+      if (data.location) {
+        const selectedPosition = {
+          lat: data.location.latitude,
+          lng: data.location.longitude,
+        };
+        setSearchMarkers([{
+          id: data.id || placeId,
+          displayName: data.displayName,
+          location: data.location,
+        }]);
+        setNewItemLat(data.location.latitude);
+        setNewItemLng(data.location.longitude);
+        setNewItemTitle(data.displayName?.text || '');
+        setMapCenter(selectedPosition);
+        setMapZoom(16);
+        
+        // 精確選擇單一地點時，平滑移動並放大
+        if (mapRef.current) {
+          mapRef.current.setCenter(selectedPosition);
+          mapRef.current.panTo({
+            lat: data.location.latitude,
+            lng: data.location.longitude
+          });
+          mapRef.current.setZoom(16);
+        }
+      } else {
+        alert("無法取得地點座標");
+      }
+    } catch (error) {
+      console.error("Fetch place details error:", error);
+    }
+  };
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -931,7 +933,7 @@ const { isLoaded } = useJsApiLoader({
     } catch(error) { alert("更新失敗"); }
   };
 
-const handleCreateItem = async () => {
+  const handleCreateItem = async () => {
     if (!newItemTitle.trim()) return alert("請輸入行程標題"); setIsSubmittingItem(true);
     try {
       const res = await fetch("http://localhost:8080/itinerary/create_itinerary_item.php", { 
@@ -942,7 +944,6 @@ const handleCreateItem = async () => {
           Title: newItemTitle, 
           StartTime: newItemStartTime, 
           EndTime: newItemEndTime,
-          // 【新增】將座標送往後端
           Latitude: newItemLat,
           Longitude: newItemLng
         }), 
@@ -952,8 +953,8 @@ const handleCreateItem = async () => {
         setNewItemTitle(""); 
         setNewItemStartTime(""); 
         setNewItemEndTime(""); 
-        setNewItemLat(null); // 【新增】重置狀態
-        setNewItemLng(null); // 【新增】重置狀態
+        setNewItemLat(null); 
+        setNewItemLng(null); 
         setIsAddItemOpen(false); 
         fetchItems(params.id as string); 
       } else alert(data.message);
@@ -998,15 +999,29 @@ const handleCreateItem = async () => {
     }
   };
 
+// 1. 保留這行 (載入中的防呆)
   if (authLoading || isLoading) return <div className="h-screen w-full flex items-center justify-center bg-[#FAFAFA]"><Loader2 className="animate-spin text-slate-300 size-8" /></div>;
-  if (!itineraryData) return null;
+  
+  // 2. 將原本的 if (!itineraryData) return null; 刪除，替換成下面這整段：
+if (!itineraryData) {
+  return (
+    <div className="h-[60vh] w-full flex flex-col items-center justify-center bg-[#FAFAFA]">
+      <p className="text-slate-500 mb-4 font-bold tracking-wide">
+        無法載入行程。該行程可能不存在或您沒有讀取權限。
+      </p>
+      <button onClick={() => router.push('/planner')} className="px-6 py-2 bg-[#F04D79] text-white rounded-lg font-bold shadow-sm hover:bg-pink-600 transition-colors">
+        返回行程列表
+      </button>
+    </div>
+  );
+}
 
+  // 3. 下方保留原狀不動
   const currentDayItems = itineraryItems.filter((item) => item.dayNumber === activeDay);
 
   return (
     <div className="fixed inset-0 z-40 flex flex-col bg-[#FAFAFA] font-sans text-slate-800">
       
-      {/* ================= 整合後的 Header ================= */}
       <header className="h-16 bg-white border-b border-slate-100 flex items-center justify-between px-6 shrink-0 z-50">
         <div className="flex items-center gap-8">
           <div className="font-bold text-xl tracking-tighter text-slate-900">TRAVMADE</div>
@@ -1023,9 +1038,7 @@ const handleCreateItem = async () => {
         </div>
       </header>
 
-      {/* ================= 下方編輯區域 ================= */}
       <div className="flex-1 flex overflow-hidden">
-        {/* 左欄：行程時間軸 */}
         <div className="w-[380px] bg-white border-r border-slate-100 flex flex-col z-10 shadow-[4px_0_24px_rgba(0,0,0,0.01)] relative">
           <div className="relative h-40 w-full bg-slate-100 group overflow-hidden shrink-0">
             <img src={coverImage} alt="行程封面" className={`w-full h-full object-cover transition-all duration-700 ${isUploading ? 'opacity-50 grayscale blur-sm' : 'group-hover:scale-105 group-hover:brightness-90'}`} />
@@ -1093,13 +1106,64 @@ const handleCreateItem = async () => {
           {!isLoaded ? (
             <Loader2 className="animate-spin text-slate-300 size-8" />
           ) : (
-<GoogleMap
-              mapContainerStyle={{ width: '100%', height: '100%' }}
-              center={{ lat: Number(itineraryData?.destLat) || 25.0478, lng: Number(itineraryData?.destLng) || 121.5170 }} 
-              zoom={12}
-              options={{ disableDefaultUI: true, zoomControl: true }}
+            <>
+{/* 👇 新增：地圖左側浮動搜尋面板 */}
+              <div className="absolute top-4 left-4 z-[50] w-80 bg-white/95 backdrop-blur-md shadow-xl rounded-2xl p-4 border border-slate-200 flex flex-col gap-3">
+                <div className="text-sm font-bold text-slate-800 tracking-widest flex items-center gap-2">
+                  <Search size={16} className="text-[#F04D79]"/> 探索地點
+                </div>
+                
+                  <PlaceAutocomplete 
+                  value={newItemTitle} 
+                  onChange={setNewItemTitle} 
+                  locationBias={{
+                    lat: Number(itineraryData?.destLat) || 25.0478,
+                    lng: Number(itineraryData?.destLng) || 121.5170,
+                  }}
+                  // 請將這行的屬性名稱，改為與 PlaceAutocomplete.tsx 完全一致的名字
+                  onPlaceSelect={handlePlaceSelect}
+                  onKeywordSearch={handleKeywordSearch} 
+                />
+
+                {/* 快速標籤篩選器 */}
+                <div className="pt-1">
+                  <p className="text-[11px] font-bold text-slate-400 mb-2 tracking-widest uppercase">附加搜尋特徵</p>
+                  <div className="flex flex-wrap gap-2">
+                    {availableTags.map(tag => {
+                      const isSelected = selectedTags.includes(tag);
+                      return (
+                        <button
+                          key={tag}
+                          type="button"
+                          onClick={() => {
+                            if (isSelected) {
+                              setSelectedTags(selectedTags.filter(t => t !== tag));
+                            } else {
+                              setSelectedTags([...selectedTags, tag]);
+                            }
+                          }}
+                          className={`px-3 py-1.5 text-xs rounded-md font-medium transition-all ${
+                            isSelected 
+                              ? "bg-[#F04D79] text-white shadow-sm" 
+                              : "bg-slate-50 text-slate-500 border border-slate-200 hover:border-[#F04D79]"
+                          }`}
+                        >
+                          # {tag}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              <GoogleMap
+                mapContainerStyle={{ width: '100%', height: '100%' }}
+                center={mapCenter}
+                zoom={mapZoom}
+                options={{ disableDefaultUI: true, zoomControl: true }}
+                // 👇 關鍵：綁定地圖實例，讓前面的 panTo 能正常運作
+                onLoad={(map) => { mapRef.current = map; }}
             >
-              {/* 原有：渲染已加入行程的節點 */}
               {currentDayItems.map((item, index) => {
                 if (item.Latitude && item.Longitude) {
                   return (
@@ -1109,7 +1173,6 @@ const handleCreateItem = async () => {
                 return null;
               })}
 
-              {/* 👇 步驟 4 放在這裡：渲染搜尋出來的多個地點 */}
               {searchMarkers.map((place) => (
                 <Marker
                   key={place.id}
@@ -1118,26 +1181,54 @@ const handleCreateItem = async () => {
                     lng: place.location.longitude
                   }}
                   label={{
-                    text: place.displayName.text.charAt(0), 
+                    text: place.displayName?.text?.charAt(0) || "?", 
                     color: "black",
                     fontWeight: "bold"
                   }}
                   icon={{
                     url: "http://maps.google.com/mapfiles/ms/icons/blue-dot.png"
                   }}
-                  onClick={() => {
-                    setNewItemTitle(place.displayName.text);
-                    setNewItemLat(place.location.latitude);
-                    setNewItemLng(place.location.longitude);
-                  }}
+                  onClick={() => setSelectedPlace(place)}
                 />
               ))}
-              {/* 確保加在 </GoogleMap> 之前 */}
+
+              {selectedPlace && (
+                <InfoWindow
+                  position={{
+                    lat: selectedPlace.location.latitude,
+                    lng: selectedPlace.location.longitude
+                  }}
+                  onCloseClick={() => setSelectedPlace(null)}
+                >
+                  <div className="p-1 max-w-[200px] text-slate-800">
+                    <h3 className="font-bold text-base mb-1">{selectedPlace.displayName?.text}</h3>
+                    {selectedPlace.rating && (
+                      <p className="text-xs text-amber-500 font-bold mb-1">★ {selectedPlace.rating}</p>
+                    )}
+                    {selectedPlace.formattedAddress && (
+                      <p className="text-xs text-slate-500 mb-3">{selectedPlace.formattedAddress}</p>
+                    )}
+                    
+                    <button
+                      onClick={() => {
+                        setNewItemTitle(selectedPlace.displayName?.text || '');
+                        setNewItemLat(selectedPlace.location.latitude);
+                        setNewItemLng(selectedPlace.location.longitude);
+                        setSelectedPlace(null); 
+                        setIsAddItemOpen(true); 
+                      }}
+                      className="w-full bg-[#F04D79] text-white py-1.5 rounded-md text-xs font-bold hover:bg-pink-600 transition-colors"
+                    >
+                      設定為行程地點
+                    </button>
+                  </div>
+                </InfoWindow>
+              )}
             </GoogleMap>
+            </>
           )}
         </div>
 
-        {/* 右欄：動態模組中樞 */}
         <div className="w-[340px] bg-white border-l border-slate-100 flex flex-col z-10 shadow-[-4px_0_24px_rgba(0,0,0,0.01)] relative">
           <div className="flex pt-2 px-2 border-b border-slate-100 gap-1 overflow-x-auto hide-scrollbar shrink-0">
             {[
@@ -1183,10 +1274,9 @@ const handleCreateItem = async () => {
           </div>
         </div>
       </div>
-{/* ================= 新增行程項目 Modal ================= */}
+
       {isAddItemOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-          {/* 點擊背景關閉 */}
           <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => setIsAddItemOpen(false)}></div>
           
           <div className="bg-white w-full max-w-sm rounded-3xl shadow-2xl p-6 relative animate-in zoom-in-95 duration-200">
@@ -1200,21 +1290,11 @@ const handleCreateItem = async () => {
             <div className="space-y-4">
               <div className="space-y-1.5">
                 <label className="text-sm font-bold text-slate-600">
-                  <span className="text-[#F04D79] mr-1">*</span> 搜尋地點 (自動完成)
+                  <span className="text-[#F04D79] mr-1">*</span> 已選地點
                 </label>
-                                 
-                {/* 傳入 value 與 onChange 進行雙向綁定 */}
-                <PlaceAutocomplete 
-                  value={newItemTitle} 
-                  onChange={setNewItemTitle} 
-                  onPlaceSelect={handlePlaceSelect} 
-                  onKeywordSearch={handleKeywordSearch} 
-                />  
-                
-                {/* 為了讓使用者知道目前選中的地點，可額外顯示 title 狀態 */}
-                {newItemTitle && (
-                  <p className="text-xs text-green-600 mt-1">已選擇: {newItemTitle}</p>
-                )}
+                <div className="w-full border border-slate-300 rounded-md px-3 py-2.5 text-sm text-slate-700 bg-slate-50">
+                  {newItemTitle || "請先在地圖上搜尋並點擊地標選擇"}
+                </div>
               </div>
               
               <div className="flex gap-4">
@@ -1246,7 +1326,6 @@ const handleCreateItem = async () => {
           </div>
         </div>
       )}
-      {/* ========================================================== */}
       
     </div>
   );

@@ -134,7 +134,7 @@ export function Header() {
                 <div className="flex items-center gap-3 px-3 py-2 mb-2">
                   <div className="size-10 bg-neutral-50 rounded-full border border-neutral-200 flex items-center justify-center text-neutral-600 overflow-hidden shadow-sm">
                     {avatarUrl ? (
-                      <img srcsrc={avatarUrl} alt="Avatar" className="w-full h-full object-cover grayscale-[20%]" />
+                      <img src={avatarUrl} alt="Avatar" className="w-full h-full object-cover grayscale-[20%]" />
                     ) : (
                       <User className="size-6" />
                     )}

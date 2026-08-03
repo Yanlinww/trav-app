@@ -14,11 +14,11 @@ export async function POST(request) {
       );
     }
 
-    const response = await fetch(`https://places.googleapis.com/v1/places/${placeId}`, {
+    const response = await fetch(`https://places.googleapis.com/v1/places/${placeId}?languageCode=zh-TW`, {
       method: 'GET',
       headers: {
-        'X-Goog-Api-Key': process.env.GOOGLE_MAPS_API_KEY,
-        'X-Goog-FieldMask': 'id,displayName,location',
+        'X-Goog-Api-Key': process.env.GOOGLE_MAPS_API_KEY || process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY,
+        'X-Goog-FieldMask': 'id,displayName,location,formattedAddress',
       },
     });
 
