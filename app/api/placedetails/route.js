@@ -18,7 +18,8 @@ export async function POST(request) {
       method: 'GET',
       headers: {
         'X-Goog-Api-Key': process.env.GOOGLE_MAPS_API_KEY || process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY,
-        'X-Goog-FieldMask': 'id,displayName,location,formattedAddress',
+        // 詳細資料只在使用者點擊標點時請求，避免搜尋時大量載入高階欄位。
+        'X-Goog-FieldMask': 'id,displayName,location,formattedAddress,photos,regularOpeningHours,currentOpeningHours,rating,nationalPhoneNumber,websiteUri,googleMapsUri',
       },
     });
 

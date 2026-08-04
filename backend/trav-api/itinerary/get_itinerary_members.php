@@ -8,9 +8,11 @@ if ($_SERVER['REQUEST_METHOD'] == 'OPTIONS') { http_response_code(200); exit(); 
 
 // 引入資料庫連線 (請確保路徑正確)
 require_once '../db_connect.php';
-$data = json_decode(file_get_contents("php://input"));
+require_once 'api_helpers.php';
+$data = read_json_body();
 
 if (!empty($data->Itinerary_ID)) {
+    require_itinerary_access($conn, (int)$data->Itinerary_ID, trim((string)($data->Account ?? '')));
     // 透過 LEFT JOIN 將行程表/關聯表與真正的會員主表 (Member) 連接
     $stmt = $conn->prepare("
         SELECT 
@@ -51,7 +53,7 @@ if (!empty($data->Itinerary_ID)) {
     echo json_encode(["status" => "success", "data" => $members]);
     $stmt->close();
 } else {
-    echo json_encode(["status" => "error", "message" => "缺少行程ID"]);
+    api_error("缺少行程ID", 400);
 }
 
 $conn->close();

@@ -28,7 +28,7 @@ export async function POST(request) {
         'Content-Type': 'application/json',
         'X-Goog-Api-Key': process.env.GOOGLE_MAPS_API_KEY || process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY,
         // 新增 places.formattedAddress (完整地址) 與 places.rating (星級評分)
-        'X-Goog-FieldMask': 'places.id,places.displayName,places.location,places.formattedAddress,places.rating',
+        'X-Goog-FieldMask': 'places.id,places.displayName,places.location,places.formattedAddress,places.rating,places.types,places.priceLevel',
       },
       body: JSON.stringify(requestBody),
     });

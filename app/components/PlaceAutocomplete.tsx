@@ -21,6 +21,7 @@ export default function PlaceAutocomplete({
   // 加上 <any[]> 避免 TypeScript 陣列型別報錯
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [errorMessage, setErrorMessage] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
 
   const selectSuggestion = (item: any) => {
     const prediction = item.placePrediction;
@@ -33,39 +34,50 @@ export default function PlaceAutocomplete({
   useEffect(() => {
     if (!value) {
       setSuggestions([]);
+      setIsLoading(false);
       return;
     }
 
+    let controller: AbortController | null = null;
     const delayDebounceFn = setTimeout(async () => {
+      controller = new AbortController();
       try {
         setErrorMessage('');
+        setIsLoading(true);
         const res = await fetch('/api/autocomplete', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ input: value, locationBias }),
+          signal: controller.signal,
         });
-        const contentType = res.headers.get('content-type') || '';
         const responseText = await res.text();
-
-        if (!contentType.includes('application/json')) {
-          throw new Error(`Autocomplete API ${res.status}: ${responseText.slice(0, 180)}`);
+        let data: any = null;
+        try {
+          data = responseText ? JSON.parse(responseText) : null;
+        } catch {
+          throw new Error('地點搜尋服務暫時無法使用，請重新整理後再試。');
         }
 
-        const data = JSON.parse(responseText);
         if (!res.ok) {
-          throw new Error(`Autocomplete API ${res.status}: ${data.message || data.error || 'request failed'}`);
+          throw new Error(data?.message || data?.error || `地點搜尋服務錯誤（${res.status}）`);
         }
 
         setSuggestions(data.suggestions || []);
       } catch (error) {
+        if (error instanceof DOMException && error.name === 'AbortError') return;
         const message = error instanceof Error ? error.message : 'Autocomplete request failed';
         setErrorMessage(message);
         console.error("Autocomplete fetch error:", error);
+      } finally {
+        setIsLoading(false);
       }
     }, 500);
 
-    return () => clearTimeout(delayDebounceFn);
-  }, [value]);
+    return () => {
+      clearTimeout(delayDebounceFn);
+      controller?.abort();
+    };
+  }, [value, locationBias]);
 
   return (
     <div className="relative w-full">
@@ -110,6 +122,12 @@ export default function PlaceAutocomplete({
             </li>
           ))}
         </ul>
+      )}
+
+      {isLoading && !errorMessage && (
+        <p className="mt-1 text-xs text-slate-400" role="status">
+          搜尋中…
+        </p>
       )}
 
       {errorMessage && (

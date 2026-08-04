@@ -5,7 +5,7 @@ import { AuthProvider } from "./context/AuthContext";
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="zh-TW">
+    <html lang="zh-TW" suppressHydrationWarning>
       <body className="min-h-screen flex flex-col">
         {/* 1. AuthProvider 必須在最外層，包住所有會用到登入資訊的元件 */}
         <AuthProvider>
