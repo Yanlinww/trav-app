@@ -1,207 +1,322 @@
-"use client";
+﻿"use client";
 
-import { ChangeEvent, FormEvent, useMemo, useRef, useState } from "react";
+import { ChangeEvent, FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import {
   Bookmark,
-  Camera,
   ChevronRight,
-  CircleHelp,
   Compass,
   Heart,
   ImagePlus,
   MapPin,
   MessageCircle,
+  RefreshCw,
   Search,
   Send,
   Sparkles,
-  Users,
   X,
 } from "lucide-react";
+import { useAuth } from "../context/AuthContext";
 
-type FeedType = "footprint" | "question" | "group";
+type PostType = "footprint" | "question" | "group";
+type TabType = "all" | PostType;
 
-type Comment = {
-  id: number;
-  author: string;
-  text: string;
+type CommunityAuthor = {
+  name: string;
+  avatar: string;
 };
 
-type Post = {
+type CommunityComment = {
   id: number;
-  type: FeedType;
+  parentId: number | null;
   author: string;
-  handle: string;
   avatar: string;
-  time: string;
-  title?: string;
   content: string;
-  location?: string;
+  time: string;
+};
+
+type CommunityPost = {
+  id: number;
+  type: PostType;
+  title: string | null;
+  content: string;
+  location: string | null;
+  time: string;
+  author: CommunityAuthor;
   tags: string[];
   images: string[];
   likes: number;
+  commentCount: number;
   liked: boolean;
   saved: boolean;
-  comments: Comment[];
+  comments: CommunityComment[];
 };
 
-const initialPosts: Post[] = [
-  {
-    id: 1,
-    type: "footprint",
-    author: "林予晴",
-    handle: "@yuching.travels",
-    avatar: "晴",
-    time: "18 分鐘前",
-    content:
-      "清晨六點的清水寺，比想像中更安靜。沿著二年坂慢慢走，店家還沒開門，只有掃地聲和微涼的風。獨旅最喜歡的，就是能把時間留給這些小事。",
-    location: "日本・京都・清水寺",
-    tags: ["京都獨旅", "晨間散步", "底片感"],
-    images: [
-      "https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?auto=format&fit=crop&w=1100&q=85",
-      "https://images.unsplash.com/photo-1528360983277-13d401cdc186?auto=format&fit=crop&w=700&q=85",
-    ],
-    likes: 128,
-    liked: false,
-    saved: false,
-    comments: [
-      { id: 1, author: "周安", text: "清晨真的最適合感受京都，照片好有氣氛！" },
-      { id: 2, author: "Mina", text: "請問從車站走過去大概多久呢？" },
-    ],
-  },
-  {
-    id: 2,
-    type: "question",
-    author: "陳奕廷",
-    handle: "@ethan_ontheroad",
-    avatar: "奕",
-    time: "1 小時前",
-    title: "第一次一個人去冰島自駕，有哪些事情一定要注意？",
-    content:
-      "預計十月環島 9 天，目前最擔心天氣變化和加油問題。已經有雪地駕駛經驗，但沒去過冰島，希望有經驗的旅人分享路線安排。",
-    location: "冰島",
-    tags: ["疑難雜症", "冰島自駕", "行前準備"],
-    images: [],
-    likes: 46,
-    liked: false,
-    saved: true,
-    comments: [
-      { id: 1, author: "Kai", text: "每天先看 road.is 和 vedur.is，不要硬追原本排好的行程。" },
-      { id: 2, author: "Sora", text: "建議租四驅，油箱過半看到加油站就補。" },
-    ],
-  },
-  {
-    id: 3,
-    type: "group",
-    author: "許庭瑄",
-    handle: "@tinghsuan",
-    avatar: "庭",
-    time: "3 小時前",
-    title: "快閃揪團｜週六一起去陽明山看海芋",
-    content:
-      "目前兩人，想再找 2～3 位喜歡拍照、步調悠閒的旅伴。早上九點劍潭站集合，下午回台北市區吃飯。",
-    location: "台灣・台北・陽明山",
-    tags: ["快閃揪團", "週末出走", "攝影"],
-    images: [
-      "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1100&q=85",
-    ],
-    likes: 31,
-    liked: false,
-    saved: false,
-    comments: [{ id: 1, author: "Leo", text: "有興趣！已私訊行程細節。" }],
-  },
-];
+type Topic = {
+  tag: string;
+  count: number;
+};
 
-const tabs: { id: "all" | FeedType; label: string }[] = [
+type ApiResponse<T> = {
+  status: "success" | "error";
+  message?: string;
+  data?: T;
+};
+
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080";
+const COMMUNITY_API = `${API_BASE}/community`;
+
+const tabs: { id: TabType; label: string }[] = [
   { id: "all", label: "全部動態" },
   { id: "footprint", label: "獨旅足跡" },
   { id: "question", label: "疑難問答" },
   { id: "group", label: "快閃揪團" },
 ];
 
-const hotTopics = [
-  ["#第一次獨旅", "2,341 篇動態"],
-  ["#日本賞楓", "1,827 篇動態"],
-  ["#女生獨旅安全", "986 篇討論"],
-  ["#週末小旅行", "754 篇動態"],
+const postTypes: { id: PostType; label: string; description: string }[] = [
+  { id: "footprint", label: "獨旅足跡", description: "照片、打卡、旅途中發現的風景" },
+  { id: "question", label: "疑難問答", description: "路線、交通、安全、預算問題" },
+  { id: "group", label: "快閃揪團", description: "臨時一起走、吃飯、分攤交通" },
 ];
 
+const fallbackTopics: Topic[] = [
+  { tag: "獨旅安全", count: 0 },
+  { tag: "景點打卡", count: 0 },
+  { tag: "交通問題", count: 0 },
+  { tag: "快閃揪團", count: 0 },
+];
+
+function getTypeLabel(type: PostType) {
+  return postTypes.find((item) => item.id === type)?.label ?? "動態";
+}
+
+function getInitial(name: string) {
+  return name.trim().slice(0, 1).toUpperCase() || "旅";
+}
+
+async function readApiResponse<T>(response: Response): Promise<ApiResponse<T>> {
+  const data = (await response.json()) as ApiResponse<T>;
+  if (!response.ok || data.status === "error") {
+    throw new Error(data.message || "API 請求失敗");
+  }
+  return data;
+}
+
 export default function CommunityPage() {
-  const [posts, setPosts] = useState(initialPosts);
-  const [activeTab, setActiveTab] = useState<"all" | FeedType>("all");
+  const { user, loading: authLoading } = useAuth();
+  const currentAccount = user ? String(user.id || user.Account || "") : "";
+
+  const [posts, setPosts] = useState<CommunityPost[]>([]);
+  const [topics, setTopics] = useState<Topic[]>(fallbackTopics);
+  const [activeTab, setActiveTab] = useState<TabType>("all");
   const [search, setSearch] = useState("");
+  const [postType, setPostType] = useState<PostType>("footprint");
+  const [title, setTitle] = useState("");
   const [draft, setDraft] = useState("");
   const [location, setLocation] = useState("");
-  const [tag, setTag] = useState("");
+  const [tagText, setTagText] = useState("");
+  const [imageFile, setImageFile] = useState<File | null>(null);
   const [preview, setPreview] = useState("");
   const [commentDrafts, setCommentDrafts] = useState<Record<number, string>>({});
+  const [replyTargets, setReplyTargets] = useState<Record<number, CommunityComment | undefined>>({});
   const [openComments, setOpenComments] = useState<Record<number, boolean>>({});
+  const [loadingPosts, setLoadingPosts] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const visiblePosts = useMemo(() => {
-    const keyword = search.trim().toLowerCase();
-    return posts.filter((post) => {
-      const matchesTab = activeTab === "all" || post.type === activeTab;
-      const matchesSearch =
-        !keyword ||
-        [post.author, post.title, post.content, post.location, ...post.tags]
-          .filter(Boolean)
-          .join(" ")
-          .toLowerCase()
-          .includes(keyword);
-      return matchesTab && matchesSearch;
-    });
-  }, [activeTab, posts, search]);
+  const visibleTopics = useMemo(() => (topics.length > 0 ? topics : fallbackTopics), [topics]);
+
+  const loadTopics = useCallback(async () => {
+    try {
+      const response = await fetch(`${COMMUNITY_API}/get_topics.php`, { cache: "no-store" });
+      const data = await readApiResponse<Topic[]>(response);
+      setTopics(data.data && data.data.length > 0 ? data.data : fallbackTopics);
+    } catch {
+      setTopics(fallbackTopics);
+    }
+  }, []);
+
+  const loadPosts = useCallback(async () => {
+    const params = new URLSearchParams();
+    params.set("type", activeTab);
+    if (search.trim()) params.set("search", search.trim());
+    if (currentAccount) params.set("Account", currentAccount);
+
+    setLoadingPosts(true);
+    setError("");
+
+    try {
+      const response = await fetch(`${COMMUNITY_API}/get_posts.php?${params.toString()}`, {
+        cache: "no-store",
+      });
+      const data = await readApiResponse<CommunityPost[]>(response);
+      setPosts(data.data ?? []);
+    } catch (apiError) {
+      setError(apiError instanceof Error ? apiError.message : "讀取動態失敗");
+    } finally {
+      setLoadingPosts(false);
+    }
+  }, [activeTab, currentAccount, search]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      void loadTopics();
+    }, 0);
+
+    return () => window.clearTimeout(timer);
+  }, [loadTopics]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      void loadPosts();
+    }, 250);
+
+    return () => window.clearTimeout(timer);
+  }, [loadPosts]);
+
+  function selectTab(tab: TabType) {
+    setActiveTab(tab);
+    setPostType(tab === "all" ? "footprint" : tab);
+  }
 
   function handleImage(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) return;
+
+    if (file.size > 5 * 1024 * 1024) {
+      alert("圖片不可超過 5MB");
+      event.target.value = "";
+      return;
+    }
+
+    if (preview) URL.revokeObjectURL(preview);
+    setImageFile(file);
     setPreview(URL.createObjectURL(file));
   }
 
-  function publishPost(event: FormEvent) {
-    event.preventDefault();
-    if (!draft.trim()) return;
-
-    const nextPost: Post = {
-      id: Date.now(),
-      type: activeTab === "all" ? "footprint" : activeTab,
-      author: "我的旅程",
-      handle: "@travmade_me",
-      avatar: "我",
-      time: "剛剛",
-      content: draft.trim(),
-      location: location.trim() || undefined,
-      tags: tag.trim() ? [tag.trim().replace(/^#/, "")] : ["獨旅日記"],
-      images: preview ? [preview] : [],
-      likes: 0,
-      liked: false,
-      saved: false,
-      comments: [],
-    };
-
-    setPosts((current) => [nextPost, ...current]);
-    setDraft("");
-    setLocation("");
-    setTag("");
+  function clearImage() {
+    if (preview) URL.revokeObjectURL(preview);
     setPreview("");
+    setImageFile(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
-  function patchPost(id: number, patch: Partial<Post>) {
-    setPosts((current) =>
-      current.map((post) => (post.id === id ? { ...post, ...patch } : post)),
-    );
+  async function publishPost(event: FormEvent) {
+    event.preventDefault();
+    if (!currentAccount) {
+      alert("請先登入後再發文");
+      return;
+    }
+    if (!draft.trim()) return;
+
+    const formData = new FormData();
+    formData.append("Account", currentAccount);
+    formData.append("Post_Type", postType);
+    formData.append("Title", title.trim());
+    formData.append("Content", draft.trim());
+    formData.append("Location_Name", location.trim());
+    formData.append("Tags", tagText.trim());
+    if (imageFile) formData.append("image", imageFile);
+
+    setSubmitting(true);
+    setError("");
+
+    try {
+      const response = await fetch(`${COMMUNITY_API}/create_post.php`, {
+        method: "POST",
+        body: formData,
+      });
+      const data = await readApiResponse<CommunityPost>(response);
+      if (data.data) {
+        setPosts((current) => [data.data as CommunityPost, ...current]);
+      }
+      setTitle("");
+      setDraft("");
+      setLocation("");
+      setTagText("");
+      clearImage();
+      void loadTopics();
+    } catch (apiError) {
+      setError(apiError instanceof Error ? apiError.message : "發文失敗");
+    } finally {
+      setSubmitting(false);
+    }
   }
 
-  function submitComment(event: FormEvent, post: Post) {
+  async function toggleReaction(post: CommunityPost, reactionType: "like" | "save") {
+    if (!currentAccount) {
+      alert("請先登入後再互動");
+      return;
+    }
+
+    try {
+      const response = await fetch(`${COMMUNITY_API}/toggle_reaction.php`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          Account: currentAccount,
+          Post_ID: post.id,
+          Reaction_Type: reactionType,
+        }),
+      });
+      const data = await readApiResponse<{ active: boolean; likes: number }>(response);
+      setPosts((current) =>
+        current.map((item) => {
+          if (item.id !== post.id || !data.data) return item;
+          return reactionType === "like"
+            ? { ...item, liked: data.data.active, likes: data.data.likes }
+            : { ...item, saved: data.data.active };
+        }),
+      );
+    } catch (apiError) {
+      setError(apiError instanceof Error ? apiError.message : "互動失敗");
+    }
+  }
+
+  async function submitComment(event: FormEvent, post: CommunityPost) {
     event.preventDefault();
+    if (!currentAccount) {
+      alert("請先登入後再留言");
+      return;
+    }
+
     const text = commentDrafts[post.id]?.trim();
     if (!text) return;
-    patchPost(post.id, {
-      comments: [...post.comments, { id: Date.now(), author: "我", text }],
-    });
-    setCommentDrafts((current) => ({ ...current, [post.id]: "" }));
+
+    const replyTarget = replyTargets[post.id];
+
+    try {
+      const response = await fetch(`${COMMUNITY_API}/add_comment.php`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          Account: currentAccount,
+          Post_ID: post.id,
+          Content: text,
+          Parent_Comment_ID: replyTarget?.id ?? null,
+        }),
+      });
+      const data = await readApiResponse<CommunityComment>(response);
+      if (data.data) {
+        setPosts((current) =>
+          current.map((item) =>
+            item.id === post.id
+              ? {
+                  ...item,
+                  comments: [...item.comments, data.data as CommunityComment],
+                  commentCount: item.commentCount + 1,
+                }
+              : item,
+          ),
+        );
+      }
+      setCommentDrafts((current) => ({ ...current, [post.id]: "" }));
+      setReplyTargets((current) => ({ ...current, [post.id]: undefined }));
+      setOpenComments((current) => ({ ...current, [post.id]: true }));
+    } catch (apiError) {
+      setError(apiError instanceof Error ? apiError.message : "留言失敗");
+    }
   }
 
   return (
@@ -211,19 +326,20 @@ export default function CommunityPage() {
           <div className="flex flex-col justify-between gap-8 md:flex-row md:items-end">
             <div>
               <p className="mb-3 flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.28em] text-neutral-400">
-                <Sparkles className="size-3.5 text-amber-500" /> Travmade Community
+                <Sparkles className="size-3.5 text-amber-500" /> Travmate Community
               </p>
-              <h1 className="text-4xl font-light tracking-tight md:text-5xl">旅人動態牆</h1>
+              <h1 className="text-4xl font-light tracking-tight md:text-5xl">動態牆</h1>
               <p className="mt-3 max-w-xl text-sm font-light leading-7 text-neutral-500">
-                分享獨旅寫真與足跡、交換旅途情報，也在下一次出發前找到同行的人。
+                分享獨旅足跡、景點打卡、疑難問答與快閃揪團。
               </p>
             </div>
+
             <label className="flex h-12 w-full items-center gap-3 border border-neutral-200 bg-neutral-50 px-4 md:w-80">
               <Search className="size-4 text-neutral-400" />
               <input
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                placeholder="搜尋景點、主題或旅人"
+                placeholder="搜尋貼文、地點或標籤"
                 className="w-full bg-transparent text-sm outline-none placeholder:text-neutral-400"
               />
             </label>
@@ -236,7 +352,7 @@ export default function CommunityPage() {
           {tabs.map((tab) => (
             <button
               key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
+              onClick={() => selectTab(tab.id)}
               className={`shrink-0 border-b-2 py-4 text-xs font-semibold tracking-wider transition-colors ${
                 activeTab === tab.id
                   ? "border-neutral-900 text-neutral-900"
@@ -251,27 +367,46 @@ export default function CommunityPage() {
 
       <div className="mx-auto grid max-w-7xl grid-cols-1 gap-7 px-5 py-8 md:px-8 lg:grid-cols-[minmax(0,1fr)_320px]">
         <main className="min-w-0 space-y-6">
+          {error && (
+            <div className="flex items-center justify-between border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              <span>{error}</span>
+              <button onClick={() => void loadPosts()} className="flex items-center gap-1 font-semibold">
+                <RefreshCw className="size-3.5" /> 重試
+              </button>
+            </div>
+          )}
+
           <form onSubmit={publishPost} className="border border-neutral-200 bg-white p-5 shadow-sm md:p-6">
             <div className="flex gap-4">
               <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-neutral-900 text-xs font-bold text-white">
-                我
+                {user ? getInitial(String(user.nickname || user.Account || "旅人")) : "旅"}
               </div>
               <div className="min-w-0 flex-1">
+                {(postType === "question" || postType === "group") && (
+                  <input
+                    value={title}
+                    onChange={(event) => setTitle(event.target.value)}
+                    placeholder={postType === "question" ? "問題標題，例如：冰島自駕要注意什麼？" : "揪團標題，例如：週六淡水半日散步"}
+                    className="mb-3 w-full border border-neutral-200 bg-neutral-50 px-3 py-2.5 text-sm outline-none focus:border-neutral-500"
+                  />
+                )}
+
                 <textarea
                   value={draft}
                   onChange={(event) => setDraft(event.target.value)}
-                  placeholder="這趟旅程，有什麼想和旅人分享？"
-                  rows={3}
-                  className="w-full resize-none border-0 bg-transparent text-sm leading-7 outline-none placeholder:text-neutral-400"
+                  placeholder={authLoading ? "登入狀態確認中..." : currentAccount ? "分享你的獨旅足跡、問題或揪團內容" : "請先登入後再發文"}
+                  rows={4}
+                  disabled={!currentAccount}
+                  className="w-full resize-none border-0 bg-transparent text-sm leading-7 outline-none placeholder:text-neutral-400 disabled:cursor-not-allowed disabled:opacity-60"
                 />
 
                 {preview && (
                   <div className="relative mt-3 h-56 overflow-hidden bg-neutral-100">
-                    <Image src={preview} alt="上傳照片預覽" fill unoptimized className="object-cover" />
+                    <Image src={preview} alt="上傳圖片預覽" fill unoptimized className="object-cover" />
                     <button
                       type="button"
-                      onClick={() => setPreview("")}
-                      aria-label="移除照片"
+                      onClick={clearImage}
+                      aria-label="移除圖片"
                       className="absolute right-3 top-3 rounded-full bg-black/60 p-2 text-white"
                     >
                       <X className="size-4" />
@@ -285,16 +420,16 @@ export default function CommunityPage() {
                     <input
                       value={location}
                       onChange={(event) => setLocation(event.target.value)}
-                      placeholder="加入景點足跡"
+                      placeholder="景點打卡位置"
                       className="w-full bg-transparent outline-none"
                     />
                   </label>
                   <label className="flex items-center gap-2 bg-neutral-50 px-3 py-2.5 text-xs text-neutral-500">
                     <Compass className="size-3.5" />
                     <input
-                      value={tag}
-                      onChange={(event) => setTag(event.target.value)}
-                      placeholder="加入主題標籤"
+                      value={tagText}
+                      onChange={(event) => setTagText(event.target.value)}
+                      placeholder="標籤，用逗號分隔"
                       className="w-full bg-transparent outline-none"
                     />
                   </label>
@@ -312,141 +447,188 @@ export default function CommunityPage() {
                     <button
                       type="button"
                       onClick={() => fileInputRef.current?.click()}
-                      className="flex items-center gap-2 px-2 py-2 text-xs font-medium text-neutral-500 hover:text-neutral-900"
+                      disabled={!currentAccount}
+                      className="flex items-center gap-2 px-2 py-2 text-xs font-medium text-neutral-500 hover:text-neutral-900 disabled:cursor-not-allowed disabled:opacity-40"
                     >
-                      <ImagePlus className="size-4" /> 實景照片
+                      <ImagePlus className="size-4" /> 實景照片上傳
                     </button>
                   </div>
                   <button
                     type="submit"
-                    disabled={!draft.trim()}
+                    disabled={!currentAccount || !draft.trim() || submitting}
                     className="flex items-center gap-2 bg-neutral-900 px-5 py-2.5 text-xs font-bold tracking-widest text-white transition hover:bg-neutral-700 disabled:cursor-not-allowed disabled:opacity-30"
                   >
-                    發布足跡 <Send className="size-3.5" />
+                    {submitting ? "發布中" : "發布動態"} <Send className="size-3.5" />
                   </button>
                 </div>
               </div>
             </div>
           </form>
 
-          {visiblePosts.length === 0 && (
-            <div className="border border-dashed border-neutral-300 bg-white py-16 text-center text-sm text-neutral-400">
-              找不到符合條件的旅途動態
+          {loadingPosts && (
+            <div className="border border-neutral-200 bg-white py-14 text-center text-sm text-neutral-400">
+              讀取動態中...
             </div>
           )}
 
-          {visiblePosts.map((post) => (
-            <article key={post.id} className="overflow-hidden border border-neutral-200 bg-white shadow-sm">
-              <div className="p-5 md:p-6">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex min-w-0 items-center gap-3">
-                    <div className="flex size-11 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-sm font-bold text-neutral-700">
-                      {post.avatar}
-                    </div>
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-x-2">
-                        <span className="text-sm font-bold">{post.author}</span>
-                        <span className="text-xs text-neutral-400">{post.handle}</span>
-                      </div>
-                      <p className="mt-1 text-[11px] text-neutral-400">{post.time}</p>
-                    </div>
-                  </div>
-                  <span className="shrink-0 bg-neutral-100 px-2.5 py-1 text-[10px] font-bold tracking-wider text-neutral-600">
-                    {post.type === "question" ? "疑難問答" : post.type === "group" ? "快閃揪團" : "獨旅足跡"}
-                  </span>
-                </div>
+          {!loadingPosts && posts.length === 0 && (
+            <div className="border border-dashed border-neutral-300 bg-white py-16 text-center text-sm text-neutral-400">
+              目前沒有符合條件的動態。
+            </div>
+          )}
 
-                {post.title && <h2 className="mt-5 text-lg font-semibold leading-7">{post.title}</h2>}
-                <p className="mt-4 text-sm font-light leading-7 text-neutral-600">{post.content}</p>
-
-                {post.location && (
-                  <p className="mt-4 flex items-center gap-1.5 text-xs font-medium text-neutral-500">
-                    <MapPin className="size-3.5" /> {post.location}
-                  </p>
-                )}
-                <div className="mt-4 flex flex-wrap gap-2">
-                  {post.tags.map((item) => (
-                    <button
-                      key={item}
-                      onClick={() => setSearch(item)}
-                      className="bg-stone-100 px-2.5 py-1 text-[11px] text-stone-600 hover:bg-stone-200"
-                    >
-                      #{item}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {post.images.length > 0 && (
-                <div className={`grid gap-0.5 bg-neutral-100 ${post.images.length > 1 ? "grid-cols-[1.45fr_1fr]" : "grid-cols-1"}`}>
-                  {post.images.map((src, index) => (
-                    <div key={src} className="relative h-72 w-full md:h-96">
-                    <Image
-                      src={src}
-                      alt={`${post.author} 的旅途照片 ${index + 1}`}
-                      fill
-                      unoptimized
-                      sizes={post.images.length > 1 ? "(min-width: 768px) 35vw, 50vw" : "(min-width: 1024px) 60vw, 100vw"}
-                      className="object-cover"
-                    />
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              <div className="flex items-center justify-between border-t border-neutral-100 px-5 py-3 md:px-6">
-                <div className="flex items-center gap-1">
-                  <button
-                    onClick={() => patchPost(post.id, { liked: !post.liked, likes: post.likes + (post.liked ? -1 : 1) })}
-                    aria-label={post.liked ? "取消按讚" : "按讚"}
-                    className={`flex items-center gap-2 px-3 py-2 text-xs transition ${post.liked ? "text-rose-600" : "text-neutral-500 hover:text-neutral-900"}`}
-                  >
-                    <Heart className={`size-4 ${post.liked ? "fill-current" : ""}`} /> {post.likes}
-                  </button>
-                  <button
-                    onClick={() => setOpenComments((current) => ({ ...current, [post.id]: !current[post.id] }))}
-                    className="flex items-center gap-2 px-3 py-2 text-xs text-neutral-500 hover:text-neutral-900"
-                  >
-                    <MessageCircle className="size-4" /> {post.comments.length}
-                  </button>
-                </div>
-                <button
-                  onClick={() => patchPost(post.id, { saved: !post.saved })}
-                  aria-label={post.saved ? "取消收藏" : "收藏"}
-                  className={`p-2 transition ${post.saved ? "text-amber-600" : "text-neutral-400 hover:text-neutral-900"}`}
-                >
-                  <Bookmark className={`size-4 ${post.saved ? "fill-current" : ""}`} />
-                </button>
-              </div>
-
-              {(openComments[post.id] || post.comments.length > 0) && (
-                <div className="border-t border-neutral-100 bg-neutral-50 px-5 py-4 md:px-6">
-                  {openComments[post.id] && (
-                    <div className="mb-4 space-y-3">
-                      {post.comments.map((comment) => (
-                        <div key={comment.id} className="flex gap-3 text-xs leading-5">
-                          <span className="shrink-0 font-bold text-neutral-800">{comment.author}</span>
-                          <span className="text-neutral-500">{comment.text}</span>
+          {!loadingPosts &&
+            posts.map((post) => (
+              <article key={post.id} className="overflow-hidden border border-neutral-200 bg-white shadow-sm">
+                <div className="p-5 md:p-6">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex min-w-0 items-center gap-3">
+                      {post.author.avatar ? (
+                        <div className="relative size-11 shrink-0 overflow-hidden rounded-full bg-neutral-100">
+                          <Image src={post.author.avatar} alt={post.author.name} fill unoptimized className="object-cover" />
                         </div>
-                      ))}
+                      ) : (
+                        <div className="flex size-11 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-sm font-bold text-neutral-700">
+                          {getInitial(post.author.name)}
+                        </div>
+                      )}
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-x-2">
+                          <span className="text-sm font-bold">{post.author.name}</span>
+                        </div>
+                        <p className="mt-1 text-[11px] text-neutral-400">{post.time}</p>
+                      </div>
                     </div>
+                    <span className="shrink-0 bg-neutral-100 px-2.5 py-1 text-[10px] font-bold tracking-wider text-neutral-600">
+                      {getTypeLabel(post.type)}
+                    </span>
+                  </div>
+
+                  {post.title && <h2 className="mt-5 text-lg font-semibold leading-7">{post.title}</h2>}
+                  <p className="mt-4 whitespace-pre-line text-sm font-light leading-7 text-neutral-600">{post.content}</p>
+
+                  {post.location && (
+                    <p className="mt-4 flex items-center gap-1.5 text-xs font-medium text-neutral-500">
+                      <MapPin className="size-3.5" /> {post.location}
+                    </p>
                   )}
-                  <form onSubmit={(event) => submitComment(event, post)} className="flex gap-2">
-                    <input
-                      value={commentDrafts[post.id] || ""}
-                      onChange={(event) => setCommentDrafts((current) => ({ ...current, [post.id]: event.target.value }))}
-                      onFocus={() => setOpenComments((current) => ({ ...current, [post.id]: true }))}
-                      placeholder="留下你的旅行建議或回應⋯"
-                      className="min-w-0 flex-1 border border-neutral-200 bg-white px-3 py-2.5 text-xs outline-none focus:border-neutral-500"
-                    />
-                    <button type="submit" aria-label="送出留言" className="bg-neutral-900 px-3 text-white">
-                      <Send className="size-3.5" />
-                    </button>
-                  </form>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {post.tags.map((item) => (
+                      <button
+                        key={item}
+                        onClick={() => setSearch(item)}
+                        className="bg-stone-100 px-2.5 py-1 text-[11px] text-stone-600 hover:bg-stone-200"
+                      >
+                        #{item}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              )}
-            </article>
-          ))}
+
+                {post.images.length > 0 && (
+                  <div className={`grid gap-0.5 bg-neutral-100 ${post.images.length > 1 ? "grid-cols-[1.45fr_1fr]" : "grid-cols-1"}`}>
+                    {post.images.map((src, index) => (
+                      <div key={src} className="relative h-72 w-full md:h-96">
+                        <Image
+                          src={src}
+                          alt={`${post.author.name} 的照片 ${index + 1}`}
+                          fill
+                          unoptimized
+                          sizes={post.images.length > 1 ? "(min-width: 768px) 35vw, 50vw" : "(min-width: 1024px) 60vw, 100vw"}
+                          className="object-cover"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div className="flex items-center justify-between border-t border-neutral-100 px-5 py-3 md:px-6">
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => void toggleReaction(post, "like")}
+                      aria-label={post.liked ? "收回讚" : "按讚"}
+                      className={`flex items-center gap-2 px-3 py-2 text-xs transition ${post.liked ? "text-rose-600" : "text-neutral-500 hover:text-neutral-900"}`}
+                    >
+                      <Heart className={`size-4 ${post.liked ? "fill-current" : ""}`} /> {post.likes}
+                    </button>
+                    <button
+                      onClick={() => setOpenComments((current) => ({ ...current, [post.id]: !current[post.id] }))}
+                      className="flex items-center gap-2 px-3 py-2 text-xs text-neutral-500 hover:text-neutral-900"
+                    >
+                      <MessageCircle className="size-4" /> {post.commentCount}
+                    </button>
+                  </div>
+                  <button
+                    onClick={() => void toggleReaction(post, "save")}
+                    aria-label={post.saved ? "取消收藏" : "收藏"}
+                    className={`p-2 transition ${post.saved ? "text-amber-600" : "text-neutral-400 hover:text-neutral-900"}`}
+                  >
+                    <Bookmark className={`size-4 ${post.saved ? "fill-current" : ""}`} />
+                  </button>
+                </div>
+
+                {(openComments[post.id] || post.comments.length > 0) && (
+                  <div className="border-t border-neutral-100 bg-neutral-50 px-5 py-4 md:px-6">
+                    {openComments[post.id] && (
+                      <div className="mb-4 space-y-3">
+                        {post.comments.map((comment) => (
+                          <div key={comment.id} className={`flex gap-2 text-xs leading-5 ${comment.parentId ? "ml-6 border-l border-neutral-200 pl-3" : ""}`}>
+                            {comment.avatar ? (
+                              <div className="relative mt-0.5 size-7 shrink-0 overflow-hidden rounded-full bg-neutral-100">
+                                <Image src={comment.avatar} alt={comment.author} fill unoptimized className="object-cover" />
+                              </div>
+                            ) : (
+                              <div className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-neutral-200 text-[10px] font-bold text-neutral-600">
+                                {getInitial(comment.author)}
+                              </div>
+                            )}
+                            <div className="min-w-0 flex-1">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="font-bold text-neutral-800">{comment.author}</span>
+                                <span className="text-[10px] text-neutral-400">{comment.time}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => setReplyTargets((current) => ({ ...current, [post.id]: comment }))}
+                                  className="text-[10px] font-semibold text-neutral-400 hover:text-neutral-800"
+                                >
+                                  回覆
+                                </button>
+                              </div>
+                              <p className="mt-1 text-neutral-500">{comment.content}</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {replyTargets[post.id] && (
+                      <div className="mb-2 flex items-center justify-between bg-white px-3 py-2 text-[11px] text-neutral-500">
+                        <span>回覆 {replyTargets[post.id]?.author}</span>
+                        <button
+                          type="button"
+                          onClick={() => setReplyTargets((current) => ({ ...current, [post.id]: undefined }))}
+                          className="text-neutral-400 hover:text-neutral-900"
+                        >
+                          取消
+                        </button>
+                      </div>
+                    )}
+                    <form onSubmit={(event) => void submitComment(event, post)} className="flex gap-2">
+                      <input
+                        value={commentDrafts[post.id] || ""}
+                        onChange={(event) => setCommentDrafts((current) => ({ ...current, [post.id]: event.target.value }))}
+                        onFocus={() => setOpenComments((current) => ({ ...current, [post.id]: true }))}
+                        placeholder={currentAccount ? "留下留言或回覆" : "請先登入後再留言"}
+                        disabled={!currentAccount}
+                        className="min-w-0 flex-1 border border-neutral-200 bg-white px-3 py-2.5 text-xs outline-none focus:border-neutral-500 disabled:cursor-not-allowed disabled:opacity-50"
+                      />
+                      <button type="submit" aria-label="送出留言" className="bg-neutral-900 px-3 text-white disabled:opacity-40" disabled={!currentAccount}>
+                        <Send className="size-3.5" />
+                      </button>
+                    </form>
+                  </div>
+                )}
+              </article>
+            ))}
         </main>
 
         <aside className="space-y-5 lg:sticky lg:top-36 lg:self-start">
@@ -458,16 +640,16 @@ export default function CommunityPage() {
               <span className="text-[10px] tracking-widest text-neutral-400">TRENDING</span>
             </div>
             <div className="space-y-1">
-              {hotTopics.map(([topic, count], index) => (
+              {visibleTopics.map((topic, index) => (
                 <button
-                  key={topic}
-                  onClick={() => setSearch(topic.slice(1))}
+                  key={topic.tag}
+                  onClick={() => setSearch(topic.tag)}
                   className="group flex w-full items-center gap-3 border-b border-neutral-100 py-3 text-left last:border-0"
                 >
-                  <span className="text-xs font-bold text-neutral-300">0{index + 1}</span>
+                  <span className="text-xs font-bold text-neutral-300">{String(index + 1).padStart(2, "0")}</span>
                   <span className="min-w-0 flex-1">
-                    <span className="block text-xs font-semibold text-neutral-700 group-hover:text-neutral-900">{topic}</span>
-                    <span className="mt-1 block text-[10px] text-neutral-400">{count}</span>
+                    <span className="block text-xs font-semibold text-neutral-700 group-hover:text-neutral-900">#{topic.tag}</span>
+                    <span className="mt-1 block text-[10px] text-neutral-400">{topic.count} 則貼文</span>
                   </span>
                   <ChevronRight className="size-3.5 text-neutral-300" />
                 </button>
@@ -475,44 +657,9 @@ export default function CommunityPage() {
             </div>
           </section>
 
-          <section className="border border-neutral-200 bg-neutral-900 p-5 text-white shadow-sm">
-            <CircleHelp className="size-6 text-amber-400" />
-            <h2 className="mt-4 text-base font-semibold">旅途中遇到疑難雜症？</h2>
-            <p className="mt-2 text-xs font-light leading-6 text-neutral-400">
-              將動態切換至「疑難問答」，讓走過同一段路的旅人提供實用答案。
-            </p>
-            <button
-              onClick={() => setActiveTab("question")}
-              className="mt-5 flex w-full items-center justify-between border border-neutral-700 px-4 py-3 text-xs font-bold tracking-wider hover:bg-white hover:text-neutral-900"
-            >
-              前往問答區 <ChevronRight className="size-4" />
-            </button>
-          </section>
-
-          <section className="border border-neutral-200 bg-white p-5 shadow-sm">
-            <div className="flex items-center gap-3">
-              <div className="flex size-10 items-center justify-center rounded-full bg-amber-50 text-amber-700">
-                <Users className="size-5" />
-              </div>
-              <div>
-                <h2 className="text-sm font-bold">週末快閃揪團區</h2>
-                <p className="mt-1 text-[10px] text-neutral-400">今天新增 12 個旅伴邀請</p>
-              </div>
-            </div>
-            <button
-              onClick={() => setActiveTab("group")}
-              className="mt-4 w-full bg-stone-100 px-4 py-3 text-xs font-semibold text-neutral-700 hover:bg-stone-200"
-            >
-              查看正在揪團的旅人
-            </button>
-          </section>
-
-          <div className="flex items-center gap-2 px-1 text-[10px] leading-5 text-neutral-400">
-            <Camera className="size-3.5 shrink-0" />
-            上傳照片前，請尊重同行者隱私與景點拍攝規範。
-          </div>
         </aside>
       </div>
     </div>
   );
 }
+

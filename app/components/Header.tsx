@@ -18,7 +18,7 @@ export function Header() {
         {/* Logo */}
         <Link to="/" className="flex items-center gap-2">
           <Plane className="size-6 text-neutral-900" />
-          <span className="font-black text-xl tracking-widest text-neutral-900 uppercase">TRAVMADE</span>
+          <span className="font-black text-xl tracking-widest text-neutral-900 uppercase">TRAVMATE</span>
         </Link>
 
         {/* 桌面端主導覽 */}
