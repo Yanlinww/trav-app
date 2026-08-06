@@ -2,7 +2,7 @@
 
 import { ChangeEvent, FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
-import { useRouter } from "next/navigation"; // 🌟 1. 引入 useRouter
+import { useRouter } from "next/navigation"; 
 import {
   Bookmark,
   ChevronRight,
@@ -23,7 +23,7 @@ type PostType = "footprint" | "question" | "group";
 type TabType = "all" | PostType;
 
 type CommunityAuthor = {
-  account?: string; // 🌟 2. 新增 account 屬性，用來作為跳轉依據
+  account?: string; 
   name: string;
   avatar: string;
 };
@@ -31,6 +31,7 @@ type CommunityAuthor = {
 type CommunityComment = {
   id: number;
   parentId: number | null;
+  account?: string; // 🌟 這裡加上 account 屬性
   author: string;
   avatar: string;
   content: string;
@@ -106,7 +107,7 @@ async function readApiResponse<T>(response: Response): Promise<ApiResponse<T>> {
 
 export default function CommunityPage() {
   const { user, loading: authLoading } = useAuth();
-  const router = useRouter(); // 🌟 3. 初始化 router
+  const router = useRouter(); 
   const currentAccount = user ? String(user.id || user.Account || "") : "";
 
   const [posts, setPosts] = useState<CommunityPost[]>([]);
@@ -494,15 +495,16 @@ export default function CommunityPage() {
                 <div className="p-5 md:p-6">
                   <div className="flex items-start justify-between gap-4">
                     
-                    {/* 🌟 4. 加入 onClick 點擊跳轉事件 🌟 */}
+                    {/* 貼文作者區塊 */}
                     <div 
                       className="flex min-w-0 items-center gap-3 cursor-pointer group"
                       onClick={() => {
-                        // 確保有帳號資料才進行跳轉
-                        if (post.author.account) {
-                          router.push(`/profile/${encodeURIComponent(post.author.account)}`);
+                        const targetAccount = post.author.account || (post.author as any).Account || (post as any).Account;
+                        if (targetAccount) {
+                          router.push(`/profile/${encodeURIComponent(targetAccount)}`);
                         } else {
-                          alert("後端尚未回傳此作者的帳號 (account)，無法跳轉！請提醒夥伴更新 API 喔。");
+                          console.log("這篇貼文的資料長這樣：", post);
+                          alert("後端尚未回傳此作者的帳號 (account)，無法跳轉！");
                         }
                       }}
                     >
@@ -592,35 +594,52 @@ export default function CommunityPage() {
                   </button>
                 </div>
 
+                {/* 🌟 留言區塊 🌟 */}
                 {(openComments[post.id] || post.comments.length > 0) && (
                   <div className="border-t border-neutral-100 bg-neutral-50 px-5 py-4 md:px-6">
                     {openComments[post.id] && (
                       <div className="mb-4 space-y-3">
                         {post.comments.map((comment) => (
                           <div key={comment.id} className={`flex gap-2 text-xs leading-5 ${comment.parentId ? "ml-6 border-l border-neutral-200 pl-3" : ""}`}>
-                            {comment.avatar ? (
-                              <div className="relative mt-0.5 size-7 shrink-0 overflow-hidden rounded-full bg-neutral-100">
-                                <Image src={comment.avatar} alt={comment.author} fill unoptimized className="object-cover" />
+                            
+                            {/* 🌟 將頭像與名字包在可以點擊的區塊內 🌟 */}
+                            <div 
+                              className="flex min-w-0 items-start gap-2 cursor-pointer group flex-1"
+                              onClick={() => {
+                                if (comment.account) {
+                                  router.push(`/profile/${encodeURIComponent(comment.account)}`);
+                                }
+                              }}
+                            >
+                              {comment.avatar ? (
+                                <div className="relative mt-0.5 size-7 shrink-0 overflow-hidden rounded-full bg-neutral-100 group-hover:ring-2 ring-neutral-300 transition-all">
+                                  <Image src={comment.avatar} alt={comment.author} fill unoptimized className="object-cover" />
+                                </div>
+                              ) : (
+                                <div className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-neutral-200 text-[10px] font-bold text-neutral-600 group-hover:ring-2 ring-neutral-300 transition-all">
+                                  {getInitial(comment.author)}
+                                </div>
+                              )}
+                              <div className="min-w-0 flex-1">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <span className="font-bold text-neutral-800 group-hover:text-[#F04D79] transition-colors">{comment.author}</span>
+                                  <span className="text-[10px] text-neutral-400">{comment.time}</span>
+                                  {/* 🌟 阻止冒泡，以免點了回覆卻跳轉頁面 */}
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setReplyTargets((current) => ({ ...current, [post.id]: comment }));
+                                    }}
+                                    className="text-[10px] font-semibold text-neutral-400 hover:text-neutral-800 z-10 relative"
+                                  >
+                                    回覆
+                                  </button>
+                                </div>
+                                <p className="mt-1 text-neutral-500">{comment.content}</p>
                               </div>
-                            ) : (
-                              <div className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-neutral-200 text-[10px] font-bold text-neutral-600">
-                                {getInitial(comment.author)}
-                              </div>
-                            )}
-                            <div className="min-w-0 flex-1">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <span className="font-bold text-neutral-800">{comment.author}</span>
-                                <span className="text-[10px] text-neutral-400">{comment.time}</span>
-                                <button
-                                  type="button"
-                                  onClick={() => setReplyTargets((current) => ({ ...current, [post.id]: comment }))}
-                                  className="text-[10px] font-semibold text-neutral-400 hover:text-neutral-800"
-                                >
-                                  回覆
-                                </button>
-                              </div>
-                              <p className="mt-1 text-neutral-500">{comment.content}</p>
                             </div>
+
                           </div>
                         ))}
                       </div>

@@ -265,6 +265,7 @@ function community_fetch_comments(mysqli $conn, int $postId): array
         $comments[] = [
             'id' => (int) $row['Comment_ID'],
             'parentId' => $row['Parent_Comment_ID'] ? (int) $row['Parent_Comment_ID'] : null,
+            'account' => $row['Account'], // 🌟 就是這裡！補上留言者的帳號
             'author' => $row['Name'] ?: $row['Account'],
             'avatar' => community_public_url($row['Avatar'] ?? '') ?: '',
             'content' => $row['Content'],
@@ -291,7 +292,7 @@ function community_format_post(mysqli $conn, array $row): array
         'createdAt' => $row['Created_At'],
         'time' => community_time_ago($row['Created_At']),
         'author' => [
-            'account' => $row['Account'], // 🌟 就是這裡！為前端補上 account 屬性，這樣 router.push 才有目標網址！
+            'account' => $row['Account'], 
             'name' => $row['Name'] ?: $row['Account'],
             'avatar' => community_public_url($row['Avatar'] ?? '') ?: '',
         ],

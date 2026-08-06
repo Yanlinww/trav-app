@@ -4,7 +4,8 @@ import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../context/AuthContext";
 import { 
-  Plus, UserPlus, X, Calendar, MapPin, Share2, Loader2, User, Pin, Trash2, MoreHorizontal, Train, Car, Bike, Compass, ChevronLeft, CheckCircle2
+  Plus, UserPlus, X, Calendar, MapPin, Share2, Loader2, User, Pin, Trash2, MoreHorizontal, Train, Car, Bike, Compass, ChevronLeft, CheckCircle2,
+  Globe, Lock // 🌟 引入公開與私密的 Icon
 } from "lucide-react";
 
 interface Itinerary {
@@ -14,6 +15,7 @@ interface Itinerary {
   endDate: string;
   coverImage: string;
   isPinned: boolean;
+  isPublic: boolean; // 🌟 擴充 isPublic 型別
   Account: string;
 }
 
@@ -21,21 +23,19 @@ export default function PlannerDashboard() {
   const { user, loading } = useAuth();
   const router = useRouter();
 
-  // ================= 狀態管理 =================
+  // 狀態管理
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
   const [isFetching, setIsFetching] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  
+
   const [title, setTitle] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [transport, setTransport] = useState("public"); 
-  // 【新增】綁定使用者選擇的地點
   const [destination, setDestination] = useState("taipei");
 
-  // 【新增】預設城市座標字典
-const CITY_COORDINATES: Record<string, { lat: number, lng: number }> = {
+  const CITY_COORDINATES: Record<string, { lat: number, lng: number }> = {
     "keelung": { lat: 25.1276, lng: 121.7392 },
     "taipei": { lat: 25.0478, lng: 121.5170 },
     "new_taipei": { lat: 25.0119, lng: 121.4654 },
@@ -58,20 +58,14 @@ const CITY_COORDINATES: Record<string, { lat: number, lng: number }> = {
     "penghu": { lat: 23.5711, lng: 119.5815 },
     "kinmen": { lat: 24.4327, lng: 118.3225 },
     "matsu": { lat: 26.1505, lng: 119.9334 },
-    
-    // 保留國際常用選項供防呆或擴充
     "tokyo": { lat: 35.6812, lng: 139.7671 },
     "osaka": { lat: 34.6937, lng: 135.5023 },
   };
 
   const [itineraries, setItineraries] = useState<Itinerary[]>([]);
-
-  // 加入行程 (6 宮格) 狀態
   const [isJoinModalOpen, setIsJoinModalOpen] = useState(false); 
   const [inviteCodeArray, setInviteCodeArray] = useState<string[]>(Array(6).fill(""));
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
-
-  // 顯示邀請碼狀態
   const [generatedCodeInfo, setGeneratedCodeInfo] = useState<{ isOpen: boolean; code: string; copied: boolean }>({
     isOpen: false, code: "", copied: false
   });
@@ -83,21 +77,21 @@ const CITY_COORDINATES: Record<string, { lat: number, lng: number }> = {
     { id: 'other', label: '其他', icon: Compass },
   ];
 
-  // ================= 運作機制：資料庫讀取 =================
+  // 取得行程
   const fetchItineraries = async () => {
     if (!user) return;
     try {
       const res = await fetch("http://localhost:8080/itinerary/core/get_itineraries.php", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ Account: user.id || (user as any).Account }),
+        body: JSON.stringify({ Account: user.id || (user as any).Account, Viewer_Account: user.id || (user as any).Account }),
       });
       const data = await res.json();
       if (data.status === 'success') {
         setItineraries(data.data);
       }
     } catch (error) {
-      console.error("行程讀取異常", error);
+      console.error("載入行程失敗", error);
     } finally {
       setIsFetching(false);
     }
@@ -113,7 +107,7 @@ const CITY_COORDINATES: Record<string, { lat: number, lng: number }> = {
 
   const sortedItineraries = [...itineraries].sort((a, b) => (a.isPinned === b.isPinned ? 0 : a.isPinned ? -1 : 1));
 
-  // ================= 邀請碼邏輯 (自訂 Modal 版) =================
+  // 取得邀請碼
   const handleGetInviteCode = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     try {
@@ -129,38 +123,30 @@ const CITY_COORDINATES: Record<string, { lat: number, lng: number }> = {
           setTimeout(() => setGeneratedCodeInfo(prev => ({ ...prev, copied: false })), 3000);
         });
       } else { alert(data.message); }
-    } catch (error) { alert("獲取邀請碼失敗"); }
+    } catch (error) { alert("無法取得邀請碼"); }
     setActiveDropdown(null);
   };
 
-  // 6 宮格輸入與貼上處理邏輯
   const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
-    e.preventDefault(); // 阻擋原生貼上行為以突破 maxLength 限制
+    e.preventDefault();
     const pastedText = e.clipboardData.getData('text/plain');
     const cleanedText = pastedText.replace(/[^a-zA-Z0-9]/g, '').slice(0, 6).toUpperCase();
-
     if (cleanedText) {
       const newArray = [...inviteCodeArray];
       for (let i = 0; i < cleanedText.length; i++) {
         newArray[i] = cleanedText[i];
       }
       setInviteCodeArray(newArray);
-
-      // 將焦點移至最後一個輸入框，或下一個空白框
       const nextIndex = Math.min(cleanedText.length, 5);
       inputRefs.current[nextIndex]?.focus();
     }
   };
 
   const handleCodeChange = (index: number, value: string) => {
-    // 確保只取最後輸入的單一字元
     const char = value.slice(-1).toUpperCase().replace(/[^A-Z0-9]/g, '');
-
     const newArray = [...inviteCodeArray];
     newArray[index] = char;
     setInviteCodeArray(newArray);
-
-    // 如果有輸入且不是最後一格，自動跳下一格
     if (char && index < 5) {
       inputRefs.current[index + 1]?.focus();
     }
@@ -189,13 +175,37 @@ const CITY_COORDINATES: Record<string, { lat: number, lng: number }> = {
         setInviteCodeArray(Array(6).fill(""));
         fetchItineraries();
       } else { alert(data.message); }
-    } catch (error) { alert("連線失敗"); } finally { setIsSubmitting(false); }
+    } catch (error) { alert("加入行程時發生錯誤"); } finally { setIsSubmitting(false); }
   };
 
-  // ================= 行程卡片基本操作 =================
+  // 🌟 切換行程公開/私密狀態 🌟
+  const handleToggleVisibility = async (id: string, isCurrentlyPublic: boolean, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const targetStatus = !isCurrentlyPublic;
+    
+    // 樂觀更新 UI
+    setItineraries(itineraries.map(it => it.id === id ? { ...it, isPublic: targetStatus } : it));
+    setActiveDropdown(null);
+
+    try {
+      const res = await fetch("http://localhost:8080/itinerary/core/toggle_itinerary_visibility.php", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ Account: user?.id || (user as any)?.Account, Itinerary_ID: id, Is_Public: targetStatus }),
+      });
+      const data = await res.json();
+      if (data.status !== 'success') {
+        setItineraries(itineraries.map(it => it.id === id ? { ...it, isPublic: isCurrentlyPublic } : it));
+        alert(data.message);
+      }
+    } catch (error) {
+      setItineraries(itineraries.map(it => it.id === id ? { ...it, isPublic: isCurrentlyPublic } : it));
+      alert("伺服器連線發生錯誤");
+    }
+  };
+
   const handleDelete = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (confirm("確定刪除此行程？此動作無法復原。")) {
+    if (confirm("確定要刪除這個行程嗎？此動作無法復原。")) {
       try {
         const res = await fetch("http://localhost:8080/itinerary/core/delete_itinerary.php", {
           method: "POST", headers: { "Content-Type": "application/json" },
@@ -204,7 +214,7 @@ const CITY_COORDINATES: Record<string, { lat: number, lng: number }> = {
         const data = await res.json();
         if (data.status === 'success') { setItineraries(itineraries.filter(it => it.id !== id)); } 
         else { alert(data.message); }
-      } catch (error) { alert("連線異常"); }
+      } catch (error) { alert("刪除失敗"); }
       setActiveDropdown(null);
     }
   };
@@ -226,43 +236,39 @@ const CITY_COORDINATES: Record<string, { lat: number, lng: number }> = {
       }
     } catch (error) {
       setItineraries(itineraries.map(it => it.id === id ? { ...it, isPinned: isCurrentlyPinned } : it));
-      alert("連線異常");
+      alert("釘選狀態更新失敗");
     }
   };
 
-const handleCreateItinerary = async (e: React.FormEvent) => {
+  const handleCreateItinerary = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
-    
-    // 【新增】透過字典取得對應經緯度
     const coords = CITY_COORDINATES[destination];
-
     try {
       const res = await fetch("http://localhost:8080/itinerary/core/create_itinerary.php", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
-          Account: user?.id || (user as any)?.Account, 
-          Title: title, 
-          StartDate: startDate, 
-          EndDate: endDate, 
-          Transport: transport,
-          // 【新增】傳送座標至後端
-          Dest_Lat: coords.lat, 
-          Dest_Lng: coords.lng 
-        }),
+           Account: user?.id || (user as any)?.Account, 
+           Title: title, 
+           StartDate: startDate, 
+           EndDate: endDate, 
+           Transport: transport, 
+           Dest_Lat: coords.lat, 
+           Dest_Lng: coords.lng 
+         }),
       });
       const data = await res.json();
-      if (data.status === 'success') { 
-        await fetchItineraries(); 
-        setIsModalOpen(false); 
-        setTitle(""); 
-        setStartDate(""); 
-        setEndDate(""); 
-        setTransport("public"); 
-        setDestination("taipei"); // 【新增】成功後重置為預設地點
-      } 
-      else { alert("建立失敗：" + data.message); }
-    } catch (error) { alert("系統連線異常"); } finally { setIsSubmitting(false); }
+      if (data.status === 'success') {
+         await fetchItineraries();
+         setIsModalOpen(false);
+         setTitle("");
+         setStartDate("");
+         setEndDate("");
+         setTransport("public");
+         setDestination("taipei");
+       } 
+       else { alert("建立失敗: " + data.message); }
+    } catch (error) { alert("發生錯誤"); } finally { setIsSubmitting(false); }
   };
 
   if (loading || isFetching) return <div className="min-h-screen flex items-center justify-center bg-[#FAFAFA]"><Loader2 className="animate-spin size-8 text-slate-300" /></div>;
@@ -270,25 +276,24 @@ const handleCreateItinerary = async (e: React.FormEvent) => {
   return (
     <div className="min-h-screen bg-[#FAFAFA] relative">
       {activeDropdown && <div className="fixed inset-0 z-10" onClick={() => setActiveDropdown(null)} />}
-
       <div className="max-w-7xl mx-auto px-6 py-12">
         <div className="flex justify-between items-center mb-12">
           <h1 className="text-3xl font-bold text-slate-900 tracking-wide">我的行程</h1>
           <div className="flex gap-3">
              <button onClick={() => setIsJoinModalOpen(true)} className="flex items-center gap-2 px-5 py-2.5 bg-white border border-slate-200 rounded-lg text-sm font-medium hover:border-[#F04D79] transition-all">
-              <UserPlus size={16} /> 輸入邀請碼
-            </button>
+              <UserPlus size={16} /> 收藏他人行程
+             </button>
             <button onClick={() => setIsModalOpen(true)} className="flex items-center gap-2 px-5 py-2.5 bg-slate-900 text-white rounded-lg text-sm font-medium hover:bg-amber-600 transition-all">
               <Plus size={16} /> 建立新行程
-            </button>
+             </button>
           </div>
         </div>
 
         {itineraries.length === 0 ? (
           <div className="text-center py-28 bg-white border border-slate-100 rounded-2xl shadow-sm">
             <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-6"><MapPin className="text-slate-300" size={28} /></div>
-            <p className="text-slate-500 mb-8 tracking-wide">立即體驗行程規劃的樂趣，為您的下一趟獨旅輕鬆做準備。</p>
-            <button onClick={() => setIsModalOpen(true)} className="px-7 py-3 bg-slate-900 text-white font-medium rounded-lg">開始規劃</button>
+            <p className="text-slate-500 mb-8 tracking-wide">還沒有任何行程，開始規劃你的下一趟旅程吧！</p>
+            <button onClick={() => setIsModalOpen(true)} className="px-7 py-3 bg-slate-900 text-white font-medium rounded-lg">建立第一個行程</button>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6">
@@ -299,19 +304,32 @@ const handleCreateItinerary = async (e: React.FormEvent) => {
                   {itinerary.isPinned && <div className="absolute top-3 left-3 bg-slate-900/90 text-white p-1.5 rounded-full"><Pin className="size-3.5" /></div>}
                   <button onClick={(e) => { e.stopPropagation(); setActiveDropdown(activeDropdown === itinerary.id ? null : itinerary.id); }} className="absolute top-3 right-3 size-8 bg-white/90 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100"><MoreHorizontal className="size-4" /></button>
                 </div>
-
+                
                 {activeDropdown === itinerary.id && (
                   <div onClick={(e) => e.stopPropagation()} className="absolute right-3 top-14 w-36 bg-white border border-gray-100 shadow-xl rounded-lg py-1.5 z-50">
-                    <button onClick={(e) => handleGetInviteCode(itinerary.id, e)} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-100"><Share2 className="size-4" /> 分享行程</button>
+                    <button onClick={(e) => handleGetInviteCode(itinerary.id, e)} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-100"><Share2 className="size-4" /> 邀請共編</button>
                     <button onClick={(e) => handlePin(itinerary.id, itinerary.isPinned, e)} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-100"><Pin className="size-4" /> {itinerary.isPinned ? '取消釘選' : '釘選行程'}</button>
+                    
+                    {/* 🌟 公開/私密狀態切換按鈕 🌟 */}
+                    <button onClick={(e) => handleToggleVisibility(itinerary.id, itinerary.isPublic, e)} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-100">
+                      {itinerary.isPublic ? <Lock className="size-4 text-amber-600" /> : <Globe className="size-4 text-emerald-600" />} 
+                      {itinerary.isPublic ? '設為私密' : '公開分享'}
+                    </button>
+
                     <button onClick={(e) => handleDelete(itinerary.id, e)} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-500 hover:bg-red-50"><Trash2 className="size-4" /> 刪除行程</button>
                   </div>
                 )}
+                
                 <div className="p-5">
                   <h3 className="text-lg font-medium text-slate-900 mb-1.5 truncate">{itinerary.title}</h3>
                   <div className="flex items-center justify-between mt-2">
                     <p className="text-xs text-slate-400 font-mono">{itinerary.startDate} - {itinerary.endDate}</p>
-                    <span className="text-[10px] font-bold text-slate-300 uppercase">{itinerary.Account === (user?.id || (user as any)?.Account) ? 'Owner' : 'Member'}</span>
+                    
+                    {/* 🌟 狀態標示區塊 🌟 */}
+                    <div className="flex items-center gap-1.5">
+                      {itinerary.isPublic ? <Globe size={12} className="text-emerald-500" title="公開行程" /> : <Lock size={12} className="text-slate-300" title="私密行程" />}
+                      <span className="text-[10px] font-bold text-slate-300 uppercase">{itinerary.Account === (user?.id || (user as any)?.Account) ? 'Owner' : 'Member'}</span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -320,20 +338,14 @@ const handleCreateItinerary = async (e: React.FormEvent) => {
         )}
       </div>
 
-      {/* ================= 建立行程 Modal ================= */}
+      {/* 以下 Modal 保留不變 */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-[60]">
           <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95">
              <div className="p-6 border-b border-slate-100 flex justify-between items-center"><h2 className="text-sm font-bold tracking-widest uppercase">Start Planning</h2><button onClick={() => setIsModalOpen(false)}><X size={20} /></button></div>
              <form onSubmit={handleCreateItinerary} className="p-8 space-y-6">
-                <input type="text" required value={title} onChange={(e) => setTitle(e.target.value)} placeholder="行程標題" className="w-full p-4 bg-slate-50 border rounded-xl" />
-                
-                {/* 【新增】地點選擇下拉選單 */}
-<select 
-                  value={destination} 
-                  onChange={(e) => setDestination(e.target.value)} 
-                  className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl text-slate-700 outline-none focus:border-[#F04D79]"
-                >
+                <input type="text" required value={title} onChange={(e) => setTitle(e.target.value)} placeholder="為你的旅程取個名字" className="w-full p-4 bg-slate-50 border rounded-xl" />
+                <select value={destination} onChange={(e) => setDestination(e.target.value)} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl text-slate-700 outline-none focus:border-[#F04D79]">
                   <optgroup label="北部">
                     <option value="keelung">基隆市</option>
                     <option value="taipei">台北市</option>
@@ -364,30 +376,28 @@ const handleCreateItinerary = async (e: React.FormEvent) => {
                   <optgroup label="外島">
                     <option value="penghu">澎湖縣</option>
                     <option value="kinmen">金門縣</option>
-                    <option value="matsu">連江縣 (馬祖)</option>
+                    <option value="matsu">連江縣(馬祖)</option>
                   </optgroup>
-                  <optgroup label="國際">
-                    <option value="tokyo">日本 - 東京</option>
-                    <option value="osaka">日本 - 大阪</option>
+                  <optgroup label="海外 (測試)">
+                    <option value="tokyo">日本東京</option>
+                    <option value="osaka">日本大阪</option>
                   </optgroup>
                 </select>
-
                 <div className="grid grid-cols-2 gap-4">
                   <input type="date" required value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-full p-4 bg-slate-50 border rounded-xl" />
                   <input type="date" required value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-full p-4 bg-slate-50 border rounded-xl" />
                 </div>
-                <button type="submit" disabled={isSubmitting} className="w-full py-4 bg-slate-900 text-white rounded-xl">{isSubmitting ? "處理中..." : "建立行程"}</button>
+                <button type="submit" disabled={isSubmitting} className="w-full py-4 bg-slate-900 text-white rounded-xl">{isSubmitting ? "建立中..." : "開始規劃"}</button>
              </form>
           </div>
         </div>
       )}
 
-      {/* ================= 顯示邀請碼 Modal (取代 alert) ================= */}
       {generatedCodeInfo.isOpen && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
           <div className="bg-white w-full max-w-sm rounded-3xl shadow-xl p-8 text-center animate-in zoom-in-95 duration-200">
-            <h3 className="text-xl font-bold text-slate-800 mb-2">專屬邀請碼</h3>
-            <p className="text-sm text-slate-500 mb-6">將下方代碼分享給朋友，邀請他們加入！</p>
+            <h3 className="text-xl font-bold text-slate-800 mb-2">邀請共編</h3>
+            <p className="text-sm text-slate-500 mb-6">將此代碼分享給旅伴，他們即可加入編輯</p>
             <div className="bg-slate-50 py-5 rounded-2xl mb-2 flex items-center justify-center relative border border-slate-100">
               <span className="text-3xl font-mono font-bold tracking-[0.2em] text-[#F04D79] ml-2">
                 {generatedCodeInfo.code}
@@ -396,7 +406,7 @@ const handleCreateItinerary = async (e: React.FormEvent) => {
             <div className="h-6 mb-4 flex items-center justify-center">
               {generatedCodeInfo.copied && (
                 <span className="text-xs font-bold text-green-500 flex items-center gap-1 animate-in fade-in slide-in-from-bottom-2">
-                  <CheckCircle2 size={14} /> 已自動複製到剪貼簿
+                  <CheckCircle2 size={14} /> 代碼已複製
                 </span>
               )}
             </div>
@@ -410,16 +420,13 @@ const handleCreateItinerary = async (e: React.FormEvent) => {
         </div>
       )}
 
-      {/* ================= 透過邀請碼加入 Modal (6 宮格) ================= */}
       {isJoinModalOpen && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
           <div className="bg-white w-full max-w-md rounded-[32px] shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200 p-8">
             <div className="mb-8 text-center">
-              <h2 className="text-2xl font-bold text-slate-800 mb-3 text-left">透過邀請碼加入</h2>
-              <p className="text-sm text-slate-500 font-medium">請輸入朋友分享的 6 位數碼來加入行程</p>
+              <h2 className="text-2xl font-bold text-slate-800 mb-3 text-left">輸入邀請碼</h2>
+              <p className="text-sm text-slate-500 font-medium">請輸入 6 碼英數字邀請碼，即可將該行程加入你的清單。</p>
             </div>
-
-            {/* 6 宮格輸入區塊 */}
             <div className="flex justify-center gap-3 mb-10">
               {inviteCodeArray.map((char, index) => (
                 <input
@@ -439,8 +446,6 @@ const handleCreateItinerary = async (e: React.FormEvent) => {
                 />
               ))}
             </div>
-
-            {/* 操作按鈕 */}
             <div className="flex justify-end gap-6 items-center">
               <button 
                 onClick={() => { setIsJoinModalOpen(false); setInviteCodeArray(Array(6).fill("")); }} 
@@ -450,10 +455,10 @@ const handleCreateItinerary = async (e: React.FormEvent) => {
               </button>
               <button 
                 onClick={handleJoinItinerary} 
-                disabled={isSubmitting || inviteCodeArray.join('').length < 6} 
+                disabled={isSubmitting || inviteCodeArray.join('').length < 6}
                 className="px-8 py-3 rounded-xl text-[17px] font-bold transition-all shadow-sm flex items-center gap-2 disabled:bg-slate-200 disabled:text-white disabled:shadow-none bg-[#F04D79] text-white hover:bg-pink-600"
               >
-                {isSubmitting ? <Loader2 size={20} className="animate-spin" /> : "完成"}
+                {isSubmitting ? <Loader2 size={20} className="animate-spin" /> : "確認加入"}
               </button>
             </div>
           </div>

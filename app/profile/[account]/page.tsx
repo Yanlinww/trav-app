@@ -2,21 +2,27 @@
 
 import React, { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { Camera, MapPin, Bookmark, Link2, X, Loader2, Eye, ChevronLeft } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
+import { Camera, MapPin, Bookmark, Loader2, Eye, ChevronLeft, UserPlus, UserCheck } from 'lucide-react';
 import { FaFacebook, FaInstagram, FaTwitter, FaYoutube, FaTiktok } from 'react-icons/fa';
+import { Link2 } from 'lucide-react';
 
 export default function PublicProfilePage() {
   const params = useParams();
   const router = useRouter();
+  const { user } = useAuth();
+  const currentAccount = user ? String(user.id || (user as any).Account || "") : "";
   
-  // 🌟 從網址取得對方的帳號
   const targetAccount = decodeURIComponent(params.account as string);
   
   const [activeTab, setActiveTab] = useState('photos');
   
-  // 狀態管理
-  const [profileUser, setProfileUser] = useState<{name: string, avatar: string} | null>(null);
+  const [profileUser, setProfileUser] = useState<{
+    account: string; name: string; avatar: string; followersCount: number; followingCount: number; isFollowing: boolean;
+  } | null>(null);
   const [isLoadingProfile, setIsLoadingProfile] = useState(true);
+  const [isTogglingFollow, setIsTogglingFollow] = useState(false);
+  
   const [userFiles, setUserFiles] = useState<any[]>([]); 
   const [isLoadingFiles, setIsLoadingFiles] = useState(false);
   const [itineraries, setItineraries] = useState<any[]>([]);
@@ -25,14 +31,14 @@ export default function PublicProfilePage() {
     instagram: '', twitter: '', xiaohongshu: '', tiktok: '', youtube: '', facebook: ''
   });
 
-  // 1. 取得對方基本資料
+  // 1. 抓取基本資料
   useEffect(() => {
     if (!targetAccount) return;
     const fetchProfile = async () => {
       try {
         const res = await fetch("http://localhost:8080/get_user_profile.php", {
           method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ Account: targetAccount })
+          body: JSON.stringify({ Account: targetAccount, Viewer_Account: currentAccount })
         });
         const data = await res.json();
         if (data.status === 'success') setProfileUser(data.data);
@@ -40,9 +46,39 @@ export default function PublicProfilePage() {
       finally { setIsLoadingProfile(false); }
     };
     fetchProfile();
-  }, [targetAccount]);
+  }, [targetAccount, currentAccount]);
 
-  // 2. 取得對方公開照片
+  // 2. 處理追蹤/取消追蹤
+  const handleToggleFollow = async () => {
+    if (!currentAccount) {
+      alert("請先登入才能追蹤旅行者喔！");
+      return;
+    }
+    if (currentAccount === targetAccount) return;
+
+    setIsTogglingFollow(true);
+    try {
+      const res = await fetch("http://localhost:8080/toggle_follow.php", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ Follower_Account: currentAccount, Target_Account: targetAccount })
+      });
+      const data = await res.json();
+      if (data.status === 'success' && profileUser) {
+        setProfileUser({
+          ...profileUser,
+          isFollowing: data.isFollowing,
+          followersCount: data.followersCount
+        });
+      }
+    } catch (e) {
+      console.error(e);
+      alert("伺服器連線錯誤");
+    } finally {
+      setIsTogglingFollow(false);
+    }
+  };
+
+  // 3. 抓取照片檔案
   useEffect(() => {
     if (!targetAccount || activeTab !== 'photos') return;
     const fetchFiles = async () => {
@@ -54,12 +90,13 @@ export default function PublicProfilePage() {
         });
         const data = await res.json();
         if (data.status === 'success') setUserFiles(data.data);
+        else setUserFiles([]);
       } catch (e) {} finally { setIsLoadingFiles(false); }
     };
     fetchFiles();
   }, [targetAccount, activeTab]);
 
-  // 3. 取得對方公開行程
+  // 4. 抓取公開行程 (🌟 這裡已幫你補上 Viewer_Account)
   useEffect(() => {
     if (!targetAccount || activeTab !== 'journeys') return;
     const fetchItins = async () => {
@@ -67,16 +104,20 @@ export default function PublicProfilePage() {
       try {
         const res = await fetch("http://localhost:8080/itinerary/core/get_itineraries.php", {
           method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ Account: targetAccount }),
+          body: JSON.stringify({ 
+            Account: targetAccount,
+            Viewer_Account: currentAccount 
+          }),
         });
         const data = await res.json();
         if (data.status === 'success') setItineraries(data.data);
+        else setItineraries([]);
       } catch (e) {} finally { setIsLoadingItineraries(false); }
     };
     fetchItins();
-  }, [targetAccount, activeTab]);
+  }, [targetAccount, currentAccount, activeTab]);
 
-  // 4. 取得對方社群連結
+  // 5. 抓取社群連結
   useEffect(() => {
     if (!targetAccount) return;
     const fetchSocials = async () => {
@@ -101,14 +142,18 @@ export default function PublicProfilePage() {
     );
   };
 
-  if (isLoadingProfile) return <div className="min-h-screen flex items-center justify-center bg-[#FBFBFB]"><Loader2 className="w-8 h-8 animate-spin text-neutral-300" /></div>;
+  if (isLoadingProfile) {
+    return <div className="min-h-screen flex items-center justify-center bg-[#FBFBFB]"><Loader2 className="w-8 h-8 animate-spin text-neutral-300" /></div>;
+  }
 
-  if (!profileUser) return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-[#FBFBFB] gap-4">
-      <h2 className="text-xl font-bold text-neutral-600">找不到此旅行者</h2>
-      <button onClick={() => router.back()} className="px-6 py-2 bg-neutral-900 text-white rounded-full text-sm font-bold">返回上一頁</button>
-    </div>
-  );
+  if (!profileUser) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-[#FBFBFB] gap-4">
+        <h2 className="text-xl font-bold text-neutral-600">找不到此旅行者</h2>
+        <button onClick={() => router.back()} className="px-6 py-2 bg-neutral-900 text-white rounded-full text-sm font-bold">返回上一頁</button>
+      </div>
+    );
+  }
 
   return (
     <div className="relative w-full min-h-screen bg-[#FBFBFB] pb-24">
@@ -118,25 +163,50 @@ export default function PublicProfilePage() {
 
       <div className="max-w-5xl mx-auto pt-20 px-4 sm:px-6 relative z-10">
         
-        {/* 個人資料面板 */}
+        {/* ================= 1. 個人資料面板 ================= */}
         <div className="bg-white rounded-2xl shadow-xl p-8 md:p-10 flex flex-col md:flex-row items-center md:items-start justify-between gap-8 relative border border-neutral-100">
           <button onClick={() => router.back()} className="absolute top-6 left-6 text-neutral-400 hover:text-neutral-900 transition-colors hidden md:block">
             <ChevronLeft size={24} />
           </button>
 
-          <div className="flex flex-col md:flex-row items-center gap-6 text-center md:text-left md:ml-8">
+          {/* 左側：大頭貼與名字等資訊 */}
+          <div className="flex flex-col md:flex-row items-center gap-6 text-center md:text-left md:ml-8 mt-4 md:mt-0">
             <div className="w-28 h-28 bg-neutral-100 rounded-full border-4 border-white flex items-center justify-center flex-shrink-0 shadow-md overflow-hidden">
               {profileUser.avatar ? <img src={profileUser.avatar} alt="Avatar" className="w-full h-full object-cover" /> : <span className="text-4xl font-light text-neutral-300">{profileUser.name.charAt(0)}</span>}
             </div>
             <div>
               <h1 className="text-2xl font-bold text-neutral-900 mb-2">{profileUser.name}</h1>
               <p className="text-sm font-medium text-neutral-500 flex items-center justify-center md:justify-start gap-2">
-                <span>{itineraries.length} 行程</span><span className="w-1 h-1 bg-neutral-300 rounded-full"></span><span>{userFiles.length} 旅遊照片</span>
+                <span>{itineraries.length} 行程</span><span className="w-1 h-1 bg-neutral-300 rounded-full"></span><span>{userFiles.length} 旅遊照片</span><span className="bg-neutral-100 p-1 rounded text-neutral-400"><MapPin size={12}/></span>
               </p>
             </div>
           </div>
-          <div className="flex flex-col items-center md:items-end gap-5 mt-2 md:mt-0">
-             <div className="flex items-center gap-2">
+          
+          {/* 右側：追蹤按鈕、粉絲數據與社群連結 */}
+          <div className="flex flex-col items-center md:items-end gap-5 mt-4 md:mt-0">
+            
+            {/* 🌟 將追蹤按鈕移至這裡 (粉絲數據的上方) 🌟 */}
+            {currentAccount !== profileUser.account && (
+              <button 
+                onClick={handleToggleFollow}
+                disabled={isTogglingFollow}
+                className={`flex items-center justify-center gap-1.5 px-6 py-2 rounded-full text-xs font-bold transition-all shadow-sm w-full md:w-auto ${
+                  profileUser.isFollowing 
+                    ? 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200' 
+                    : 'bg-[#F04D79] text-white hover:bg-pink-600'
+                }`}
+              >
+                {isTogglingFollow ? <Loader2 size={16} className="animate-spin" /> : profileUser.isFollowing ? <><UserCheck size={16} /> 追蹤中</> : <><UserPlus size={16} /> 追蹤</>}
+              </button>
+            )}
+
+            <div className="flex items-center gap-6 text-neutral-800">
+              <div className="text-center flex items-baseline gap-1.5"><span className="text-2xl font-bold">{profileUser.followersCount}</span> <span className="text-sm text-neutral-500 font-medium">粉絲</span></div>
+              <div className="w-px h-6 bg-neutral-200"></div>
+              <div className="text-center flex items-baseline gap-1.5"><span className="text-2xl font-bold">{profileUser.followingCount}</span> <span className="text-sm text-neutral-500 font-medium">追蹤中</span></div>
+            </div>
+            
+            <div className="flex items-center gap-2">
               <SocialIconBtn network="facebook" link={socialLinks.facebook} icon={FaFacebook} />
               <SocialIconBtn network="instagram" link={socialLinks.instagram} icon={FaInstagram} />
               <SocialIconBtn network="twitter" link={socialLinks.twitter} icon={FaTwitter} />
@@ -147,13 +217,14 @@ export default function PublicProfilePage() {
           </div>
         </div>
 
-        {/* 分頁按鈕 */}
+        {/* ================= 2. 下方內容分頁 ================= */}
         <div className="flex flex-wrap gap-4 mt-12 justify-center md:justify-start mb-8">
           <button onClick={() => setActiveTab('photos')} className={`px-6 py-3 flex items-center gap-2 text-xs font-medium tracking-widest uppercase transition-all border ${activeTab === 'photos' ? 'bg-neutral-900 border-neutral-900 text-white' : 'bg-white border-neutral-200 text-neutral-500 hover:border-neutral-400'}`}><Camera className="size-3.5" /> 旅遊照片</button>
           <button onClick={() => setActiveTab('journeys')} className={`px-6 py-3 flex items-center gap-2 text-xs font-medium tracking-widest uppercase transition-all border ${activeTab === 'journeys' ? 'bg-neutral-900 border-neutral-900 text-white' : 'bg-white border-neutral-200 text-neutral-500 hover:border-neutral-400'}`}><Bookmark className="size-3.5" /> 分享的行程</button>
         </div>
 
-        {/* 照片區塊 (唯讀) */}
+        {/* ================= 3. 唯讀的檔案顯示區塊 ================= */}
+        
         {activeTab === 'photos' && (
           isLoadingFiles ? (
             <div className="flex justify-center py-20"><Loader2 className="w-8 h-8 animate-spin text-neutral-300" /></div>
@@ -176,7 +247,6 @@ export default function PublicProfilePage() {
           )
         )}
 
-        {/* 行程區塊 (唯讀) */}
         {activeTab === 'journeys' && (
           isLoadingItineraries ? (
             <div className="flex justify-center py-20"><Loader2 className="w-8 h-8 animate-spin text-neutral-300" /></div>
