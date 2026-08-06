@@ -64,6 +64,7 @@ function community_ensure_tables(mysqli $conn): void
             `Content` TEXT NOT NULL,
             `Location_Name` VARCHAR(100) NULL,
             `Location_Coordinates` VARCHAR(100) NULL,
+            `Itinerary_ID` VARCHAR(50) NULL,
             `Status` VARCHAR(20) NOT NULL DEFAULT 'active',
             `Created_At` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
             `Updated_At` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -290,6 +291,7 @@ function community_format_post(mysqli $conn, array $row): array
         'createdAt' => $row['Created_At'],
         'time' => community_time_ago($row['Created_At']),
         'author' => [
+            'account' => $row['Account'], // 🌟 就是這裡！為前端補上 account 屬性，這樣 router.push 才有目標網址！
             'name' => $row['Name'] ?: $row['Account'],
             'avatar' => community_public_url($row['Avatar'] ?? '') ?: '',
         ],

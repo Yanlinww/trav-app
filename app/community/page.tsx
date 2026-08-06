@@ -2,6 +2,7 @@
 
 import { ChangeEvent, FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
+import { useRouter } from "next/navigation"; // 🌟 1. 引入 useRouter
 import {
   Bookmark,
   ChevronRight,
@@ -22,6 +23,7 @@ type PostType = "footprint" | "question" | "group";
 type TabType = "all" | PostType;
 
 type CommunityAuthor = {
+  account?: string; // 🌟 2. 新增 account 屬性，用來作為跳轉依據
   name: string;
   avatar: string;
 };
@@ -67,43 +69,44 @@ const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080"
 const COMMUNITY_API = `${API_BASE}/community`;
 
 const tabs: { id: TabType; label: string }[] = [
-  { id: "all", label: "全部動態" },
-  { id: "footprint", label: "獨旅足跡" },
-  { id: "question", label: "疑難問答" },
-  { id: "group", label: "快閃揪團" },
+  { id: "all", label: "全部" },
+  { id: "footprint", label: "旅行足跡" },
+  { id: "question", label: "行程請益" },
+  { id: "group", label: "揪團出發" },
 ];
 
 const postTypes: { id: PostType; label: string; description: string }[] = [
-  { id: "footprint", label: "獨旅足跡", description: "照片、打卡、旅途中發現的風景" },
-  { id: "question", label: "疑難問答", description: "路線、交通、安全、預算問題" },
-  { id: "group", label: "快閃揪團", description: "臨時一起走、吃飯、分攤交通" },
+  { id: "footprint", label: "分享足跡", description: "分享你的旅行美景與心得" },
+  { id: "question", label: "行程請益", description: "發布你的行程規劃讓大家給建議" },
+  { id: "group", label: "揪團出發", description: "尋找志同道合的旅伴" },
 ];
 
 const fallbackTopics: Topic[] = [
-  { tag: "獨旅安全", count: 0 },
-  { tag: "景點打卡", count: 0 },
-  { tag: "交通問題", count: 0 },
-  { tag: "快閃揪團", count: 0 },
+  { tag: "獨旅", count: 0 },
+  { tag: "日本", count: 0 },
+  { tag: "美食", count: 0 },
+  { tag: "秘境", count: 0 },
 ];
 
 function getTypeLabel(type: PostType) {
-  return postTypes.find((item) => item.id === type)?.label ?? "動態";
+  return postTypes.find((item) => item.id === type)?.label ?? "未知";
 }
 
 function getInitial(name: string) {
-  return name.trim().slice(0, 1).toUpperCase() || "旅";
+  return name.trim().slice(0, 1).toUpperCase() || "?";
 }
 
 async function readApiResponse<T>(response: Response): Promise<ApiResponse<T>> {
   const data = (await response.json()) as ApiResponse<T>;
   if (!response.ok || data.status === "error") {
-    throw new Error(data.message || "API 請求失敗");
+    throw new Error(data.message || "API request failed");
   }
   return data;
 }
 
 export default function CommunityPage() {
   const { user, loading: authLoading } = useAuth();
+  const router = useRouter(); // 🌟 3. 初始化 router
   const currentAccount = user ? String(user.id || user.Account || "") : "";
 
   const [posts, setPosts] = useState<CommunityPost[]>([]);
@@ -120,11 +123,12 @@ export default function CommunityPage() {
   const [commentDrafts, setCommentDrafts] = useState<Record<number, string>>({});
   const [replyTargets, setReplyTargets] = useState<Record<number, CommunityComment | undefined>>({});
   const [openComments, setOpenComments] = useState<Record<number, boolean>>({});
+
   const [loadingPosts, setLoadingPosts] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const visibleTopics = useMemo(() => (topics.length > 0 ? topics : fallbackTopics), [topics]);
 
   const loadTopics = useCallback(async () => {
@@ -153,7 +157,7 @@ export default function CommunityPage() {
       const data = await readApiResponse<CommunityPost[]>(response);
       setPosts(data.data ?? []);
     } catch (apiError) {
-      setError(apiError instanceof Error ? apiError.message : "讀取動態失敗");
+      setError(apiError instanceof Error ? apiError.message : "載入動態失敗");
     } finally {
       setLoadingPosts(false);
     }
@@ -163,7 +167,6 @@ export default function CommunityPage() {
     const timer = window.setTimeout(() => {
       void loadTopics();
     }, 0);
-
     return () => window.clearTimeout(timer);
   }, [loadTopics]);
 
@@ -171,7 +174,6 @@ export default function CommunityPage() {
     const timer = window.setTimeout(() => {
       void loadPosts();
     }, 250);
-
     return () => window.clearTimeout(timer);
   }, [loadPosts]);
 
@@ -185,7 +187,7 @@ export default function CommunityPage() {
     if (!file) return;
 
     if (file.size > 5 * 1024 * 1024) {
-      alert("圖片不可超過 5MB");
+      alert("圖片大小不能超過 5MB");
       event.target.value = "";
       return;
     }
@@ -204,10 +206,12 @@ export default function CommunityPage() {
 
   async function publishPost(event: FormEvent) {
     event.preventDefault();
+
     if (!currentAccount) {
-      alert("請先登入後再發文");
+      alert("請先登入即可發表動態！");
       return;
     }
+
     if (!draft.trim()) return;
 
     const formData = new FormData();
@@ -217,6 +221,7 @@ export default function CommunityPage() {
     formData.append("Content", draft.trim());
     formData.append("Location_Name", location.trim());
     formData.append("Tags", tagText.trim());
+
     if (imageFile) formData.append("image", imageFile);
 
     setSubmitting(true);
@@ -227,10 +232,12 @@ export default function CommunityPage() {
         method: "POST",
         body: formData,
       });
+
       const data = await readApiResponse<CommunityPost>(response);
       if (data.data) {
         setPosts((current) => [data.data as CommunityPost, ...current]);
       }
+
       setTitle("");
       setDraft("");
       setLocation("");
@@ -238,7 +245,7 @@ export default function CommunityPage() {
       clearImage();
       void loadTopics();
     } catch (apiError) {
-      setError(apiError instanceof Error ? apiError.message : "發文失敗");
+      setError(apiError instanceof Error ? apiError.message : "發布貼文時發生錯誤");
     } finally {
       setSubmitting(false);
     }
@@ -246,7 +253,7 @@ export default function CommunityPage() {
 
   async function toggleReaction(post: CommunityPost, reactionType: "like" | "save") {
     if (!currentAccount) {
-      alert("請先登入後再互動");
+      alert("請先登入即可使用此功能！");
       return;
     }
 
@@ -260,7 +267,9 @@ export default function CommunityPage() {
           Reaction_Type: reactionType,
         }),
       });
+
       const data = await readApiResponse<{ active: boolean; likes: number }>(response);
+
       setPosts((current) =>
         current.map((item) => {
           if (item.id !== post.id || !data.data) return item;
@@ -270,14 +279,15 @@ export default function CommunityPage() {
         }),
       );
     } catch (apiError) {
-      setError(apiError instanceof Error ? apiError.message : "互動失敗");
+      setError(apiError instanceof Error ? apiError.message : "互動處理失敗");
     }
   }
 
   async function submitComment(event: FormEvent, post: CommunityPost) {
     event.preventDefault();
+
     if (!currentAccount) {
-      alert("請先登入後再留言");
+      alert("請先登入即可留言！");
       return;
     }
 
@@ -297,7 +307,9 @@ export default function CommunityPage() {
           Parent_Comment_ID: replyTarget?.id ?? null,
         }),
       });
+
       const data = await readApiResponse<CommunityComment>(response);
+
       if (data.data) {
         setPosts((current) =>
           current.map((item) =>
@@ -311,11 +323,12 @@ export default function CommunityPage() {
           ),
         );
       }
+
       setCommentDrafts((current) => ({ ...current, [post.id]: "" }));
       setReplyTargets((current) => ({ ...current, [post.id]: undefined }));
       setOpenComments((current) => ({ ...current, [post.id]: true }));
     } catch (apiError) {
-      setError(apiError instanceof Error ? apiError.message : "留言失敗");
+      setError(apiError instanceof Error ? apiError.message : "留言發布失敗");
     }
   }
 
@@ -328,18 +341,17 @@ export default function CommunityPage() {
               <p className="mb-3 flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.28em] text-neutral-400">
                 <Sparkles className="size-3.5 text-amber-500" /> Travmate Community
               </p>
-              <h1 className="text-4xl font-light tracking-tight md:text-5xl">動態牆</h1>
+              <h1 className="text-4xl font-light tracking-tight md:text-5xl">靈感交流與分享</h1>
               <p className="mt-3 max-w-xl text-sm font-light leading-7 text-neutral-500">
-                分享獨旅足跡、景點打卡、疑難問答與快閃揪團。
+                尋找你的下一個目的地，向其他旅行者請益，或者分享你專屬的旅程故事。
               </p>
             </div>
-
             <label className="flex h-12 w-full items-center gap-3 border border-neutral-200 bg-neutral-50 px-4 md:w-80">
               <Search className="size-4 text-neutral-400" />
               <input
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                placeholder="搜尋貼文、地點或標籤"
+                placeholder="搜尋行程、地點或標籤"
                 className="w-full bg-transparent text-sm outline-none placeholder:text-neutral-400"
               />
             </label>
@@ -379,30 +391,29 @@ export default function CommunityPage() {
           <form onSubmit={publishPost} className="border border-neutral-200 bg-white p-5 shadow-sm md:p-6">
             <div className="flex gap-4">
               <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-neutral-900 text-xs font-bold text-white">
-                {user ? getInitial(String(user.nickname || user.Account || "旅人")) : "旅"}
+                {user ? getInitial(String(user.nickname || user.Account || "?")) : "?"}
               </div>
               <div className="min-w-0 flex-1">
                 {(postType === "question" || postType === "group") && (
                   <input
                     value={title}
                     onChange={(event) => setTitle(event.target.value)}
-                    placeholder={postType === "question" ? "問題標題，例如：冰島自駕要注意什麼？" : "揪團標題，例如：週六淡水半日散步"}
+                    placeholder={postType === "question" ? "輸入請益主旨..." : "輸入揪團標題..."}
                     className="mb-3 w-full border border-neutral-200 bg-neutral-50 px-3 py-2.5 text-sm outline-none focus:border-neutral-500"
                   />
                 )}
-
                 <textarea
                   value={draft}
                   onChange={(event) => setDraft(event.target.value)}
-                  placeholder={authLoading ? "登入狀態確認中..." : currentAccount ? "分享你的獨旅足跡、問題或揪團內容" : "請先登入後再發文"}
+                  placeholder={authLoading ? "載入中..." : currentAccount ? "分享你的旅行足跡與心得..." : "登入後即可發表動態"}
                   rows={4}
                   disabled={!currentAccount}
                   className="w-full resize-none border-0 bg-transparent text-sm leading-7 outline-none placeholder:text-neutral-400 disabled:cursor-not-allowed disabled:opacity-60"
                 />
-
+                
                 {preview && (
                   <div className="relative mt-3 h-56 overflow-hidden bg-neutral-100">
-                    <Image src={preview} alt="上傳圖片預覽" fill unoptimized className="object-cover" />
+                    <Image src={preview} alt="Preview" fill unoptimized className="object-cover" />
                     <button
                       type="button"
                       onClick={clearImage}
@@ -420,7 +431,7 @@ export default function CommunityPage() {
                     <input
                       value={location}
                       onChange={(event) => setLocation(event.target.value)}
-                      placeholder="景點打卡位置"
+                      placeholder="打卡地點 (選填)"
                       className="w-full bg-transparent outline-none"
                     />
                   </label>
@@ -429,7 +440,7 @@ export default function CommunityPage() {
                     <input
                       value={tagText}
                       onChange={(event) => setTagText(event.target.value)}
-                      placeholder="標籤，用逗號分隔"
+                      placeholder="相關標籤 (以逗號分隔)"
                       className="w-full bg-transparent outline-none"
                     />
                   </label>
@@ -450,7 +461,7 @@ export default function CommunityPage() {
                       disabled={!currentAccount}
                       className="flex items-center gap-2 px-2 py-2 text-xs font-medium text-neutral-500 hover:text-neutral-900 disabled:cursor-not-allowed disabled:opacity-40"
                     >
-                      <ImagePlus className="size-4" /> 實景照片上傳
+                      <ImagePlus className="size-4" /> 附加照片
                     </button>
                   </div>
                   <button
@@ -458,7 +469,7 @@ export default function CommunityPage() {
                     disabled={!currentAccount || !draft.trim() || submitting}
                     className="flex items-center gap-2 bg-neutral-900 px-5 py-2.5 text-xs font-bold tracking-widest text-white transition hover:bg-neutral-700 disabled:cursor-not-allowed disabled:opacity-30"
                   >
-                    {submitting ? "發布中" : "發布動態"} <Send className="size-3.5" />
+                    {submitting ? "發布中..." : "發布動態"} <Send className="size-3.5" />
                   </button>
                 </div>
               </div>
@@ -467,13 +478,13 @@ export default function CommunityPage() {
 
           {loadingPosts && (
             <div className="border border-neutral-200 bg-white py-14 text-center text-sm text-neutral-400">
-              讀取動態中...
+              載入動態中...
             </div>
           )}
 
           {!loadingPosts && posts.length === 0 && (
             <div className="border border-dashed border-neutral-300 bg-white py-16 text-center text-sm text-neutral-400">
-              目前沒有符合條件的動態。
+              目前沒有任何動態
             </div>
           )}
 
@@ -482,23 +493,36 @@ export default function CommunityPage() {
               <article key={post.id} className="overflow-hidden border border-neutral-200 bg-white shadow-sm">
                 <div className="p-5 md:p-6">
                   <div className="flex items-start justify-between gap-4">
-                    <div className="flex min-w-0 items-center gap-3">
+                    
+                    {/* 🌟 4. 加入 onClick 點擊跳轉事件 🌟 */}
+                    <div 
+                      className="flex min-w-0 items-center gap-3 cursor-pointer group"
+                      onClick={() => {
+                        // 確保有帳號資料才進行跳轉
+                        if (post.author.account) {
+                          router.push(`/profile/${encodeURIComponent(post.author.account)}`);
+                        } else {
+                          alert("後端尚未回傳此作者的帳號 (account)，無法跳轉！請提醒夥伴更新 API 喔。");
+                        }
+                      }}
+                    >
                       {post.author.avatar ? (
-                        <div className="relative size-11 shrink-0 overflow-hidden rounded-full bg-neutral-100">
+                        <div className="relative size-11 shrink-0 overflow-hidden rounded-full bg-neutral-100 group-hover:ring-2 ring-neutral-300 transition-all">
                           <Image src={post.author.avatar} alt={post.author.name} fill unoptimized className="object-cover" />
                         </div>
                       ) : (
-                        <div className="flex size-11 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-sm font-bold text-neutral-700">
+                        <div className="flex size-11 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-sm font-bold text-neutral-700 group-hover:ring-2 ring-neutral-300 transition-all">
                           {getInitial(post.author.name)}
                         </div>
                       )}
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-x-2">
-                          <span className="text-sm font-bold">{post.author.name}</span>
+                          <span className="text-sm font-bold group-hover:text-[#F04D79] transition-colors">{post.author.name}</span>
                         </div>
                         <p className="mt-1 text-[11px] text-neutral-400">{post.time}</p>
                       </div>
                     </div>
+
                     <span className="shrink-0 bg-neutral-100 px-2.5 py-1 text-[10px] font-bold tracking-wider text-neutral-600">
                       {getTypeLabel(post.type)}
                     </span>
@@ -506,12 +530,13 @@ export default function CommunityPage() {
 
                   {post.title && <h2 className="mt-5 text-lg font-semibold leading-7">{post.title}</h2>}
                   <p className="mt-4 whitespace-pre-line text-sm font-light leading-7 text-neutral-600">{post.content}</p>
-
+                  
                   {post.location && (
                     <p className="mt-4 flex items-center gap-1.5 text-xs font-medium text-neutral-500">
                       <MapPin className="size-3.5" /> {post.location}
                     </p>
                   )}
+                  
                   <div className="mt-4 flex flex-wrap gap-2">
                     {post.tags.map((item) => (
                       <button
@@ -531,7 +556,7 @@ export default function CommunityPage() {
                       <div key={src} className="relative h-72 w-full md:h-96">
                         <Image
                           src={src}
-                          alt={`${post.author.name} 的照片 ${index + 1}`}
+                          alt={`${post.author.name} 照片 ${index + 1}`}
                           fill
                           unoptimized
                           sizes={post.images.length > 1 ? "(min-width: 768px) 35vw, 50vw" : "(min-width: 1024px) 60vw, 100vw"}
@@ -546,7 +571,7 @@ export default function CommunityPage() {
                   <div className="flex items-center gap-1">
                     <button
                       onClick={() => void toggleReaction(post, "like")}
-                      aria-label={post.liked ? "收回讚" : "按讚"}
+                      aria-label={post.liked ? "取消讚" : "按讚"}
                       className={`flex items-center gap-2 px-3 py-2 text-xs transition ${post.liked ? "text-rose-600" : "text-neutral-500 hover:text-neutral-900"}`}
                     >
                       <Heart className={`size-4 ${post.liked ? "fill-current" : ""}`} /> {post.likes}
@@ -560,7 +585,7 @@ export default function CommunityPage() {
                   </div>
                   <button
                     onClick={() => void toggleReaction(post, "save")}
-                    aria-label={post.saved ? "取消收藏" : "收藏"}
+                    aria-label={post.saved ? "取消收藏" : "收藏貼文"}
                     className={`p-2 transition ${post.saved ? "text-amber-600" : "text-neutral-400 hover:text-neutral-900"}`}
                   >
                     <Bookmark className={`size-4 ${post.saved ? "fill-current" : ""}`} />
@@ -600,9 +625,10 @@ export default function CommunityPage() {
                         ))}
                       </div>
                     )}
+
                     {replyTargets[post.id] && (
                       <div className="mb-2 flex items-center justify-between bg-white px-3 py-2 text-[11px] text-neutral-500">
-                        <span>回覆 {replyTargets[post.id]?.author}</span>
+                        <span>正在回覆 {replyTargets[post.id]?.author}</span>
                         <button
                           type="button"
                           onClick={() => setReplyTargets((current) => ({ ...current, [post.id]: undefined }))}
@@ -612,16 +638,17 @@ export default function CommunityPage() {
                         </button>
                       </div>
                     )}
+
                     <form onSubmit={(event) => void submitComment(event, post)} className="flex gap-2">
                       <input
                         value={commentDrafts[post.id] || ""}
                         onChange={(event) => setCommentDrafts((current) => ({ ...current, [post.id]: event.target.value }))}
                         onFocus={() => setOpenComments((current) => ({ ...current, [post.id]: true }))}
-                        placeholder={currentAccount ? "留下留言或回覆" : "請先登入後再留言"}
+                        placeholder={currentAccount ? "新增留言..." : "請先登入即可留言"}
                         disabled={!currentAccount}
                         className="min-w-0 flex-1 border border-neutral-200 bg-white px-3 py-2.5 text-xs outline-none focus:border-neutral-500 disabled:cursor-not-allowed disabled:opacity-50"
                       />
-                      <button type="submit" aria-label="送出留言" className="bg-neutral-900 px-3 text-white disabled:opacity-40" disabled={!currentAccount}>
+                      <button type="submit" aria-label="發送留言" className="bg-neutral-900 px-3 text-white disabled:opacity-40" disabled={!currentAccount}>
                         <Send className="size-3.5" />
                       </button>
                     </form>
@@ -635,7 +662,7 @@ export default function CommunityPage() {
           <section className="border border-neutral-200 bg-white p-5 shadow-sm">
             <div className="mb-5 flex items-center justify-between">
               <h2 className="flex items-center gap-2 text-sm font-bold">
-                <Compass className="size-4" /> 主題情報看板
+                <Compass className="size-4" /> 探索話題
               </h2>
               <span className="text-[10px] tracking-widest text-neutral-400">TRENDING</span>
             </div>
@@ -649,17 +676,15 @@ export default function CommunityPage() {
                   <span className="text-xs font-bold text-neutral-300">{String(index + 1).padStart(2, "0")}</span>
                   <span className="min-w-0 flex-1">
                     <span className="block text-xs font-semibold text-neutral-700 group-hover:text-neutral-900">#{topic.tag}</span>
-                    <span className="mt-1 block text-[10px] text-neutral-400">{topic.count} 則貼文</span>
+                    <span className="mt-1 block text-[10px] text-neutral-400">{topic.count} 篇貼文</span>
                   </span>
                   <ChevronRight className="size-3.5 text-neutral-300" />
                 </button>
               ))}
             </div>
           </section>
-
         </aside>
       </div>
     </div>
   );
 }
-

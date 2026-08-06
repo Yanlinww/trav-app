@@ -1,79 +1,87 @@
 <?php
-require_once '../db_connect.php';
-require_once 'community_helpers.php';
+header('Access-Control-Allow-Origin: *');
+header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
+header('Access-Control-Allow-Headers: Content-Type');
+header('Content-Type: application/json; charset=utf-8');
 
-community_ensure_tables($conn);
+if ($_SERVER['REQUEST_METHOD'] == 'OPTIONS') { http_response_code(200); exit(); }
 
-$data = $_SERVER['REQUEST_METHOD'] === 'POST' ? community_read_json() : (object) [];
+require_once '../db_connect.php'; // 根據你的資料夾結構引入連線檔
 
-$account = trim((string) community_get_request_value($data, 'Account', ''));
-$type = trim((string) community_get_request_value($data, 'type', 'all'));
-$search = trim((string) community_get_request_value($data, 'search', ''));
-$limit = (int) community_get_request_value($data, 'limit', 30);
-$offset = (int) community_get_request_value($data, 'offset', 0);
+// 接收前端參數
+$type = $_GET['type'] ?? 'all';
+$search = $_GET['search'] ?? '';
+$currentUser = $_GET['Account'] ?? '';
 
-if ($limit < 1 || $limit > 100) {
-    $limit = 30;
-}
+// 基礎 SQL
+$sql = "
+    SELECT 
+        p.*, 
+        m.Name AS AuthorName, 
+        m.Avatar AS AuthorAvatar,
+        (SELECT COUNT(*) FROM PostReactions pr WHERE pr.Post_ID = p.Post_ID AND pr.Reaction_Type = 'like') AS LikeCount,
+        (SELECT COUNT(*) FROM PostReactions pr WHERE pr.Post_ID = p.Post_ID AND pr.Reaction_Type = 'save' AND pr.Account = ?) AS IsSavedByUser,
+        (SELECT COUNT(*) FROM PostReactions pr WHERE pr.Post_ID = p.Post_ID AND pr.Reaction_Type = 'like' AND pr.Account = ?) AS IsLikedByUser
+    FROM Posts p
+    JOIN Member m ON p.Account = m.Account
+    WHERE 1=1
+";
 
-if ($offset < 0) {
-    $offset = 0;
-}
+$types = str_repeat("s", 2);
+$params = [$currentUser, $currentUser];
 
-$where = ["p.`Status` = 'active'"];
-$params = [$account, $account];
-$types = 'ss';
-
-if ($type !== '' && $type !== 'all') {
-    if (!community_allowed_post_type($type)) {
-        community_json_response(['status' => 'error', 'message' => '不支援的動態分類'], 400);
-    }
-    $where[] = "p.`Post_Type` = ?";
+// 處理分類過濾
+if ($type !== 'all') {
+    $sql .= " AND p.Post_Type = ?";
+    $types .= "s";
     $params[] = $type;
-    $types .= 's';
 }
 
-if ($search !== '') {
-    $keyword = '%' . $search . '%';
-    $where[] = "(p.`Title` LIKE ? OR p.`Content` LIKE ? OR p.`Location_Name` LIKE ? OR m.`Name` LIKE ? OR EXISTS (
-        SELECT 1 FROM `Community_Post_Tag` t WHERE t.`Post_ID` = p.`Post_ID` AND t.`Tag_Name` LIKE ?
-    ))";
-    array_push($params, $keyword, $keyword, $keyword, $keyword, $keyword);
-    $types .= 'sssss';
+// 處理關鍵字搜尋
+if (!empty($search)) {
+    $sql .= " AND (p.Content LIKE ? OR p.Title LIKE ? OR p.Location_Name LIKE ? OR p.Tags LIKE ? OR m.Name LIKE ?)";
+    $searchParam = "%" . $search . "%";
+    $types .= str_repeat("s", 5);
+    array_push($params, $searchParam, $searchParam, $searchParam, $searchParam, $searchParam);
 }
 
-$whereSql = implode(' AND ', $where);
-
-$sql = "SELECT p.*, m.`Account`, m.`Name`, m.`Avatar`,
-            (SELECT COUNT(*) FROM `Community_Reaction` r WHERE r.`Post_ID` = p.`Post_ID` AND r.`Reaction_Type` = 'like') AS `Like_Count`,
-            (SELECT COUNT(*) FROM `Community_Comment` c WHERE c.`Post_ID` = p.`Post_ID` AND c.`Status` = 'active') AS `Comment_Count`,
-            EXISTS(SELECT 1 FROM `Community_Reaction` ur WHERE ur.`Post_ID` = p.`Post_ID` AND ur.`Account` = ? AND ur.`Reaction_Type` = 'like') AS `User_Liked`,
-            EXISTS(SELECT 1 FROM `Community_Reaction` sr WHERE sr.`Post_ID` = p.`Post_ID` AND sr.`Account` = ? AND sr.`Reaction_Type` = 'save') AS `User_Saved`
-        FROM `Community_Post` p
-        INNER JOIN `Member` m ON m.`Account` = p.`Account`
-        WHERE {$whereSql}
-        ORDER BY p.`Created_At` DESC
-        LIMIT ? OFFSET ?";
-
-$params[] = $limit;
-$params[] = $offset;
-$types .= 'ii';
+$sql .= " ORDER BY p.Created_At DESC";
 
 $stmt = $conn->prepare($sql);
-community_bind_params($stmt, $types, $params);
+if (!empty($params)) {
+    $stmt->bind_param($types, ...$params);
+}
 $stmt->execute();
 $result = $stmt->get_result();
 
 $posts = [];
 while ($row = $result->fetch_assoc()) {
-    $posts[] = community_format_post($conn, $row);
+    
+    $time_ago = date("Y-m-d H:i", strtotime($row['Created_At']));
+
+    $posts[] = [
+        "id" => (int)$row['Post_ID'],
+        "type" => $row['Post_Type'],
+        "title" => $row['Title'],
+        "content" => $row['Content'],
+        "location" => $row['Location_Name'],
+        "time" => $time_ago,
+        "author" => [
+            "account" => $row['Account'], // 🌟 就是這裡！新增了 account 欄位
+            "name" => $row['AuthorName'] ?? 'Unknown',
+            "avatar" => $row['AuthorAvatar'] ?? ''
+        ],
+        "tags" => !empty($row['Tags']) ? array_filter(explode(",", $row['Tags'])) : [],
+        "images" => !empty($row['Image_URL']) ? [$row['Image_URL']] : [],
+        "likes" => (int)$row['LikeCount'],
+        "commentCount" => 0, 
+        "liked" => $row['IsLikedByUser'] > 0,
+        "saved" => $row['IsSavedByUser'] > 0,
+        "comments" => [] 
+    ];
 }
 
+echo json_encode(["status" => "success", "data" => $posts], JSON_UNESCAPED_UNICODE);
 $stmt->close();
-
-community_json_response([
-    'status' => 'success',
-    'data' => $posts,
-]);
-
+$conn->close();
 ?>
