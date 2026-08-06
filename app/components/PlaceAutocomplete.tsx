@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 // 👇 1. 新增 TypeScript 介面定義，明確告訴系統這個元件接受哪些屬性
 interface PlaceAutocompleteProps {
@@ -22,16 +22,23 @@ export default function PlaceAutocomplete({
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [errorMessage, setErrorMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const suppressSuggestionsRef = useRef(false);
 
   const selectSuggestion = (item: any) => {
     const prediction = item.placePrediction;
     if (!prediction?.placeId) return;
+    suppressSuggestionsRef.current = true;
     onChange(prediction.text?.text || '');
     setSuggestions([]);
     onPlaceSelect(prediction.placeId);
   };
 
   useEffect(() => {
+    if (suppressSuggestionsRef.current) {
+      setSuggestions([]);
+      setIsLoading(false);
+      return;
+    }
     if (!value) {
       setSuggestions([]);
       setIsLoading(false);
@@ -85,13 +92,14 @@ export default function PlaceAutocomplete({
       <input
         type="text"
         value={value}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(e) => {
+          suppressSuggestionsRef.current = false;
+          onChange(e.target.value);
+        }}
         onKeyDown={(e) => {
           if (e.key === 'Enter') {
             e.preventDefault();
-            if (suggestions.length > 0) {
-              selectSuggestion(suggestions[0]);
-            } else if (onKeywordSearch) {
+            if (onKeywordSearch) {
               onKeywordSearch(value);
             }
             setSuggestions([]); // 關閉下拉選單
@@ -110,11 +118,10 @@ export default function PlaceAutocomplete({
               onMouseDown={(event) => {
                 event.preventDefault();
                 // 1. 將輸入框更新為完整的地點名稱
-                onChange(item.placePrediction.text.text);
+                selectSuggestion(item);
                 // 2. 清空選單
                 setSuggestions([]);
                 // 3. 呼叫後端取得座標
-                onPlaceSelect(item.placePrediction.placeId);
               }}
               className="px-4 py-2 cursor-pointer hover:bg-pink-50 hover:text-[#F04D79] text-sm text-slate-600 border-b border-slate-50 last:border-none"
             >

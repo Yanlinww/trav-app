@@ -23,52 +23,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 
-/* Legacy single-note panel retained only in history; the active UI uses ManualNotesPanel.
-function NotesPanel({ itineraryId, currentUserId }: { itineraryId: string; currentUserId: string }) {
-  const [content, setContent] = useState('');
-  const [syncStatus, setSyncStatus] = useState<'loading' | 'saved' | 'saving' | 'error'>('loading');
-  const dirtyRef = useRef(false);
-  const savingRef = useRef(false);
-  const saveTimerRef = useRef<number | null>(null);
 
-  const refreshNotes = useCallback(async () => {
-    if (dirtyRef.current || savingRef.current) return;
-    try {
-      const res = await fetch('http://localhost:8080/itinerary/get_itinerary_notes.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ Itinerary_ID: itineraryId }) });
-      const data = await res.json();
-      if (data.status === 'success') { setContent(data.data?.content || ''); setSyncStatus('saved'); }
-    } catch { setSyncStatus('error'); }
-  }, [itineraryId]);
-
-  useEffect(() => {
-    refreshNotes();
-    const refreshTimer = window.setInterval(refreshNotes, 5000);
-    return () => window.clearInterval(refreshTimer);
-  }, [refreshNotes]);
-
-  const saveNotes = async (nextContent: string) => {
-    if (!currentUserId) return;
-    savingRef.current = true; setSyncStatus('saving');
-    try {
-      const res = await fetch('http://localhost:8080/itinerary/update_itinerary_notes.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ Itinerary_ID: itineraryId, Account: currentUserId, Content: nextContent }) });
-      const data = await res.json();
-      if (data.status === 'success') { dirtyRef.current = false; setSyncStatus('saved'); } else setSyncStatus('error');
-    } catch { setSyncStatus('error'); }
-    finally { savingRef.current = false; }
-  };
-
-  return (
-    <div className="flex min-h-full flex-col bg-[#FAFAFA] p-4">
-      <div className="mb-4 flex items-center justify-between">
-        <div><div className="text-xs font-bold tracking-wide text-slate-400">共享備忘錄</div><div className="mt-1 text-2xl font-bold text-slate-800">旅程記事</div></div>
-        <div className={`text-[11px] font-bold ${syncStatus === 'error' ? 'text-red-500' : syncStatus === 'saving' ? 'text-amber-500' : 'text-emerald-500'}`}>{syncStatus === 'loading' ? '載入中' : syncStatus === 'saving' ? '儲存中…' : syncStatus === 'error' ? '同步失敗' : '已同步'}</div>
-      </div>
-      <textarea value={content} onChange={(event) => { const nextContent = event.target.value; dirtyRef.current = true; setContent(nextContent); if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current); saveTimerRef.current = window.setTimeout(() => saveNotes(nextContent), 800); }} placeholder="記下集合地點、注意事項、營業時間或旅伴共識…" className="min-h-[320px] flex-1 resize-none rounded-2xl border border-slate-200 bg-white p-4 text-sm leading-7 text-slate-700 shadow-sm outline-none focus:border-pink-300" />
-      <p className="mt-3 text-center text-[11px] text-slate-400">輸入後會自動儲存並同步給旅伴</p>
-    </div>
-  );
-}
-*/
 
 function MultiNotesPanel({ itineraryId, currentUserId }: { itineraryId: string; currentUserId: string }) {
   const [notes, setNotes] = useState<any[]>([]);
@@ -84,14 +39,14 @@ function MultiNotesPanel({ itineraryId, currentUserId }: { itineraryId: string; 
   const refreshNotes = useCallback(async () => {
     if (dirtyRef.current) return;
     try {
-      const res = await fetch('http://localhost:8080/itinerary/get_itinerary_note_list.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ Itinerary_ID: itineraryId }) });
+      const res = await fetch('http://localhost:8080/itinerary/notes/get_itinerary_note_list.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ Itinerary_ID: itineraryId }) });
       const data = await res.json();
       if (data.status !== 'success') return;
       const nextNotes = data.data || [];
       if (nextNotes.length === 0 && currentUserId && !creatingDefaultRef.current) {
         creatingDefaultRef.current = true;
         try {
-          await fetch('http://localhost:8080/itinerary/create_itinerary_note.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ Itinerary_ID: itineraryId, Account: currentUserId, Title: '備忘錄', Content: '' }) });
+          await fetch('http://localhost:8080/itinerary/notes/create_itinerary_note.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ Itinerary_ID: itineraryId, Account: currentUserId, Title: '備忘錄', Content: '' }) });
         } finally {
           creatingDefaultRef.current = false;
         }
@@ -114,7 +69,7 @@ function MultiNotesPanel({ itineraryId, currentUserId }: { itineraryId: string; 
     setSyncStatus('saving');
     const endpoint = isAdding ? 'create_itinerary_note.php' : 'update_itinerary_note.php';
     try {
-      const res = await fetch(`http://localhost:8080/itinerary/${endpoint}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ Itinerary_ID: itineraryId, Note_ID: activeId, Account: currentUserId, Title: nextTitle, Content: nextContent }) });
+      const res = await fetch(`http://localhost:8080/itinerary/notes/${endpoint}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ Itinerary_ID: itineraryId, Note_ID: activeId, Account: currentUserId, Title: nextTitle, Content: nextContent }) });
       const data = await res.json();
       if (data.status === 'success') { dirtyRef.current = false; setIsAdding(false); if (data.Note_ID) setActiveId(data.Note_ID); setSyncStatus('saved'); refreshNotes(); } else setSyncStatus('error');
     } catch { setSyncStatus('error'); }
@@ -123,7 +78,7 @@ function MultiNotesPanel({ itineraryId, currentUserId }: { itineraryId: string; 
   const deleteNote = async () => {
     if (!activeId || !window.confirm('確定要刪除這份備忘錄嗎？')) return;
     try {
-      const res = await fetch('http://localhost:8080/itinerary/delete_itinerary_note.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ Note_ID: activeId, Itinerary_ID: itineraryId, Account: currentUserId }) });
+      const res = await fetch('http://localhost:8080/itinerary/notes/delete_itinerary_note.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ Note_ID: activeId, Itinerary_ID: itineraryId, Account: currentUserId }) });
       if (!res.ok) throw new Error(`刪除備忘錄失敗（${res.status}）`);
       dirtyRef.current = false; setActiveId(null); setTitle(''); setContent(''); await refreshNotes();
     } catch { setSyncStatus('error'); }
@@ -186,14 +141,14 @@ function ManualNotesPanel({ itineraryId, currentUserId }: { itineraryId: string;
     const controller = new AbortController();
     requestControllerRef.current = controller;
     try {
-      const res = await fetch('http://localhost:8080/itinerary/get_itinerary_note_list.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ Itinerary_ID: itineraryId, Account: currentUserId }), signal: controller.signal });
+      const res = await fetch('http://localhost:8080/itinerary/notes/get_itinerary_note_list.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ Itinerary_ID: itineraryId, Account: currentUserId }), signal: controller.signal });
       const data = await res.json();
       if (requestId !== requestIdRef.current) return;
       if (data.status !== 'success') throw new Error('note list failed');
       const nextNotes = data.data || [];
       if (!nextNotes.length && currentUserId && !defaultCreatingRef.current) {
         defaultCreatingRef.current = true;
-        try { await fetch('http://localhost:8080/itinerary/create_itinerary_note.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ Itinerary_ID: itineraryId, Account: currentUserId, Title: '備忘錄', Content: '' }) }); } finally { defaultCreatingRef.current = false; }
+        try { await fetch('http://localhost:8080/itinerary/notes/create_itinerary_note.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ Itinerary_ID: itineraryId, Account: currentUserId, Title: '備忘錄', Content: '' }) }); } finally { defaultCreatingRef.current = false; }
         return refresh();
       }
       if (requestId !== requestIdRef.current) return;
@@ -214,7 +169,7 @@ function ManualNotesPanel({ itineraryId, currentUserId }: { itineraryId: string;
     setStatus('saving');
     const endpoint = isAdding ? 'create_itinerary_note.php' : 'update_itinerary_note.php';
     try {
-      const res = await fetch(`http://localhost:8080/itinerary/${endpoint}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ Itinerary_ID: itineraryId, Note_ID: activeId, Account: currentUserId, Title: title.trim(), Content: content }) });
+      const res = await fetch(`http://localhost:8080/itinerary/notes/${endpoint}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ Itinerary_ID: itineraryId, Note_ID: activeId, Account: currentUserId, Title: title.trim(), Content: content }) });
       const data = await res.json();
       if (data.status !== 'success') throw new Error('note save failed');
       dirtyRef.current = false; setDirty(false); setIsAdding(false); if (data.Note_ID) { activeIdRef.current = Number(data.Note_ID); setActiveId(Number(data.Note_ID)); } setStatus('saved'); await refresh();
@@ -243,7 +198,7 @@ function ManualNotesPanel({ itineraryId, currentUserId }: { itineraryId: string;
   const remove = async () => {
     if (!activeId || !window.confirm('確定要刪除這份備忘錄嗎？')) return;
     try {
-      const res = await fetch('http://localhost:8080/itinerary/delete_itinerary_note.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ Note_ID: activeId, Itinerary_ID: itineraryId, Account: currentUserId }) });
+      const res = await fetch('http://localhost:8080/itinerary/notes/delete_itinerary_note.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ Note_ID: activeId, Itinerary_ID: itineraryId, Account: currentUserId }) });
       if (!res.ok) throw new Error('delete failed');
       dirtyRef.current = false; activeIdRef.current = null; setDirty(false); setActiveId(null); setTitle(''); setContent(''); await refresh();
     } catch { setStatus('error'); }
@@ -260,7 +215,7 @@ function ManualNotesPanel({ itineraryId, currentUserId }: { itineraryId: string;
   </div>;
 }
 
-function ReservationsPanel({ itineraryId, currentUserId, itineraryItems, onFocusItem }: { itineraryId: string; currentUserId: string; itineraryItems: any[]; onFocusItem: (item: any) => void }) {
+function ReservationsPanel({ itineraryId, currentUserId, itineraryItems, onFocusItem, onCountChange }: { itineraryId: string; currentUserId: string; itineraryItems: any[]; onFocusItem: (item: any) => void; onCountChange?: (count: number) => void }) {
   const [reservations, setReservations] = useState<any[]>([]);
   const [isAdding, setIsAdding] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -308,7 +263,7 @@ function ReservationsPanel({ itineraryId, currentUserId, itineraryItems, onFocus
     reservationRefreshLockRef.current = true;
     setReservationError('');
     try {
-      const res = await fetch('http://localhost:8080/itinerary/get_reservations.php', {
+      const res = await fetch('http://localhost:8080/itinerary/reservations/get_reservations.php', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ Itinerary_ID: itineraryId, Account: currentUserId }),
       });
@@ -320,14 +275,18 @@ function ReservationsPanel({ itineraryId, currentUserId, itineraryItems, onFocus
         throw new Error(`預訂 API 回應格式錯誤（${res.status}）`);
       }
       if (!res.ok) throw new Error(data.message || `預訂 API 錯誤（${res.status}）`);
-      if (data.status === 'success') setReservations(data.data || []);
+      if (data.status === 'success') {
+        const nextReservations = data.data || [];
+        setReservations(nextReservations);
+        onCountChange?.(nextReservations.length);
+      }
     } catch (error) {
       console.warn('Reservations sync error:', error);
       setReservationError('預訂同步失敗，請稍後再試');
     } finally {
       reservationRefreshLockRef.current = false;
     }
-  }, [itineraryId]);
+  }, [itineraryId, onCountChange]);
 
   useEffect(() => {
     refreshReservations();
@@ -342,7 +301,7 @@ function ReservationsPanel({ itineraryId, currentUserId, itineraryItems, onFocus
     if (!form.title.trim() || !currentUserId || isSaving) return;
     setIsSaving(true);
     try {
-      const res = await fetch(`http://localhost:8080/itinerary/${editingId ? 'update_reservation.php' : 'create_reservation.php'}`, {
+      const res = await fetch(`http://localhost:8080/itinerary/reservations/${editingId ? 'update_reservation.php' : 'create_reservation.php'}`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ Itinerary_ID: itineraryId, Account: currentUserId, Reservation_ID: editingId, Item_ID: form.itemId ? Number(form.itemId) : 0, Type: form.type, Title: form.title, Event_Date: form.eventDate, Reference_No: form.referenceNo, Link: form.link, Notes: form.notes }),
       });
@@ -355,7 +314,7 @@ function ReservationsPanel({ itineraryId, currentUserId, itineraryItems, onFocus
           imageForm.append('Itinerary_ID', itineraryId);
           imageForm.append('Account', currentUserId);
           imageForm.append('screenshot', screenshot);
-          const uploadRes = await fetch('http://localhost:8080/itinerary/upload_reservation_screenshot.php', { method: 'POST', body: imageForm });
+          const uploadRes = await fetch('http://localhost:8080/itinerary/reservations/upload_reservation_screenshot.php', { method: 'POST', body: imageForm });
           const uploadText = await uploadRes.text();
           let uploadData;
           try { uploadData = JSON.parse(uploadText); } catch { throw new Error(`圖片上傳 API 回應格式錯誤（${uploadRes.status}）`); }
@@ -386,7 +345,7 @@ function ReservationsPanel({ itineraryId, currentUserId, itineraryItems, onFocus
 
   const deleteReservation = async (reservation: any) => {
     if (!window.confirm('確定要刪除這筆預訂嗎？')) return;
-    await fetch('http://localhost:8080/itinerary/delete_reservation.php', {
+    await fetch('http://localhost:8080/itinerary/reservations/delete_reservation.php', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ Reservation_ID: reservation.id, Itinerary_ID: itineraryId, Account: currentUserId }),
     });
@@ -505,11 +464,11 @@ function TravelersPanel({ itineraryId, currentUserId }: { itineraryId: string; c
     setSyncError(false);
     try {
       const [membersRes, presenceRes] = await Promise.all([
-        fetch('http://localhost:8080/itinerary/get_itinerary_members.php', {
+        fetch('http://localhost:8080/itinerary/collaboration/get_itinerary_members.php', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ Itinerary_ID: itineraryId, Account: currentUserId }),
         }),
-        fetch('http://localhost:8080/itinerary/get_chat_presence.php', {
+        fetch('http://localhost:8080/itinerary/collaboration/get_chat_presence.php', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ Itinerary_ID: itineraryId, Account: currentUserId }),
         }),
@@ -559,6 +518,7 @@ function TravelersPanel({ itineraryId, currentUserId }: { itineraryId: string; c
           </div></div>
         </div>
       </div>
+      <InviteTravelersButton itineraryId={itineraryId} />
       <div className="mb-3 flex items-center gap-2"><div className="flex min-w-0 flex-1 items-center rounded-xl border border-slate-200 bg-white focus-within:border-pink-300"><input value={travelerSearch} onChange={(event) => setTravelerSearch(event.target.value)} placeholder="搜尋旅伴…" className="min-w-0 flex-1 bg-transparent px-3 py-2 text-xs text-slate-600 outline-none" />{travelerSearch && <button type="button" onClick={() => setTravelerSearch('')} className="p-1.5 text-slate-400 hover:text-[#F04D79]" aria-label="清除旅伴搜尋"><X size={14} /></button>}</div><button type="button" onClick={() => setOnlineOnly((value) => !value)} className={`shrink-0 rounded-full px-3 py-2 text-xs font-bold transition ${onlineOnly ? 'bg-emerald-100 text-emerald-700' : 'bg-white text-slate-500 shadow-sm'}`}>{onlineOnly ? '全部' : '在線'}</button></div>
       {(travelerSearch.trim() || onlineOnly) && <div className="mb-2 text-right text-[10px] font-bold text-slate-400">顯示 {visibleMembers.length} / {members.length} 位</div>}
       <div className="space-y-2">
@@ -582,6 +542,57 @@ function TravelersPanel({ itineraryId, currentUserId }: { itineraryId: string; c
         })}
       </div>
     </div>
+  );
+}
+
+function InviteTravelersButton({ itineraryId }: { itineraryId: string }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [inviteCode, setInviteCode] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const openInvite = async () => {
+    setIsOpen(true);
+    if (inviteCode || isLoading) return;
+    setIsLoading(true);
+    try {
+      const response = await fetch('http://localhost:8080/itinerary/core/get_or_create_invite_code.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ Itinerary_ID: itineraryId }),
+      });
+      const data = await response.json();
+      if (data.status === 'success') setInviteCode(data.code);
+      else alert(`無法取得邀請碼：${data.message || '請稍後再試'}`);
+    } catch {
+      alert('邀請碼取得失敗，請稍後再試。');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const copyCode = async () => {
+    if (!inviteCode) return;
+    await navigator.clipboard.writeText(inviteCode);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1800);
+  };
+
+  return (
+    <>
+      <button type="button" onClick={() => void openInvite()} className="mb-3 flex w-full items-center justify-between rounded-2xl border border-pink-100 bg-pink-50/70 px-4 py-3 text-left text-sm font-bold text-[#F04D79] hover:bg-pink-100">
+        <span>邀請旅伴加入行程</span><Plus size={18} />
+      </button>
+      {isOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm">
+          <div className="relative w-full max-w-sm rounded-3xl bg-white p-6 shadow-2xl">
+            <button type="button" onClick={() => setIsOpen(false)} className="absolute right-4 top-4 rounded-full bg-slate-50 p-1 text-slate-400 hover:text-slate-700" aria-label="關閉邀請視窗"><X size={20} /></button>
+            <div className="mb-6 mt-2 text-center"><div className="mx-auto mb-3 flex size-12 items-center justify-center rounded-full bg-pink-50"><Copy className="size-6 text-[#F04D79]" /></div><h3 className="text-xl font-bold text-slate-800">邀請旅伴加入</h3><p className="mt-1 text-sm text-slate-500">把邀請碼分享給旅伴即可加入</p></div>
+            <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4"><div className="mb-2 text-xs font-bold tracking-widest text-slate-500">INVITE CODE</div><div className="flex items-center justify-between gap-3">{isLoading ? <Loader2 className="size-5 animate-spin text-slate-400" /> : <span className="font-mono text-2xl font-bold tracking-[0.2em] text-slate-800">{inviteCode || '—'}</span>}<button type="button" onClick={() => void copyCode()} disabled={!inviteCode || isLoading} className="flex size-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 hover:border-[#F04D79] hover:text-[#F04D79] disabled:opacity-40" aria-label="複製邀請碼">{copied ? <Check size={18} /> : <Copy size={18} />}</button></div></div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
@@ -680,11 +691,11 @@ function ChatPanel({ itineraryId, currentUserId, isActive, onUnreadChange }: { i
   const refreshChat = useCallback(async () => {
     try {
       const [messageRes, presenceRes] = await Promise.all([
-        fetch('http://localhost:8080/itinerary/get_chat_messages.php', {
+        fetch('http://localhost:8080/itinerary/collaboration/get_chat_messages.php', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ Itinerary_ID: itineraryId, Account: currentUserId }),
         }),
-        fetch('http://localhost:8080/itinerary/get_chat_presence.php', {
+        fetch('http://localhost:8080/itinerary/collaboration/get_chat_presence.php', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ Itinerary_ID: itineraryId, Account: currentUserId }),
         }),
@@ -720,7 +731,7 @@ function ChatPanel({ itineraryId, currentUserId, isActive, onUnreadChange }: { i
   useEffect(() => {
     const loadMembers = async () => {
       try {
-        const res = await fetch('http://localhost:8080/itinerary/get_itinerary_members.php', {
+        const res = await fetch('http://localhost:8080/itinerary/collaboration/get_itinerary_members.php', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ Itinerary_ID: itineraryId, Account: currentUserId }),
         });
@@ -741,7 +752,7 @@ function ChatPanel({ itineraryId, currentUserId, isActive, onUnreadChange }: { i
 
   useEffect(() => {
     if (!currentUserId) return;
-    const heartbeat = () => fetch('http://localhost:8080/itinerary/update_chat_presence.php', {
+    const heartbeat = () => fetch('http://localhost:8080/itinerary/collaboration/update_chat_presence.php', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ Itinerary_ID: itineraryId, Account: currentUserId }),
     }).catch(() => {});
@@ -762,7 +773,7 @@ function ChatPanel({ itineraryId, currentUserId, isActive, onUnreadChange }: { i
     setIsSending(true);
     setSendError('');
     try {
-      const res = await fetch('http://localhost:8080/itinerary/send_chat_message.php', {
+      const res = await fetch('http://localhost:8080/itinerary/collaboration/send_chat_message.php', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ Itinerary_ID: itineraryId, Account: currentUserId, Message: message }),
       });
@@ -900,7 +911,7 @@ function BudgetPanel({ itineraryId, currentUserId, itineraryItems, onTotalChange
     isRefreshingExpensesRef.current = true;
     setBudgetSyncStatus('idle');
     try {
-      const expRes = await fetch("http://localhost:8080/itinerary/get_expenses.php", {
+      const expRes = await fetch("http://localhost:8080/itinerary/expenses/get_expenses.php", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ Itinerary_ID: itineraryId, Account: currentUserId })
       });
@@ -912,7 +923,7 @@ function BudgetPanel({ itineraryId, currentUserId, itineraryItems, onTotalChange
         console.error("帳單 API 回傳錯誤格式:", expText);
       }
 
-      const memRes = await fetch("http://localhost:8080/itinerary/get_itinerary_members.php", {
+      const memRes = await fetch("http://localhost:8080/itinerary/collaboration/get_itinerary_members.php", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ Itinerary_ID: itineraryId, Account: currentUserId })
       });
@@ -960,7 +971,7 @@ function BudgetPanel({ itineraryId, currentUserId, itineraryItems, onTotalChange
 
     setIsFetchingCode(true);
     try {
-      const res = await fetch("http://localhost:8080/itinerary/get_or_create_invite_code.php", {
+      const res = await fetch("http://localhost:8080/itinerary/core/get_or_create_invite_code.php", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ Itinerary_ID: itineraryId })
       });
@@ -1053,7 +1064,7 @@ function BudgetPanel({ itineraryId, currentUserId, itineraryItems, onTotalChange
               Type: expenseMode === 'collector' ? 'collector' : expenseMode === 'group' ? 'group' : 'personal'
             };
 
-      const res = await fetch("http://localhost:8080/itinerary/create_expense.php", {
+      const res = await fetch("http://localhost:8080/itinerary/expenses/create_expense.php", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(expenseData)
@@ -1077,7 +1088,7 @@ function BudgetPanel({ itineraryId, currentUserId, itineraryItems, onTotalChange
 
   const handleToggleShare = async (shareId: string, isSettled: boolean) => {
     try {
-      const res = await fetch("http://localhost:8080/itinerary/update_expense_share.php", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ Share_ID: shareId, Account: currentUserId, Is_Settled: !isSettled }) });
+      const res = await fetch("http://localhost:8080/itinerary/expenses/update_expense_share.php", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ Share_ID: shareId, Account: currentUserId, Is_Settled: !isSettled }) });
       const data = await res.json();
       if (data.status === 'success') fetchData(); else alert(data.message || "更新付款狀態失敗");
     } catch (error) {
@@ -1101,7 +1112,7 @@ function BudgetPanel({ itineraryId, currentUserId, itineraryItems, onTotalChange
             Amount: Math.round((Number(share.amount || 0) * nextAmount / previousAmount) * 100) / 100
           }))
         : [];
-      const res = await fetch("http://localhost:8080/itinerary/update_expense.php", {
+      const res = await fetch("http://localhost:8080/itinerary/expenses/update_expense.php", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1133,7 +1144,7 @@ function BudgetPanel({ itineraryId, currentUserId, itineraryItems, onTotalChange
     }
 
     try {
-      const res = await fetch("http://localhost:8080/itinerary/delete_expense.php", {
+      const res = await fetch("http://localhost:8080/itinerary/expenses/delete_expense.php", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ Expense_ID: expenseId, Account: currentUserId })
@@ -1201,12 +1212,6 @@ function BudgetPanel({ itineraryId, currentUserId, itineraryItems, onTotalChange
             )}
             
             <button type="button" onClick={() => void handleManualRefreshBudget()} disabled={isManualRefreshingBudget} title="重新整理記帳" aria-label="重新整理記帳" className="mr-2 rounded-lg p-2 text-slate-400 hover:bg-slate-50 hover:text-[#F04D79] disabled:cursor-wait disabled:opacity-50"><RefreshCw size={16} className={isManualRefreshingBudget ? 'animate-spin' : ''} /></button>
-            <button 
-              onClick={handleOpenInviteModal}
-              className="size-10 rounded-full bg-white border border-slate-200 shadow-sm flex items-center justify-center text-slate-600 hover:bg-slate-50 hover:text-[#F04D79] transition-colors z-20"
-            >
-              <Plus size={20} strokeWidth={1.5} />
-            </button>
           </div>
         </div>
         
@@ -1523,7 +1528,7 @@ function LuggagePanel({ itineraryId, currentUserId, onCountChange }: { itinerary
   const refreshLuggage = useCallback(async () => {
     if (syncStatusRef.current === 'saving') return;
     try {
-      const res = await fetch("http://localhost:8080/itinerary/get_luggage.php", {
+      const res = await fetch("http://localhost:8080/itinerary/luggage/get_luggage.php", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ Itinerary_ID: itineraryId, Account: currentUserId }),
@@ -1538,7 +1543,7 @@ function LuggagePanel({ itineraryId, currentUserId, onCountChange }: { itinerary
       setCategories((currentCategories) => currentCategories.length ? currentCategories : defaultTemplate);
       setIsLoaded(true);
     }
-  }, [itineraryId]);
+  }, [itineraryId, currentUserId]);
 
   useEffect(() => { refreshLuggage(); }, [refreshLuggage]);
 
@@ -1550,11 +1555,11 @@ function LuggagePanel({ itineraryId, currentUserId, onCountChange }: { itinerary
   useEffect(() => {
     if (!isLoaded) return; setSyncStatus('saving');
     const timer = setTimeout(() => {
-      fetch("http://localhost:8080/itinerary/update_luggage.php", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ Itinerary_ID: itineraryId, Account: currentUserId, LuggageData: JSON.stringify(categories) }) })
+      fetch("http://localhost:8080/itinerary/luggage/update_luggage.php", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ Itinerary_ID: itineraryId, Account: currentUserId, LuggageData: JSON.stringify(categories) }) })
       .then(res => res.json()).then(data => { if (data.status === 'success') setSyncStatus('saved'); else setSyncStatus('error'); }).catch(() => setSyncStatus('error'));
     }, 1000);
     return () => clearTimeout(timer);
-  }, [categories, isLoaded, itineraryId]);
+  }, [categories, isLoaded, itineraryId, currentUserId]);
 
   useEffect(() => {
     if (isLoaded) {
@@ -1579,7 +1584,7 @@ function LuggagePanel({ itineraryId, currentUserId, onCountChange }: { itinerary
   return (
     <div className="animate-in fade-in slide-in-from-right-4 duration-200 pb-20 relative px-1">
       <div className="flex justify-between items-center mb-4 px-1 mt-2">
-        <div className={`text-[10px] font-bold flex items-center gap-1.5 ${syncStatus === 'error' ? 'text-red-500' : 'text-slate-400'}`}>{syncStatus === 'saving' && <><Loader2 size={12} className="animate-spin" /> 儲存中...</>}{syncStatus === 'saved' && <><Save size={12} className="text-green-500" /> 已同步</>}{syncStatus === 'error' && <>同步失敗，請稍後再試</>}</div>
+        <div className={`text-[10px] font-bold flex items-center gap-1.5 ${syncStatus === 'error' ? 'text-red-500' : 'text-slate-400'}`}>{syncStatus === 'saving' && <><Loader2 size={12} className="animate-spin" /> 儲存中...</>}{syncStatus === 'error' && <>儲存失敗，請稍後再試</>}</div>
         <div className="flex items-center gap-3"><button onClick={checkAll} className="text-sm font-bold text-[#F04D79] hover:opacity-70 transition-opacity">全部勾選</button><button onClick={clearChecked} className="text-sm font-bold text-slate-400 hover:text-[#F04D79] transition-colors">全部取消</button></div>
       </div>
       <div className="space-y-4">
@@ -1758,7 +1763,7 @@ function SortableItem({
             value={markerStatus}
             onChange={(event) => { event.stopPropagation(); onMarkerStatusChange?.(item.id, event.target.value as MarkerStatus); }}
             onClick={(event) => event.stopPropagation()}
-            className="mt-1 rounded-full border-0 bg-slate-50 px-2 py-1 text-[10px] font-bold text-slate-500 outline-none focus:ring-2 focus:ring-pink-100"
+            className="hidden"
             aria-label="標點狀態"
           >
             {markerStatusOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
@@ -1766,7 +1771,6 @@ function SortableItem({
         </div>
         <div className={`flex gap-1.5 pt-0.5 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity shrink-0 ${editingTimeId === item.id ? 'hidden' : ''}`}>
           <button onClick={(event) => { event.stopPropagation(); setEditingItemId(item.id); setEditingTitle(item.title); }} className="size-8 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 hover:bg-[#F04D79] hover:text-white transition-colors shrink-0 shadow-sm" title="編輯行程名稱" aria-label="編輯行程名稱"><Edit2 size={14} /></button>
-          <button onClick={(event) => { event.stopPropagation(); handleDuplicateItem(item); }} className="size-8 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 hover:bg-slate-700 hover:text-white transition-colors shrink-0 shadow-sm" title="複製行程" aria-label="複製行程"><Copy size={14} /></button>
           <button onClick={() => handleDeleteItem(item.id)} className="size-8 rounded-full bg-slate-50 flex items-center justify-center text-slate-300 hover:bg-red-500 hover:text-white transition-colors shrink-0 shadow-sm" title="刪除此行程"><Trash2 size={14} /></button>
         </div>
       </div>
@@ -1779,6 +1783,7 @@ export default function ItineraryEditor() {
   const router = useRouter();
   const params = useParams(); 
   const { user, loading: authLoading } = useAuth();
+  const currentAccount = String(user?.id || (user as any)?.Account || '');
   
   const { isLoaded, loadError } = useJsApiLoader({
     id: 'google-map-script',
@@ -1810,6 +1815,7 @@ export default function ItineraryEditor() {
   const [chatUnreadCount, setChatUnreadCount] = useState(0);
   const [luggageCount, setLuggageCount] = useState<{ checked: number; total: number } | null>(null);
   const [budgetTotal, setBudgetTotal] = useState<number | null>(null);
+  const [reservationCount, setReservationCount] = useState(0);
   const preferencesHydratedRef = useRef(false);
 
   useEffect(() => {
@@ -1827,8 +1833,8 @@ export default function ItineraryEditor() {
   }, [activeDay, params.id, rightPanelTab]);
 
   const [newItemTitle, setNewItemTitle] = useState("");
-  const availableTags = ["適合獨旅", "單人吧台", "寵物友善", "深夜營業", "有插座"];
-  const mapFilterTagOptions = ["餐廳", "咖啡廳", "住宿", "景點", "平價"];
+  const availableTags = ["單人友善", "寵物友善", "餐廳", "咖啡廳"];
+  const mapFilterTagOptions = ["單人友善", "寵物友善", "餐廳", "咖啡廳"];
   // 左側標籤是搜尋條件；右側標籤只篩選已載入的地圖結果，避免兩個區域互相干擾。
   const [searchTags, setSearchTags] = useState<string[]>([]);
   const [mapFilterTags, setMapFilterTags] = useState<string[]>([]);
@@ -1850,12 +1856,15 @@ export default function ItineraryEditor() {
   const [savingTimeId, setSavingTimeId] = useState<string | null>(null);
 
   const [selectedPlace, setSelectedPlace] = useState<any | null>(null);
+  const placeSelectionRequestRef = useRef(0);
   const [placeDetailsLoading, setPlaceDetailsLoading] = useState<string | null>(null);
   const placeDetailsCacheRef = useRef<Record<string, any>>({});
   const placeDetailsRequestsRef = useRef<Map<string, Promise<any>>>(new Map());
   const [selectedMapItem, setSelectedMapItem] = useState<any | null>(null);
   const [editingLocationItemId, setEditingLocationItemId] = useState<string | null>(null);
   const [searchMarkers, setSearchMarkers] = useState<any[]>([]);
+  const [placeTags, setPlaceTags] = useState<Record<string, string[]>>({});
+  const [placeTagsSaving, setPlaceTagsSaving] = useState(false);
   const [routeMode, setRouteMode] = useState<RouteMode>('driving');
   const mapRef = useRef<google.maps.Map | null>(null);
   const [mapCenter, setMapCenter] = useState({ lat: 25.0478, lng: 121.5170 });
@@ -1866,6 +1875,8 @@ export default function ItineraryEditor() {
   const [mapLayers, setMapLayers] = useState({ itinerary: true, search: true, userLocation: true });
   const [mapReady, setMapReady] = useState(false);
   const [isMapFocusMode, setIsMapFocusMode] = useState(true);
+  const [isMapUtilityOpen, setIsMapUtilityOpen] = useState(false);
+  const [activeMapUtility, setActiveMapUtility] = useState<string | null>(null);
   const [isLocating, setIsLocating] = useState(false);
   const [mapStatusMessage, setMapStatusMessage] = useState<string | null>(null);
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
@@ -1941,7 +1952,10 @@ export default function ItineraryEditor() {
   }, [fetchPlaceDetailsOnce]);
 
   const getPlaceMapTags = (place: any) => {
-    const tags = new Set<string>(Array.isArray(place?.tags) ? place.tags : []);
+    const tags = new Set<string>([
+      ...(Array.isArray(place?.tags) ? place.tags : []),
+      ...(Array.isArray(placeTags[String(place?.id || '')]) ? placeTags[String(place?.id || '')] : []),
+    ]);
     const types = Array.isArray(place?.types) ? place.types : [];
 
     if (types.includes('restaurant') || types.includes('meal_takeaway') || types.includes('meal_delivery')) tags.add('餐廳');
@@ -1949,6 +1963,7 @@ export default function ItineraryEditor() {
     if (types.includes('lodging')) tags.add('住宿');
     if (types.includes('tourist_attraction') || types.includes('museum') || types.includes('park')) tags.add('景點');
     if (['PRICE_LEVEL_FREE', 'PRICE_LEVEL_INEXPENSIVE'].includes(place?.priceLevel)) tags.add('平價');
+    if (types.some((type: string) => ['restaurant', 'cafe', 'meal_takeaway', 'meal_delivery', 'lodging'].includes(type))) tags.add('單人友善');
 
     return tags;
   };
@@ -2052,6 +2067,52 @@ export default function ItineraryEditor() {
     setSelectedPlace(null);
   }, []);
 
+  const loadPlaceTags = useCallback(async (places: any[]) => {
+    const placeIds = places.map((place) => String(place?.id || '')).filter(Boolean);
+    if (!placeIds.length || !currentAccount) return;
+    try {
+      const response = await fetch('http://localhost:8080/itinerary/places/get_place_tags.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ Itinerary_ID: params.id, Account: currentAccount, PlaceIds: placeIds }),
+      });
+      const data = await response.json();
+      if (response.ok && data.status === 'success') setPlaceTags((current) => ({ ...current, ...(data.data || {}) }));
+    } catch (error) {
+      console.warn('Place tags load failed:', error);
+    }
+  }, [currentAccount, params.id]);
+
+  const savePlaceTags = useCallback(async (place: any, tags: string[]) => {
+    if (!place?.id || !currentAccount) return;
+    setPlaceTagsSaving(true);
+    try {
+      const response = await fetch('http://localhost:8080/itinerary/places/update_place_tags.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          Itinerary_ID: params.id,
+          Account: currentAccount,
+          Place: {
+            GooglePlaceID: place.id,
+            Name: place.displayName?.text || place.name || '未命名地點',
+            Address: place.formattedAddress || '',
+            Latitude: place.location?.latitude,
+            Longitude: place.location?.longitude,
+          },
+          Tags: tags,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok || data.status !== 'success') throw new Error(data.message || '標籤儲存失敗');
+      setPlaceTags((current) => ({ ...current, [String(place.id)]: tags }));
+    } catch (error) {
+      alert(error instanceof Error ? error.message : '標籤儲存失敗');
+    } finally {
+      setPlaceTagsSaving(false);
+    }
+  }, [currentAccount, params.id]);
+
   useEffect(() => {
     routePolylineRef.current?.setMap(null);
     routePolylineRef.current = null;
@@ -2132,9 +2193,12 @@ export default function ItineraryEditor() {
     lastAutoFitDayRef.current = activeDay;
   }, [activeDay, itineraryData, itineraryItems, itemsLoaded, mapReady]);
 
-const handleKeywordSearch = async (keyword: string) => {
+const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) => {
     if (!keyword.trim() && searchTags.length === 0) return;
     setLastSearchKeyword(keyword.trim());
+    // 文字查詢只產生候選結果，尚未代表使用者確認了任何座標。
+    setNewItemLat(null);
+    setNewItemLng(null);
     
     setIsAddItemOpen(false);
 
@@ -2148,8 +2212,8 @@ const handleKeywordSearch = async (keyword: string) => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           query: finalQuery,
-          lat: Number(itineraryData?.destLat) || 25.0478, 
-          lng: Number(itineraryData?.destLng) || 121.5170
+          lat: Number(searchCenter.lat) || Number(itineraryData?.destLat) || 25.0478,
+          lng: Number(searchCenter.lng) || Number(itineraryData?.destLng) || 121.5170
         }),
       });
       const data = await res.json();
@@ -2160,6 +2224,7 @@ const handleKeywordSearch = async (keyword: string) => {
       if (data.places && data.places.length > 0) {
         setMapStatusMessage(null);
         setSearchMarkers(data.places);
+        void loadPlaceTags(data.places);
         
         // 👇 核心邏輯：計算所有地標的邊界，並讓地圖自動縮放包覆
         if (mapRef.current && window.google) {
@@ -2207,8 +2272,11 @@ const handleKeywordSearch = async (keyword: string) => {
 
   // 把這段貼在 handleKeywordSearch 結束的大括號下方
   const handlePlaceSelect = async (placeId: string) => {
+    const selectionRequestId = placeSelectionRequestRef.current + 1;
+    placeSelectionRequestRef.current = selectionRequestId;
     try {
       const data = await fetchPlaceDetailsOnce(placeId);
+      if (selectionRequestId !== placeSelectionRequestRef.current) return;
       
       if (data.location) {
         const selectedPosition = {
@@ -2226,7 +2294,7 @@ const handleKeywordSearch = async (keyword: string) => {
         setNewItemTitle(data.displayName?.text || '');
 
         if (editingLocationItemId) {
-          const updateResponse = await fetch('http://localhost:8080/itinerary/update_item_location.php', {
+          const updateResponse = await fetch('http://localhost:8080/itinerary/items/update_item_location.php', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -2264,6 +2332,31 @@ const handleKeywordSearch = async (keyword: string) => {
     } catch (error) {
       console.error("Fetch place details error:", error);
       setMapStatusMessage('地點詳細資料載入失敗，請稍後再試。');
+    }
+  };
+
+  const mapUtilityOptions = [
+    { id: 'gas', label: '加油站', query: '加油站', icon: MapPin },
+    { id: 'service-area', label: '服務區', query: '高速公路服務區', icon: MapPinned },
+    { id: 'parking', label: '停車場', query: '停車場', icon: MapPin },
+    { id: 'convenience', label: '便利商店', query: '便利商店', icon: ShoppingBag },
+    { id: 'food', label: '餐廳', query: '餐廳', icon: Utensils },
+  ];
+
+  const handleMapUtilitySearch = (option: (typeof mapUtilityOptions)[number]) => {
+    setMapLayers((layers) => ({ ...layers, search: true }));
+    setActiveMapUtility(option.id);
+    void handleKeywordSearch(option.query);
+  };
+
+
+  const handleNewItemTitleChange = (value: string) => {
+    setNewItemTitle(value);
+    if (addItemMode === 'search') {
+      // 使用者重新修改名稱後，上一筆座標立即失效，避免名稱與位置不一致。
+      setNewItemLat(null);
+      setNewItemLng(null);
+      setSelectedPlace(null);
     }
   };
 
@@ -2305,7 +2398,7 @@ const handleKeywordSearch = async (keyword: string) => {
 
   const fetchItems = useCallback(async (id: string) => {
     try {
-      const res = await fetch("http://localhost:8080/itinerary/get_itinerary_items.php", {
+      const res = await fetch("http://localhost:8080/itinerary/items/get_itinerary_items.php", {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ Itinerary_ID: id }),
       });
       const data = await res.json();
@@ -2336,7 +2429,7 @@ const handleKeywordSearch = async (keyword: string) => {
     if (!user) { router.push("/auth/login"); return; }
     const fetchDetail = async () => {
       try {
-        const res = await fetch("http://localhost:8080/itinerary/get_itinerary_detail.php", {
+        const res = await fetch("http://localhost:8080/itinerary/core/get_itinerary_detail.php", {
           method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ Itinerary_ID: params.id, Account: user.id || (user as any).Account }),
         });
         const contentType = res.headers.get("content-type");
@@ -2345,7 +2438,7 @@ const handleKeywordSearch = async (keyword: string) => {
         if (data.status === 'success') {
           setItineraryData(data.data);
           setCoverImage(data.data.coverImage || "https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?q=80&w=800&auto=format&fit=crop");
-          fetch("http://localhost:8080/itinerary/get_itinerary_style.php", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ Itinerary_ID: params.id }) })
+          fetch("http://localhost:8080/itinerary/core/get_itinerary_style.php", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ Itinerary_ID: params.id }) })
             .then((styleRes) => styleRes.json()).then((styleData) => { if (styleData.status === 'success') setTravelStyle(styleData.style); }).catch(() => {});
         } else { alert(data.message); router.push("/planner"); }
       } catch (error) { alert("資料讀取失敗"); } finally { setIsLoading(false); }
@@ -2364,7 +2457,7 @@ const handleKeywordSearch = async (keyword: string) => {
     const previewUrl = URL.createObjectURL(file); setCoverImage(previewUrl); setIsUploading(true);
     const formData = new FormData(); formData.append("cover_image", file); formData.append("Itinerary_ID", params.id as string); formData.append("Account", user?.id || (user as any)?.Account);
     try {
-      const res = await fetch("http://localhost:8080/itinerary/update_cover_image.php", { method: "POST", body: formData });
+      const res = await fetch("http://localhost:8080/itinerary/core/update_cover_image.php", { method: "POST", body: formData });
       const data = await res.json(); if (data.status === 'success') setCoverImage(data.new_image_url); else { alert(data.message); setCoverImage(itineraryData.coverImage); }
     } catch (error) { alert("圖片上傳失敗"); setCoverImage(itineraryData.coverImage); } 
     finally { setIsUploading(false); if (fileInputRef.current) fileInputRef.current.value = ""; }
@@ -2374,7 +2467,7 @@ const handleKeywordSearch = async (keyword: string) => {
     setTravelStyle(style);
     setIsEditingStyle(false);
     try {
-      const res = await fetch("http://localhost:8080/itinerary/update_itinerary_style.php", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ Itinerary_ID: params.id, Style: style }) });
+      const res = await fetch("http://localhost:8080/itinerary/core/update_itinerary_style.php", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ Itinerary_ID: params.id, Style: style }) });
       const data = await res.json();
       if (data.status !== 'success') alert(data.message || "儲存行程風格失敗");
     } catch (error) {
@@ -2386,7 +2479,7 @@ const handleKeywordSearch = async (keyword: string) => {
     if (!editInfoTitle.trim() || !editInfoStart || !editInfoEnd) { alert("請完整填寫標題與日期"); return; }
     if (new Date(editInfoStart) > new Date(editInfoEnd)) { alert("結束日期不能早於開始日期"); return; }
     try {
-      const res = await fetch("http://localhost:8080/itinerary/update_itinerary_info.php", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ Itinerary_ID: params.id, Title: editInfoTitle, StartDate: editInfoStart, EndDate: editInfoEnd }) });
+      const res = await fetch("http://localhost:8080/itinerary/core/update_itinerary_info.php", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ Itinerary_ID: params.id, Title: editInfoTitle, StartDate: editInfoStart, EndDate: editInfoEnd }) });
       const data = await res.json(); if (data.status === 'success') { setItineraryData({ ...itineraryData, title: editInfoTitle, startDate: editInfoStart, endDate: editInfoEnd }); setIsEditingInfo(false); } else alert(data.message);
     } catch(error) { alert("更新失敗"); }
   };
@@ -2475,7 +2568,7 @@ const handleKeywordSearch = async (keyword: string) => {
     }
     if (!newItemTitle.trim()) return alert("請輸入行程標題"); setIsSubmittingItem(true);
     try {
-      const res = await fetch("http://localhost:8080/itinerary/create_itinerary_item.php", { 
+      const res = await fetch("http://localhost:8080/itinerary/items/create_itinerary_item.php", { 
         method: "POST", headers: { "Content-Type": "application/json" }, 
         body: JSON.stringify({ 
           Itinerary_ID: params.id, 
@@ -2505,7 +2598,7 @@ const handleKeywordSearch = async (keyword: string) => {
   const handleUpdateTitle = async (itemId: string) => {
     if (!editingTitle.trim()) return setEditingItemId(null);
     try {
-      const res = await fetch("http://localhost:8080/itinerary/update_item_title.php", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ Item_ID: itemId, Title: editingTitle }) });
+      const res = await fetch("http://localhost:8080/itinerary/items/update_item_title.php", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ Item_ID: itemId, Title: editingTitle }) });
       const data = await res.json(); if (data.status === 'success') fetchItems(params.id as string); else alert(data.message);
     } catch(error) { alert("更新失敗"); } finally { setEditingItemId(null); }
   };
@@ -2530,7 +2623,7 @@ const handleKeywordSearch = async (keyword: string) => {
     }
     setSavingTimeId(itemId);
     try {
-      const res = await fetch("http://localhost:8080/itinerary/update_item_time.php", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ Item_ID: itemId, StartTime: editStartTime, EndTime: editEndTime }) });
+      const res = await fetch("http://localhost:8080/itinerary/items/update_item_time.php", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ Item_ID: itemId, StartTime: editStartTime, EndTime: editEndTime }) });
       const data = await res.json(); if (data.status === 'success') fetchItems(params.id as string); else alert(data.message);
     } catch(error) { alert("更新失敗"); } finally { setEditingTimeId(null); }
     setSavingTimeId(null);
@@ -2548,14 +2641,14 @@ const handleKeywordSearch = async (keyword: string) => {
     });
     setItineraryItems(items => items.filter(item => item.id !== itemId));
     try {
-      const res = await fetch("http://localhost:8080/itinerary/delete_itinerary_item.php", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ Item_ID: itemId }) });
+      const res = await fetch("http://localhost:8080/itinerary/items/delete_itinerary_item.php", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ Item_ID: itemId }) });
       const data = await res.json(); if (data.status !== 'success') { alert(data.message); fetchItems(params.id as string); }
     } catch(error) { alert("刪除失敗"); fetchItems(params.id as string); }
   };
 
   const handleDuplicateItem = async (item: any) => {
     try {
-      const res = await fetch("http://localhost:8080/itinerary/create_itinerary_item.php", {
+      const res = await fetch("http://localhost:8080/itinerary/items/create_itinerary_item.php", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -2592,10 +2685,10 @@ const handleKeywordSearch = async (keyword: string) => {
           return { ...item, startTime: timeSlots[dayIndex].startTime, endTime: timeSlots[dayIndex].endTime };
         });
         const sortUpdates = currentDayItems.map((item, index) => ({ id: item.id, sortOrder: index }));
-        fetch("http://localhost:8080/itinerary/update_sort_order.php", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ updates: sortUpdates }) }).catch(err => console.error(err));
+        fetch("http://localhost:8080/itinerary/items/update_sort_order.php", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ updates: sortUpdates }) }).catch(err => console.error(err));
         const timeUpdates = currentDayItems.map((item, index) => ({ item, slot: timeSlots[index] }))
           .filter(({ item, slot }) => item.startTime !== slot.startTime || item.endTime !== slot.endTime);
-        Promise.all(timeUpdates.map(({ item, slot }) => fetch("http://localhost:8080/itinerary/update_item_time.php", {
+        Promise.all(timeUpdates.map(({ item, slot }) => fetch("http://localhost:8080/itinerary/items/update_item_time.php", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ Item_ID: item.id, StartTime: slot.startTime, EndTime: slot.endTime }),
@@ -2633,7 +2726,7 @@ if (!itineraryData) {
   const totalStraightLineDistanceKm = calculateStraightLineDistanceKm(itineraryItems);
 
   return (
-    <div className="fixed inset-0 z-40 flex flex-col bg-[#FAFAFA] font-sans text-slate-800">
+    <div className="itinerary-page fixed inset-0 z-40 flex flex-col bg-[#F4F2ED] font-sans text-slate-800">
       
       <header className="hidden md:flex h-16 bg-white border-b border-slate-100 items-center justify-between px-6 shrink-0 z-50">
         <div className="flex items-center gap-8">
@@ -2782,7 +2875,7 @@ if (!itineraryData) {
 
                 {/* 快速標籤篩選器 */}
                 <div className="pt-1">
-                  <p className="text-[11px] font-bold text-slate-400 mb-2 tracking-widest uppercase">附加搜尋特徵</p>
+                  <p className="text-[11px] font-bold text-slate-400 mb-2 tracking-widest uppercase">附加搜尋特徵（可複選，按 Enter 套用全部條件）</p>
                   <div className="flex flex-wrap gap-2">
                     {availableTags.map(tag => {
                       const isSelected = searchTags.includes(tag);
@@ -2831,6 +2924,36 @@ if (!itineraryData) {
               >
                 <LocateFixed size={18} className={isLocating ? 'animate-pulse text-[#F04D79]' : ''} />
               </button>
+              </div>
+
+              <div className="absolute right-4 top-[4.25rem] z-[50]">
+                {!isMapUtilityOpen ? (
+                  <button
+                    type="button"
+                    onClick={() => { setIsMapUtilityOpen(true); setIsLayerMenuOpen(false); }}
+                    className="flex items-center gap-2 rounded-2xl border border-slate-200/80 bg-white/95 px-3 py-2 text-xs font-bold text-slate-600 shadow-xl backdrop-blur-md transition hover:text-[#F04D79]"
+                    aria-label="開啟地圖沿途工具"
+                  >
+                    <MapPin size={15} /> 沿途工具
+                  </button>
+                ) : (
+                  <div className="w-56 rounded-2xl border border-slate-200/80 bg-white/95 p-3 shadow-xl backdrop-blur-md">
+                    <div className="mb-2 flex items-center justify-between">
+                      <div><p className="text-xs font-bold text-slate-700">沿途工具</p><p className="mt-0.5 text-[10px] text-slate-400">點擊後搜尋附近地點</p></div>
+                      <button type="button" onClick={() => setIsMapUtilityOpen(false)} className="rounded-md p-1 text-slate-400 hover:bg-slate-100" aria-label="收合沿途工具"><X size={14} /></button>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      {mapUtilityOptions.map((option) => {
+                        const Icon = option.icon;
+                        return <button key={option.id} type="button" onClick={() => handleMapUtilitySearch(option)} className={`flex items-center gap-1.5 rounded-xl border px-2.5 py-2 text-left text-[11px] font-bold transition ${activeMapUtility === option.id ? 'border-[#F04D79] bg-pink-50 text-[#F04D79]' : 'border-slate-100 text-slate-600 hover:border-[#F04D79]/40 hover:bg-pink-50'}`}><Icon size={14} />{option.label}</button>;
+                      })}
+                    </div>
+                    <button type="button" onClick={() => { const visible = !mapLayers.search; setMapLayers((layers) => ({ ...layers, search: visible })); if (!visible) { clearSearchResults(); setActiveMapUtility(null); } }} aria-pressed={mapLayers.search} className={`mt-3 flex w-full items-center justify-center gap-1.5 rounded-xl border px-2.5 py-2 text-[11px] font-bold transition ${mapLayers.search ? 'border-slate-200 text-slate-600 hover:border-[#F04D79]/40 hover:bg-pink-50' : 'border-[#F04D79] bg-pink-50 text-[#F04D79]'}`}>
+                      {mapLayers.search ? <Eye size={14} /> : <EyeOff size={14} />}
+                      {mapLayers.search ? '隱藏搜尋標記' : '顯示搜尋標記'}
+                    </button>
+                  </div>
+                )}
               </div>
 
               {isLayerMenuOpen && (
@@ -2901,6 +3024,16 @@ if (!itineraryData) {
                 }}
                 // 👇 關鍵：綁定地圖實例，讓前面的 panTo 能正常運作
                 onLoad={(map) => { mapRef.current = map; setMapReady(true); }}
+                onIdle={() => {
+                  const center = mapRef.current?.getCenter();
+                  if (!center) return;
+                  const nextCenter = { lat: center.lat(), lng: center.lng() };
+                  setMapCenter((current) => (
+                    Math.abs(current.lat - nextCenter.lat) < 0.000001 && Math.abs(current.lng - nextCenter.lng) < 0.000001
+                      ? current
+                      : nextCenter
+                  ));
+                }}
                 onUnmount={() => { routePolylineRef.current?.setMap(null); routePolylineRef.current = null; mapRef.current = null; setMapReady(false); }}
             >
               {mapStatusMessage && (
@@ -3010,6 +3143,18 @@ if (!itineraryData) {
                 >
                   <div className="p-1 max-w-[200px] text-slate-800">
                     <h3 className="font-bold text-base mb-1">{selectedPlace.displayName?.text}</h3>
+                    {(() => {
+                      const tagOptions = ['單人友善', '寵物友善', '餐廳', '咖啡廳'];
+                      const savedTags = placeTags[String(selectedPlace.id)];
+                      const inferredTags = Array.from(getPlaceMapTags(selectedPlace));
+                      const currentTags = savedTags || inferredTags;
+                      return <div className="mb-2 flex flex-wrap gap-1">
+                        {tagOptions.map((tag) => {
+                          const selected = currentTags.includes(tag);
+                          return <button key={tag} type="button" disabled={placeTagsSaving} onClick={() => savePlaceTags(selectedPlace, selected ? currentTags.filter((item) => item !== tag) : [...currentTags, tag])} className={`rounded-full border px-2 py-1 text-[10px] font-bold transition ${selected ? 'border-[#F04D79] bg-pink-50 text-[#F04D79]' : 'border-slate-200 text-slate-400 hover:border-[#F04D79] hover:text-[#F04D79]'} disabled:opacity-50`}>{selected ? '✓ ' : '+ '}{tag}</button>;
+                        })}
+                      </div>;
+                    })()}
                     {placeDetailsLoading === selectedPlace.id && (
                       <p className="mb-2 text-[10px] font-semibold text-slate-400">載入地點詳細資料…</p>
                     )}
@@ -3109,19 +3254,6 @@ if (!itineraryData) {
                 )}
               </div>
               )}
-              {!isMapFocusMode && (
-              <div className="pointer-events-none absolute bottom-4 left-4 z-30 hidden rounded-2xl border border-slate-200/80 bg-white/90 p-3 shadow-lg backdrop-blur-md sm:block">
-                <p className="mb-2 text-[10px] font-bold tracking-wide text-slate-500">標點狀態</p>
-                <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
-                  {markerStatusOptions.map((option) => (
-                    <span key={option.value} className="flex items-center gap-1.5 text-[10px] font-semibold text-slate-500">
-                      <span className="size-2.5 rounded-full border border-white shadow-sm" style={{ backgroundColor: option.fill }} />
-                      {option.label}
-                    </span>
-                  ))}
-                </div>
-              </div>
-              )}
             </GoogleMap>
             </>
           )}
@@ -3160,6 +3292,18 @@ if (!itineraryData) {
                 </div>
                 <div onClick={() => setRightPanelTab('luggage')} className="col-span-1 bg-white rounded-2xl p-4 shadow-sm border border-slate-100 flex flex-col justify-between hover:shadow-md hover:border-[#F04D79]/30 transition-all cursor-pointer group"><div className="text-[11px] font-bold text-slate-600 mb-2">行李完成度</div><div className="flex items-end justify-between"><BaggageClaim size={18} className="text-slate-300 group-hover:text-[#F04D79] transition-colors" /><div className="text-xl font-bold font-mono text-slate-900">{luggageCount ? `${luggageCount.checked}/${luggageCount.total}` : '—'}</div></div></div>
                 <div onClick={() => setRightPanelTab('budget')} className="col-span-1 bg-white rounded-2xl p-4 shadow-sm border border-slate-100 flex flex-col justify-between hover:shadow-md hover:border-[#F04D79]/30 transition-all cursor-pointer group"><div className="text-[11px] font-bold text-slate-600 mb-2">記帳總額</div><div className="flex items-end justify-between"><DollarSign size={18} className="text-slate-300 group-hover:text-[#F04D79] transition-colors" /><div className="text-xl font-bold font-mono text-slate-900">{budgetTotal === null ? '—' : `$${budgetTotal.toLocaleString()}`}</div></div></div>
+                <button type="button" onClick={() => setRightPanelTab('chat')} className="col-span-1 bg-white rounded-2xl p-4 text-left shadow-sm border border-slate-100 flex flex-col justify-between hover:shadow-md hover:border-[#F04D79]/30 transition-all group">
+                  <div className="flex items-start justify-between"><div className="text-[11px] font-bold text-slate-600">旅伴聊天</div><MessageCircle size={18} className="text-slate-300 group-hover:text-[#F04D79] transition-colors" /></div>
+                  <div className="mt-3 text-sm font-bold text-slate-800">{chatUnreadCount > 0 ? `${chatUnreadCount} 則未讀訊息` : '開始討論行程'}</div>
+                </button>
+                <button type="button" onClick={() => setRightPanelTab('notes')} className="col-span-1 bg-white rounded-2xl p-4 text-left shadow-sm border border-slate-100 flex flex-col justify-between hover:shadow-md hover:border-[#F04D79]/30 transition-all group">
+                  <div className="flex items-start justify-between"><div className="text-[11px] font-bold text-slate-600">旅行筆記</div><FileText size={18} className="text-slate-300 group-hover:text-[#F04D79] transition-colors" /></div>
+                  <div className="mt-3 text-sm font-bold text-slate-800">記下旅程重點</div>
+                </button>
+                <button type="button" onClick={() => setRightPanelTab('reservations')} className="col-span-2 bg-white rounded-2xl p-4 text-left shadow-sm border border-slate-100 flex items-center justify-between hover:shadow-md hover:border-[#F04D79]/30 transition-all group">
+                  <div><div className="text-[11px] font-bold text-slate-600">預訂與票券</div><div className="mt-1 text-sm font-bold text-slate-800">{reservationCount > 0 ? `${reservationCount} 筆預訂與票券` : '集中管理票券與訂位資料'}</div></div>
+                  <Ticket size={22} className="text-slate-300 group-hover:text-[#F04D79] transition-colors" />
+                </button>
               </div>
             )}
 
@@ -3174,7 +3318,7 @@ if (!itineraryData) {
 
             {rightPanelTab === 'budget' && <BudgetPanel itineraryId={params.id as string} currentUserId={String(user?.id || (user as any)?.Account || '')} itineraryItems={itineraryItems} onTotalChange={setBudgetTotal} />}
             {rightPanelTab === 'today' && <TodayPanel dayNumber={activeDay} items={currentDayItems} onFocusItem={focusMapOnItem} />}
-            {rightPanelTab === 'reservations' && <ReservationsPanel itineraryId={params.id as string} currentUserId={String(user?.id || (user as any)?.Account || '')} itineraryItems={itineraryItems} onFocusItem={focusMapOnItem} />}
+            {rightPanelTab === 'reservations' && <ReservationsPanel itineraryId={params.id as string} currentUserId={String(user?.id || (user as any)?.Account || '')} itineraryItems={itineraryItems} onFocusItem={focusMapOnItem} onCountChange={setReservationCount} />}
             {rightPanelTab === 'notes' && <ManualNotesPanel itineraryId={params.id as string} currentUserId={String(user?.id || (user as any)?.Account || '')} />}
             {rightPanelTab === 'travelers' && <TravelersPanel itineraryId={params.id as string} currentUserId={String(user?.id || (user as any)?.Account || '')} />}
             {rightPanelTab === 'luggage' && <div className="p-4"><LuggagePanel itineraryId={params.id as string} currentUserId={String(user?.id || (user as any)?.Account || '')} onCountChange={setLuggageCount} /></div>}
@@ -3235,7 +3379,7 @@ if (!itineraryData) {
                     <div className="block">
                       <PlaceAutocomplete
                         value={newItemTitle}
-                        onChange={setNewItemTitle}
+                        onChange={handleNewItemTitleChange}
                         locationBias={{
                           lat: Number(itineraryData?.destLat) || 25.0478,
                           lng: Number(itineraryData?.destLng) || 121.5170,

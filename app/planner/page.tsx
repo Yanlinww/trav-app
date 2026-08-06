@@ -87,7 +87,7 @@ const CITY_COORDINATES: Record<string, { lat: number, lng: number }> = {
   const fetchItineraries = async () => {
     if (!user) return;
     try {
-      const res = await fetch("http://localhost:8080/itinerary/get_itineraries.php", {
+      const res = await fetch("http://localhost:8080/itinerary/core/get_itineraries.php", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ Account: user.id || (user as any).Account }),
@@ -117,7 +117,7 @@ const CITY_COORDINATES: Record<string, { lat: number, lng: number }> = {
   const handleGetInviteCode = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     try {
-      const res = await fetch("http://localhost:8080/itinerary/get_or_create_invite_code.php", {
+      const res = await fetch("http://localhost:8080/itinerary/core/get_or_create_invite_code.php", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ Itinerary_ID: id })
       });
@@ -178,7 +178,7 @@ const CITY_COORDINATES: Record<string, { lat: number, lng: number }> = {
     
     setIsSubmitting(true);
     try {
-      const res = await fetch("http://localhost:8080/itinerary/join_itinerary.php", {
+      const res = await fetch("http://localhost:8080/itinerary/core/join_itinerary.php", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ Invite_Code: finalCode, Account: user?.id || (user as any)?.Account })
       });
@@ -197,7 +197,7 @@ const CITY_COORDINATES: Record<string, { lat: number, lng: number }> = {
     e.stopPropagation();
     if (confirm("確定刪除此行程？此動作無法復原。")) {
       try {
-        const res = await fetch("http://localhost:8080/itinerary/delete_itinerary.php", {
+        const res = await fetch("http://localhost:8080/itinerary/core/delete_itinerary.php", {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ Account: user?.id || (user as any)?.Account, Itinerary_ID: id }),
         });
@@ -215,7 +215,7 @@ const CITY_COORDINATES: Record<string, { lat: number, lng: number }> = {
     setItineraries(itineraries.map(it => it.id === id ? { ...it, isPinned: targetPinStatus } : it));
     setActiveDropdown(null);
     try {
-      const res = await fetch("http://localhost:8080/itinerary/pin_itinerary.php", {
+      const res = await fetch("http://localhost:8080/itinerary/core/pin_itinerary.php", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ Account: user?.id || (user as any)?.Account, Itinerary_ID: id, Is_Pinned: targetPinStatus }),
       });
@@ -238,7 +238,7 @@ const handleCreateItinerary = async (e: React.FormEvent) => {
     const coords = CITY_COORDINATES[destination];
 
     try {
-      const res = await fetch("http://localhost:8080/itinerary/create_itinerary.php", {
+      const res = await fetch("http://localhost:8080/itinerary/core/create_itinerary.php", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
           Account: user?.id || (user as any)?.Account, 
