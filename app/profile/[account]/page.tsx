@@ -133,7 +133,7 @@ export default function PublicProfilePage() {
     fetchSocials();
   }, [targetAccount]);
 
-  const SocialIconBtn = ({ link, icon: Icon, label }: { link: string, icon: any, label?: string }) => {
+  const SocialIconBtn = ({ link, icon: Icon, label, network: _network }: { link: string, icon: any, label?: string, network?: string }) => {
     if (!link || link.trim().length === 0) return null; 
     return (
       <a href={link} target="_blank" rel="noreferrer" className="flex items-center justify-center size-8 rounded-full bg-neutral-100 text-neutral-700 hover:bg-neutral-200 transition-all shadow-sm">

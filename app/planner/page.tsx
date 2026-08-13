@@ -313,7 +313,7 @@ export default function PlannerDashboard() {
                     {/* 🌟 公開/私密狀態切換按鈕 🌟 */}
                     <button onClick={(e) => handleToggleVisibility(itinerary.id, itinerary.isPublic, e)} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-100">
                       {itinerary.isPublic ? <Lock className="size-4 text-amber-600" /> : <Globe className="size-4 text-emerald-600" />} 
-                      {itinerary.isPublic ? '設為私密' : '公開分享'}
+                      {itinerary.isPublic ? '取消公開' : '發佈到行程靈感'}
                     </button>
 
                     <button onClick={(e) => handleDelete(itinerary.id, e)} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-500 hover:bg-red-50"><Trash2 className="size-4" /> 刪除行程</button>
@@ -327,7 +327,9 @@ export default function PlannerDashboard() {
                     
                     {/* 🌟 狀態標示區塊 🌟 */}
                     <div className="flex items-center gap-1.5">
-                      {itinerary.isPublic ? <Globe size={12} className="text-emerald-500" title="公開行程" /> : <Lock size={12} className="text-slate-300" title="私密行程" />}
+                      <span title={itinerary.isPublic ? '公開行程' : '私密行程'}>
+                        {itinerary.isPublic ? <Globe size={12} className="text-emerald-500" /> : <Lock size={12} className="text-slate-300" />}
+                      </span>
                       <span className="text-[10px] font-bold text-slate-300 uppercase">{itinerary.Account === (user?.id || (user as any)?.Account) ? 'Owner' : 'Member'}</span>
                     </div>
                   </div>

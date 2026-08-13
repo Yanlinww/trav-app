@@ -2905,7 +2905,7 @@ if (!itineraryData) {
               </div>
               )}
 
-              <div className="absolute top-4 right-4 z-[50] flex items-center gap-1 rounded-2xl border border-slate-200/80 bg-white/90 p-1 shadow-xl backdrop-blur-md">
+              <div className="absolute right-4 top-4 z-[50] flex flex-col items-center gap-2 rounded-3xl border border-slate-200/80 bg-white/90 p-1.5 shadow-xl backdrop-blur-md [&>button]:relative [&>button]:size-10 [&>button]:rounded-full [&>button]:after:pointer-events-none [&>button]:after:absolute [&>button]:after:right-[calc(100%+0.75rem)] [&>button]:after:top-1/2 [&>button]:after:z-[60] [&>button]:after:-translate-y-1/2 [&>button]:after:whitespace-nowrap [&>button]:after:rounded-lg [&>button]:after:bg-slate-800 [&>button]:after:px-3 [&>button]:after:py-1.5 [&>button]:after:text-xs [&>button]:after:font-bold [&>button]:after:text-white [&>button]:after:opacity-0 [&>button]:after:shadow-lg [&>button]:after:transition-opacity [&>button]:after:content-[attr(aria-label)] [&>button:hover]:after:opacity-100 [&>button:focus-visible]:after:opacity-100">
                 <button type="button" onClick={() => { setIsMapFocusMode((focused) => !focused); setIsLayerMenuOpen(false); }} aria-pressed={isMapFocusMode} className={`flex size-9 items-center justify-center rounded-xl transition-colors ${isMapFocusMode ? 'bg-pink-50 text-[#F04D79]' : 'text-slate-500 hover:bg-pink-50 hover:text-[#F04D79]'}`} title={isMapFocusMode ? '顯示地圖面板' : '專注地圖'} aria-label={isMapFocusMode ? '顯示地圖面板' : '專注地圖'}>
                   {isMapFocusMode ? <Eye size={17} /> : <EyeOff size={17} />}
                 </button>
@@ -2926,7 +2926,7 @@ if (!itineraryData) {
               </button>
               </div>
 
-              <div className="absolute right-4 top-[4.25rem] z-[50]">
+              <div className="absolute right-4 top-[23rem] z-[50]">
                 {!isMapUtilityOpen ? (
                   <button
                     type="button"
@@ -2937,7 +2937,7 @@ if (!itineraryData) {
                     <MapPin size={15} /> 沿途工具
                   </button>
                 ) : (
-                  <div className="w-56 rounded-2xl border border-slate-200/80 bg-white/95 p-3 shadow-xl backdrop-blur-md">
+                  <div className="absolute right-0 top-[3rem] w-56 rounded-2xl border border-slate-200/80 bg-white/95 p-3 shadow-xl backdrop-blur-md">
                     <div className="mb-2 flex items-center justify-between">
                       <div><p className="text-xs font-bold text-slate-700">沿途工具</p><p className="mt-0.5 text-[10px] text-slate-400">點擊後搜尋附近地點</p></div>
                       <button type="button" onClick={() => setIsMapUtilityOpen(false)} className="rounded-md p-1 text-slate-400 hover:bg-slate-100" aria-label="收合沿途工具"><X size={14} /></button>
@@ -2957,7 +2957,7 @@ if (!itineraryData) {
               </div>
 
               {isLayerMenuOpen && (
-                <div className="absolute right-4 top-[4.25rem] z-[50] w-52 rounded-2xl border border-slate-200/80 bg-white/95 p-3 shadow-xl backdrop-blur-md">
+                <div className="absolute right-4 top-[23rem] z-[50] w-52 rounded-2xl border border-slate-200/80 bg-white/95 p-3 shadow-xl backdrop-blur-md">
                   <div className="mb-2 flex items-center justify-between">
                     <span className="text-xs font-bold tracking-wide text-slate-700">地圖圖層</span>
                     <button type="button" onClick={() => setIsLayerMenuOpen(false)} className="rounded-md p-1 text-slate-400 hover:bg-slate-100" aria-label="關閉圖層選單"><X size={14} /></button>

@@ -8,6 +8,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'OPTIONS') { http_response_code(200); exit(); 
 
 require_once '../../db_connect.php';
 $data = json_decode(file_get_contents("php://input"));
+require_once '../../destinations/schema.php';
+
+ensure_destinations_schema($conn);
 
 if (!empty($data->Account) && !empty($data->Itinerary_ID) && isset($data->Is_Public)) {
     $account = $data->Account;
