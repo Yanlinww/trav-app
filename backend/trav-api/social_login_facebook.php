@@ -55,7 +55,7 @@ if (!empty($data->Code) && !empty($data->RedirectUri)) {
                     $upd->bind_param("ss", $fb_id, $user['Account']);
                     $upd->execute(); $upd->close();
                 }
-                echo json_encode(["status" => "success", "message" => "🎉 Facebook 登入成功！", "user" => ["id" => $user['Account'], "email" => $user['Email'], "nickname" => $user['Name'], "avatar" => $user['Avatar']]]);
+                echo json_encode(["status" => "success", "message" => "🎉 Facebook 登入成功！", "user" => ["id" => $user['Account'], "email" => $user['Email'], "nickname" => $user['Name'], "avatar" => $user['Avatar'], "role" => $user['Role'] ?? 'user']]);
             } else {
                 // 🆕 情境 B：帳號不存在 -> 自動註冊並登入
                 $account = $email;
@@ -63,7 +63,7 @@ if (!empty($data->Code) && !empty($data->RedirectUri)) {
                 $ins = $conn->prepare("INSERT INTO `Member` (`Account`, `Password`, `Email`, `Name`, `Avatar`, `facebook_id`) VALUES (?, ?, ?, ?, ?, ?)");
                 $ins->bind_param("ssssss", $account, $random_password, $email, $name, $avatar, $fb_id);
                 if ($ins->execute()) {
-                    echo json_encode(["status" => "success", "message" => "🎉 帳號建立完成，Facebook 登入成功！", "user" => ["id" => $account, "email" => $email, "nickname" => $name, "avatar" => $avatar]]);
+                    echo json_encode(["status" => "success", "message" => "🎉 帳號建立完成，Facebook 登入成功！", "user" => ["id" => $account, "email" => $email, "nickname" => $name, "avatar" => $avatar, "role" => 'user']]);
                 } else {
                     echo json_encode(["status" => "error", "message" => "自動註冊失敗：" . $conn->error]);
                 }

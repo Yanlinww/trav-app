@@ -43,7 +43,7 @@ if (!empty($data->AccessToken)) {
                 $upd->bind_param("ss", $g_id, $user['Account']);
                 $upd->execute(); $upd->close();
             }
-            echo json_encode(["status" => "success", "message" => "🎉 Google 登入成功！", "user" => ["id" => $user['Account'], "email" => $user['Email'], "nickname" => $user['Name'], "avatar" => $user['Avatar']]]);
+            echo json_encode(["status" => "success", "message" => "🎉 Google 登入成功！", "user" => ["id" => $user['Account'], "email" => $user['Email'], "nickname" => $user['Name'], "avatar" => $user['Avatar'], "role" => $user['Role'] ?? 'user']]);
         } else {
             // 🆕 情境 B：帳號不存在 -> 自動註冊並登入
             $account = $email; // 將 Email 作為帳號
@@ -53,7 +53,7 @@ if (!empty($data->AccessToken)) {
             $ins->bind_param("ssssss", $account, $random_password, $email, $name, $avatar, $g_id);
             
             if ($ins->execute()) {
-                echo json_encode(["status" => "success", "message" => "🎉 帳號建立完成，Google 登入成功！", "user" => ["id" => $account, "email" => $email, "nickname" => $name, "avatar" => $avatar]]);
+                echo json_encode(["status" => "success", "message" => "🎉 帳號建立完成，Google 登入成功！", "user" => ["id" => $account, "email" => $email, "nickname" => $name, "avatar" => $avatar, "role" => 'user']]);
             } else {
                 echo json_encode(["status" => "error", "message" => "自動註冊失敗：" . $conn->error]);
             }

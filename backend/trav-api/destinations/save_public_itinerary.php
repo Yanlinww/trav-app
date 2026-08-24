@@ -17,7 +17,7 @@ $isPublic = !empty($data->Is_Public) ? 1 : 0;
 $publicTitle = trim((string)($data->Public_Title ?? ''));
 $publicCoverImage = trim((string)($data->Public_Cover_Image ?? ''));
 $publicDescription = trim((string)($data->Public_Description ?? ''));
-$publicLocation = trim((string)($data->Public_Location ?? ''));
+$publicLocation = normalize_public_itinerary_location($data->Public_Location ?? '');
 $rawTags = $data->Tags ?? [];
 
 if ($account === '' || $itineraryId <= 0) api_error('缺少行程或使用者資料。', 400);
@@ -47,11 +47,11 @@ try {
 
     $stmt = $conn->prepare(
         'UPDATE Itinerary
-         SET Is_Public = ?, Public_Title = NULLIF(?, \'\'), Public_Cover_Image = NULLIF(?, \'\'), Public_Description = NULLIF(?, \'\'), Public_Location = NULLIF(?, \'\')
+         SET Is_Public = ?, Public_Title = NULLIF(?, \'\'), Public_Cover_Image = NULLIF(?, \'\'), Public_Description = NULLIF(?, \'\'), Public_Location = NULLIF(?, \'\'), Public_Updated_At = CASE WHEN ? = 1 THEN CURRENT_TIMESTAMP ELSE Public_Updated_At END
          WHERE Itinerary_ID = ? AND Account = ?'
     );
     if (!$stmt) throw new RuntimeException('無法儲存公開設定。');
-    $stmt->bind_param('issssis', $isPublic, $publicTitle, $publicCoverImage, $publicDescription, $publicLocation, $itineraryId, $account);
+    $stmt->bind_param('issssiis', $isPublic, $publicTitle, $publicCoverImage, $publicDescription, $publicLocation, $isPublic, $itineraryId, $account);
     if (!$stmt->execute()) throw new RuntimeException('無法儲存公開設定。');
     $stmt->close();
 

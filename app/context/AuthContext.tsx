@@ -10,6 +10,7 @@ export interface User {
   nickname?: string; // 對應資料庫的 Name
   Gender?: string;
   avatar?: string | null; // 支援我們剛剛做的大頭貼功能
+  role?: 'user' | 'admin' | 'moderator';
   [key: string]: any; // 保留擴充性
 }
 

@@ -40,7 +40,8 @@ if (!empty($data->Account) && !empty($data->Password)) {
                     "id" => $user['Account'],
                     "email" => $user['Email'],
                     "nickname" => $user['Name'],
-                    "avatar" => $user['Avatar']
+                    "avatar" => $user['Avatar'],
+                    "role" => $user['Role'] ?? 'user'
                 ]
             ], JSON_UNESCAPED_UNICODE);
             

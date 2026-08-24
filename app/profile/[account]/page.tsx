@@ -1,11 +1,25 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '../../context/AuthContext';
-import { Camera, MapPin, Bookmark, Loader2, Eye, ChevronLeft, UserPlus, UserCheck } from 'lucide-react';
+import { CalendarDays, Camera, Copy, Eye, Heart, MapPin, Bookmark, Loader2, ChevronLeft, UserPlus, UserCheck } from 'lucide-react';
 import { FaFacebook, FaInstagram, FaTwitter, FaYoutube, FaTiktok } from 'react-icons/fa';
 import { Link2 } from 'lucide-react';
+
+type PublicItinerary = {
+  id: string;
+  title: string;
+  coverImage: string;
+  description?: string | null;
+  location?: string | null;
+  tags: string[];
+  likeCount: number;
+  viewCount: number;
+  copyCount: number;
+  itemCount: number;
+  dayCount: number;
+};
 
 export default function PublicProfilePage() {
   const params = useParams();
@@ -25,11 +39,22 @@ export default function PublicProfilePage() {
   
   const [userFiles, setUserFiles] = useState<any[]>([]); 
   const [isLoadingFiles, setIsLoadingFiles] = useState(false);
-  const [itineraries, setItineraries] = useState<any[]>([]);
-  const [isLoadingItineraries, setIsLoadingItineraries] = useState(false);
+  const [itineraries, setItineraries] = useState<PublicItinerary[]>([]);
+  const [isLoadingItineraries, setIsLoadingItineraries] = useState(true);
   const [socialLinks, setSocialLinks] = useState({
     instagram: '', twitter: '', xiaohongshu: '', tiktok: '', youtube: '', facebook: ''
   });
+
+  const publicStats = useMemo(() => ({
+    count: itineraries.length,
+    likes: itineraries.reduce((total, itinerary) => total + itinerary.likeCount, 0),
+    copies: itineraries.reduce((total, itinerary) => total + itinerary.copyCount, 0),
+  }), [itineraries]);
+  const frequentTags = useMemo(() => {
+    const counts = new Map<string, number>();
+    itineraries.forEach((itinerary) => itinerary.tags.forEach((tag) => counts.set(tag, (counts.get(tag) || 0) + 1)));
+    return Array.from(counts.entries()).sort(([, firstCount], [, secondCount]) => secondCount - firstCount).slice(0, 5).map(([tag]) => tag);
+  }, [itineraries]);
 
   // 1. 抓取基本資料
   useEffect(() => {
@@ -96,26 +121,31 @@ export default function PublicProfilePage() {
     fetchFiles();
   }, [targetAccount, activeTab]);
 
-  // 4. 抓取公開行程 (🌟 這裡已幫你補上 Viewer_Account)
+  // 4. 抓取公開行程與創作者統計
   useEffect(() => {
-    if (!targetAccount || activeTab !== 'journeys') return;
+    if (!targetAccount) return;
     const fetchItins = async () => {
       setIsLoadingItineraries(true);
       try {
-        const res = await fetch("http://localhost:8080/itinerary/core/get_itineraries.php", {
+        const res = await fetch("http://localhost:8080/destinations/get_public_itineraries.php", {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ 
-            Account: targetAccount,
-            Viewer_Account: currentAccount 
+            Account: currentAccount,
+            Owner_Account: targetAccount,
+            Search: '',
+            Tags: [],
+            Transport: '',
+            Duration: 'all',
+            Limit: 48,
           }),
         });
         const data = await res.json();
-        if (data.status === 'success') setItineraries(data.data);
+        if (data.status === 'success') setItineraries(Array.isArray(data.data) ? data.data : []);
         else setItineraries([]);
       } catch (e) {} finally { setIsLoadingItineraries(false); }
     };
     fetchItins();
-  }, [targetAccount, currentAccount, activeTab]);
+  }, [targetAccount, currentAccount]);
 
   // 5. 抓取社群連結
   useEffect(() => {
@@ -177,7 +207,7 @@ export default function PublicProfilePage() {
             <div>
               <h1 className="text-2xl font-bold text-neutral-900 mb-2">{profileUser.name}</h1>
               <p className="text-sm font-medium text-neutral-500 flex items-center justify-center md:justify-start gap-2">
-                <span>{itineraries.length} 行程</span><span className="w-1 h-1 bg-neutral-300 rounded-full"></span><span>{userFiles.length} 旅遊照片</span><span className="bg-neutral-100 p-1 rounded text-neutral-400"><MapPin size={12}/></span>
+                <span>{publicStats.count} 公開行程</span><span className="w-1 h-1 bg-neutral-300 rounded-full"></span><span>{userFiles.length} 旅遊照片</span><span className="bg-neutral-100 p-1 rounded text-neutral-400"><MapPin size={12}/></span>
               </p>
             </div>
           </div>
@@ -203,7 +233,9 @@ export default function PublicProfilePage() {
             <div className="flex items-center gap-6 text-neutral-800">
               <div className="text-center flex items-baseline gap-1.5"><span className="text-2xl font-bold">{profileUser.followersCount}</span> <span className="text-sm text-neutral-500 font-medium">粉絲</span></div>
               <div className="w-px h-6 bg-neutral-200"></div>
-              <div className="text-center flex items-baseline gap-1.5"><span className="text-2xl font-bold">{profileUser.followingCount}</span> <span className="text-sm text-neutral-500 font-medium">追蹤中</span></div>
+              <div className="text-center flex items-baseline gap-1.5"><span className="text-2xl font-bold">{publicStats.likes}</span> <span className="text-sm text-neutral-500 font-medium">獲得喜歡</span></div>
+              <div className="w-px h-6 bg-neutral-200"></div>
+              <div className="text-center flex items-baseline gap-1.5"><span className="text-2xl font-bold">{publicStats.copies}</span> <span className="text-sm text-neutral-500 font-medium">被複製</span></div>
             </div>
             
             <div className="flex items-center gap-2">
@@ -251,26 +283,25 @@ export default function PublicProfilePage() {
           isLoadingItineraries ? (
             <div className="flex justify-center py-20"><Loader2 className="w-8 h-8 animate-spin text-neutral-300" /></div>
           ) : itineraries.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6 mb-12 animate-in fade-in duration-300">
+            <div className="mb-12 animate-in fade-in duration-300"><div className="mb-6 flex flex-col gap-4 rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between"><div><p className="text-xs font-bold tracking-[0.16em] text-neutral-400">TRAVEL STYLE</p><h2 className="mt-1 text-lg font-bold text-neutral-800">{profileUser.name} 的公開旅行靈感</h2></div><div className="flex flex-wrap gap-2">{frequentTags.map((tag) => <span key={tag} className="rounded-full bg-[#edf4f8] px-3 py-1.5 text-xs font-bold text-[#5f7c94]">#{tag}</span>)}</div></div><div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6">
               {itineraries.map((itinerary) => (
                 <div 
                   key={itinerary.id} 
-                  onClick={() => router.push(`/planner/${itinerary.id}`)} 
-                  className="bg-white border border-neutral-200 rounded-2xl group cursor-pointer hover:shadow-xl transition-all relative overflow-hidden flex flex-col aspect-[4/3]"
+                  className="bg-white border border-neutral-200 rounded-2xl group overflow-hidden flex flex-col shadow-sm transition-all hover:-translate-y-1 hover:shadow-xl"
                 >
-                  <div className="relative h-2/3 overflow-hidden bg-neutral-100">
+                  <div className="relative aspect-[4/3] overflow-hidden bg-neutral-100">
                     <img src={itinerary.coverImage} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" alt={itinerary.title} />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                    {itinerary.location && <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-4 pb-3 pt-10 text-xs font-bold text-white"><span className="inline-flex items-center gap-1"><MapPin size={13} />{itinerary.location}</span></div>}
                   </div>
-                  <div className="p-4 flex flex-col justify-between flex-1 bg-white">
-                    <h3 className="text-sm font-bold text-neutral-900 truncate">{itinerary.title}</h3>
-                    <div className="flex items-center justify-between mt-auto">
-                      <p className="text-[10px] text-neutral-400 font-mono font-medium">{itinerary.startDate} - {itinerary.endDate}</p>
-                    </div>
+                  <div className="flex flex-1 flex-col p-4 bg-white">
+                    <h3 className="line-clamp-2 min-h-10 text-sm font-bold leading-5 text-neutral-900">{itinerary.title}</h3>
+                    <p className="mt-2 min-h-10 line-clamp-2 break-all text-xs leading-5 text-neutral-500">{itinerary.description || ''}</p>
+                    <div className="mt-3 min-h-6 overflow-hidden">{itinerary.tags.length > 0 && <div className="flex flex-nowrap gap-1.5">{itinerary.tags.slice(0, 3).map((tag) => <span key={tag} className="shrink-0 rounded-full bg-neutral-100 px-2 py-1 text-[10px] font-bold text-neutral-500">#{tag}</span>)}</div>}</div>
+                    <div className="mt-auto flex flex-wrap gap-x-2 gap-y-1 border-t border-neutral-100 pt-3 text-[11px] font-medium text-neutral-400"><span className="inline-flex items-center gap-1"><CalendarDays size={12} />{itinerary.dayCount} 天</span><span>{itinerary.itemCount} 個地點</span><span className="inline-flex items-center gap-1"><Heart size={12} />{itinerary.likeCount}</span><span className="inline-flex items-center gap-1"><Copy size={12} />{itinerary.copyCount}</span><span className="inline-flex items-center gap-1"><Eye size={12} />{itinerary.viewCount}</span></div>
                   </div>
                 </div>
               ))}
-            </div>
+            </div></div>
           ) : (
             <div className="bg-white rounded-2xl border border-neutral-200 p-16 sm:p-20 flex flex-col items-center justify-center text-center shadow-sm mb-12 animate-in fade-in duration-300">
               <Bookmark className="w-12 h-12 text-neutral-200 mb-4" />

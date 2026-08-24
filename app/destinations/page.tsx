@@ -1,9 +1,10 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { GoogleMap, Marker, PolylineF, useJsApiLoader } from '@react-google-maps/api';
-import { Bookmark, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Clock3, Copy, Eye, Globe2, Heart, Loader2, Map as MapIcon, MapPin, Pencil, Search, Settings2, SlidersHorizontal, Sparkles, Upload, Users, X } from 'lucide-react';
+import { Bookmark, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Clock3, Copy, Eye, Flag, Globe2, Heart, Loader2, Map as MapIcon, MapPin, Pencil, Search, Settings2, Share2, SlidersHorizontal, Sparkles, Upload, Users, X } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 type PublicItinerary = {
@@ -19,6 +20,7 @@ type PublicItinerary = {
   copyCount: number;
   likeCount: number;
   viewCount: number;
+  publishedAt?: string | null;
   isLiked: boolean;
   isSaved: boolean;
   itemCount: number;
@@ -69,6 +71,12 @@ const fallbackCover = 'https://images.unsplash.com/photo-1493976040374-85c8e12f0
 
 const publicTagOptions = ['獨旅', '慢遊', '美食', '咖啡', '自然景點', '文化歷史', '親子', '寵物友善', '低預算'];
 
+const publicTagGroups = [
+  { label: '旅行方式', tags: ['獨旅', '慢遊', '低預算'] },
+  { label: '旅程主題', tags: ['美食', '咖啡', '自然景點', '文化歷史'] },
+  { label: '同行需求', tags: ['親子', '寵物友善'] },
+];
+
 const durationFilterOptions = [
   { value: 'all', label: '不限天數' },
   { value: '1-2', label: '1–2 天' },
@@ -85,14 +93,45 @@ const transportFilterOptions = [
   { value: 'other', label: '其他' },
 ];
 
-function filterPublicItineraries(rows: PublicItinerary[], tags: string[], transport: string, duration: string): PublicItinerary[] {
-  return rows.filter((itinerary) => {
+const itinerarySortOptions = [
+  { value: 'popular', label: '熱門' },
+  { value: 'newest', label: '最新公開' },
+  { value: 'copied', label: '最多複製' },
+] as const;
+
+type ItinerarySort = (typeof itinerarySortOptions)[number]['value'];
+
+function normalizePublicLocation(value?: string | null): string {
+  if (!value) return '';
+  const parts = value
+    .replace(/臺/g, '台')
+    .split(/[・|,，、/／>＞]+/u)
+    .map((part) => part.trim().replace(/\s+/g, ' '))
+    .filter(Boolean);
+  return Array.from(new Set(parts)).slice(0, 4).join('・');
+}
+
+function sortPublicItineraries(rows: PublicItinerary[], sort: ItinerarySort): PublicItinerary[] {
+  return [...rows].sort((left, right) => {
+    if (sort === 'newest') {
+      return Date.parse(right.publishedAt || right.startDate || '1970-01-01') - Date.parse(left.publishedAt || left.startDate || '1970-01-01') || Number(right.id) - Number(left.id);
+    }
+    if (sort === 'copied') {
+      return right.copyCount - left.copyCount || right.likeCount - left.likeCount || Number(right.id) - Number(left.id);
+    }
+    return right.likeCount - left.likeCount || right.viewCount - left.viewCount || right.copyCount - left.copyCount || Number(right.id) - Number(left.id);
+  });
+}
+
+function filterPublicItineraries(rows: PublicItinerary[], tags: string[], transport: string, duration: string, sort: ItinerarySort, location = ''): PublicItinerary[] {
+  return sortPublicItineraries(rows.filter((itinerary) => {
     if (transport && itinerary.transport !== transport) return false;
+    if (location && normalizePublicLocation(itinerary.location) !== location) return false;
     if (duration === '1-2' && (itinerary.dayCount < 1 || itinerary.dayCount > 2)) return false;
     if (duration === '3-4' && (itinerary.dayCount < 3 || itinerary.dayCount > 4)) return false;
     if (duration === '5+' && itinerary.dayCount < 5) return false;
     return tags.every((tag) => itinerary.tags.includes(tag));
-  });
+  }), sort);
 }
 
 function ItineraryPreviewMap({ items }: { items: PreviewItem[] }) {
@@ -126,11 +165,14 @@ export default function DestinationsPage() {
   const { user } = useAuth();
   const router = useRouter();
   const [itineraries, setItineraries] = useState<PublicItinerary[]>([]);
+  const [publicItineraryCatalogue, setPublicItineraryCatalogue] = useState<PublicItinerary[]>([]);
   const [search, setSearch] = useState('');
   const [appliedSearch, setAppliedSearch] = useState('');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [transportFilter, setTransportFilter] = useState('');
   const [durationFilter, setDurationFilter] = useState('all');
+  const [sortBy, setSortBy] = useState<ItinerarySort>('popular');
+  const [selectedLocation, setSelectedLocation] = useState('');
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [viewMode, setViewMode] = useState<'discover' | 'saved'>('discover');
   const [featuredIndex, setFeaturedIndex] = useState(0);
@@ -155,6 +197,12 @@ export default function DestinationsPage() {
   const [previewError, setPreviewError] = useState('');
   const [copiedItineraryId, setCopiedItineraryId] = useState<string | null>(null);
   const [previewTab, setPreviewTab] = useState<'schedule' | 'map'>('schedule');
+  const [shareNotice, setShareNotice] = useState('');
+  const [reportTarget, setReportTarget] = useState<PublicItinerary | null>(null);
+  const [reportReason, setReportReason] = useState('不當內容');
+  const [reportDetails, setReportDetails] = useState('');
+  const [reportError, setReportError] = useState('');
+  const [isSubmittingReport, setIsSubmittingReport] = useState(false);
   const itineraryListRef = useRef<PublicItinerary[]>([]);
   const publicItineraryCatalogueRef = useRef<PublicItinerary[]>([]);
   const publicRequestRef = useRef<AbortController | null>(null);
@@ -166,6 +214,23 @@ export default function DestinationsPage() {
   const selectedOwnedItinerary = ownedItineraries.find((itinerary) => itinerary.id === selectedOwnedId) || null;
   const featuredItineraries = itineraries.slice(0, 4);
   const featuredItinerary = featuredItineraries[Math.min(featuredIndex, Math.max(featuredItineraries.length - 1, 0))];
+  const popularTagSummaries = useMemo(() => {
+    const tagCounts = new Map<string, number>();
+    publicItineraryCatalogue.forEach((itinerary) => itinerary.tags.forEach((tag) => tagCounts.set(tag, (tagCounts.get(tag) || 0) + 1)));
+    return publicTagOptions
+      .map((tag) => ({ tag, count: tagCounts.get(tag) || 0 }))
+      .filter(({ count }) => count > 0)
+      .sort((left, right) => right.count - left.count || publicTagOptions.indexOf(left.tag) - publicTagOptions.indexOf(right.tag));
+  }, [publicItineraryCatalogue]);
+  const tagCountByName = useMemo(() => new Map(popularTagSummaries.map(({ tag, count }) => [tag, count])), [popularTagSummaries]);
+  const popularLocationSummaries = useMemo(() => {
+    const locationCounts = new Map<string, number>();
+    publicItineraryCatalogue.forEach((itinerary) => {
+      const location = normalizePublicLocation(itinerary.location);
+      if (location) locationCounts.set(location, (locationCounts.get(location) || 0) + 1);
+    });
+    return Array.from(locationCounts, ([location, count]) => ({ location, count })).sort((left, right) => right.count - left.count || left.location.localeCompare(right.location, 'zh-Hant'));
+  }, [publicItineraryCatalogue]);
 
   useEffect(() => {
     itineraryListRef.current = itineraries;
@@ -178,6 +243,8 @@ export default function DestinationsPage() {
     duration = 'all',
     limit = 24,
     savedOnly = false,
+    sort: ItinerarySort = 'popular',
+    location = '',
   ) => {
     publicRequestRef.current?.abort();
     const requestId = ++publicRequestIdRef.current;
@@ -191,7 +258,7 @@ export default function DestinationsPage() {
       const response = await fetch('http://localhost:8080/destinations/get_public_itineraries.php', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ Account: currentAccount, Search: keyword, Tags: tags, Transport: transport, Duration: duration, Limit: limit, Saved_Only: savedOnly }),
+        body: JSON.stringify({ Account: currentAccount, Search: keyword, Tags: tags, Transport: transport, Duration: duration, Sort: sort, Location: location, Limit: limit, Saved_Only: savedOnly }),
         signal: controller.signal,
       });
       const data = await response.json();
@@ -199,8 +266,9 @@ export default function DestinationsPage() {
       if (requestId === publicRequestIdRef.current) {
         hasPublicItineraryLoadedRef.current = true;
         const nextRows = Array.isArray(data.data) ? data.data as PublicItinerary[] : [];
-        if (!savedOnly && !keyword && tags.length === 0 && !transport && duration === 'all') {
+        if (!savedOnly && !keyword && tags.length === 0 && !transport && duration === 'all' && !location) {
           publicItineraryCatalogueRef.current = nextRows;
+          setPublicItineraryCatalogue(nextRows);
         }
         setItineraries(nextRows);
       }
@@ -307,10 +375,10 @@ export default function DestinationsPage() {
       const savedOnly = viewMode === 'saved';
       await Promise.all([
         fetchOwnedItineraries(),
-        fetchPublicItineraries('', [], '', 'all', 48, savedOnly),
+        fetchPublicItineraries('', [], '', 'all', 48, savedOnly, sortBy),
       ]);
-      if (savedOnly || appliedSearch) await fetchPublicItineraries(appliedSearch, selectedTags, transportFilter, durationFilter, 24, savedOnly);
-      else applyLocalFilters(selectedTags, transportFilter, durationFilter);
+      if (savedOnly || appliedSearch) await fetchPublicItineraries(appliedSearch, selectedTags, transportFilter, durationFilter, 24, savedOnly, sortBy, selectedLocation);
+      else applyLocalFilters(selectedTags, transportFilter, durationFilter, sortBy, selectedLocation);
       closeManage();
     } catch (requestError) {
       setManageError(requestError instanceof Error ? requestError.message : '無法儲存公開設定。');
@@ -329,11 +397,11 @@ export default function DestinationsPage() {
     return appliedSearch ? `「${appliedSearch}」的行程靈感` : '公開行程靈感';
   }, [appliedSearch, viewMode]);
 
-  const applyLocalFilters = useCallback((tags: string[], transport: string, duration: string) => {
+  const applyLocalFilters = useCallback((tags: string[], transport: string, duration: string, sort: ItinerarySort = sortBy, location = selectedLocation) => {
     if (!hasPublicItineraryLoadedRef.current) return false;
-    setItineraries(filterPublicItineraries(publicItineraryCatalogueRef.current, tags, transport, duration).slice(0, 24));
+    setItineraries(filterPublicItineraries(publicItineraryCatalogueRef.current, tags, transport, duration, sort, location).slice(0, 24));
     return true;
-  }, []);
+  }, [selectedLocation, sortBy]);
 
   const updateItineraryEngagement = useCallback((itineraryId: string, patch: Partial<Pick<PublicItinerary, 'likeCount' | 'viewCount' | 'isLiked' | 'isSaved'>>) => {
     const updateRows = (rows: PublicItinerary[]) => rows.map((item) => item.id === itineraryId ? { ...item, ...patch } : item);
@@ -417,6 +485,66 @@ export default function DestinationsPage() {
     }
   };
 
+  const publicItineraryUrl = (itineraryId: string) => `${window.location.origin}/destinations/itinerary/${itineraryId}`;
+
+  const sharePublicItinerary = async (itinerary: Pick<PublicItinerary, 'id' | 'title'>) => {
+    const url = publicItineraryUrl(itinerary.id);
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: itinerary.title, text: `一起看看「${itinerary.title}」這份旅行行程`, url });
+        return;
+      }
+      await navigator.clipboard.writeText(url);
+      setShareNotice('已複製分享連結');
+    } catch (requestError) {
+      if (requestError instanceof DOMException && requestError.name === 'AbortError') return;
+      try {
+        await navigator.clipboard.writeText(url);
+        setShareNotice('已複製分享連結');
+      } catch {
+        window.prompt('請複製這份公開行程連結：', url);
+      }
+    }
+  };
+
+  const openReport = (itinerary: PublicItinerary) => {
+    if (!currentAccount) {
+      router.push('/auth/login');
+      return;
+    }
+    setReportTarget(itinerary);
+    setReportReason('不當內容');
+    setReportDetails('');
+    setReportError('');
+  };
+
+  const closeReport = () => {
+    if (isSubmittingReport) return;
+    setReportTarget(null);
+    setReportError('');
+  };
+
+  const submitReport = async () => {
+    if (!reportTarget) return;
+    setIsSubmittingReport(true);
+    setReportError('');
+    try {
+      const response = await fetch('http://localhost:8080/destinations/create_public_itinerary_report.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ Itinerary_ID: reportTarget.id, Account: currentAccount, Reason: reportReason, Details: reportDetails.trim() }),
+      });
+      const data = await response.json();
+      if (!response.ok || data.status !== 'success') throw new Error(data.message || '檢舉送出失敗');
+      setReportTarget(null);
+      setShareNotice(data.message || '已收到你的檢舉');
+    } catch (requestError) {
+      setReportError(requestError instanceof Error ? requestError.message : '檢舉送出失敗，請稍後再試。');
+    } finally {
+      setIsSubmittingReport(false);
+    }
+  };
+
   const switchViewMode = (nextMode: 'discover' | 'saved') => {
     if (nextMode === viewMode) return;
     if (nextMode === 'saved' && !currentAccount) {
@@ -429,15 +557,16 @@ export default function DestinationsPage() {
     setSelectedTags([]);
     setTransportFilter('');
     setDurationFilter('all');
-    void fetchPublicItineraries('', [], '', 'all', 48, nextMode === 'saved');
+    setSelectedLocation('');
+    void fetchPublicItineraries('', [], '', 'all', 48, nextMode === 'saved', sortBy);
   };
 
   const submitSearch = (event: React.FormEvent) => {
     event.preventDefault();
     const keyword = search.trim();
     setAppliedSearch(keyword);
-    if (viewMode === 'discover' && !keyword && applyLocalFilters(selectedTags, transportFilter, durationFilter)) return;
-    void fetchPublicItineraries(keyword, selectedTags, transportFilter, durationFilter, 24, viewMode === 'saved');
+    if (viewMode === 'discover' && !keyword && applyLocalFilters(selectedTags, transportFilter, durationFilter, sortBy, selectedLocation)) return;
+    void fetchPublicItineraries(keyword, selectedTags, transportFilter, durationFilter, 24, viewMode === 'saved', sortBy, selectedLocation);
   };
 
   const toggleDiscoveryTag = (tag: string) => {
@@ -445,28 +574,43 @@ export default function DestinationsPage() {
       ? selectedTags.filter((item) => item !== tag)
       : [...selectedTags, tag];
     setSelectedTags(nextTags);
-    if (viewMode === 'discover' && !appliedSearch && applyLocalFilters(nextTags, transportFilter, durationFilter)) return;
-    void fetchPublicItineraries(appliedSearch, nextTags, transportFilter, durationFilter, 24, viewMode === 'saved');
+    if (viewMode === 'discover' && !appliedSearch && applyLocalFilters(nextTags, transportFilter, durationFilter, sortBy, selectedLocation)) return;
+    void fetchPublicItineraries(appliedSearch, nextTags, transportFilter, durationFilter, 24, viewMode === 'saved', sortBy, selectedLocation);
   };
 
   const updateTransportFilter = (value: string) => {
     setTransportFilter(value);
-    if (viewMode === 'discover' && !appliedSearch && applyLocalFilters(selectedTags, value, durationFilter)) return;
-    void fetchPublicItineraries(appliedSearch, selectedTags, value, durationFilter, 24, viewMode === 'saved');
+    if (viewMode === 'discover' && !appliedSearch && applyLocalFilters(selectedTags, value, durationFilter, sortBy, selectedLocation)) return;
+    void fetchPublicItineraries(appliedSearch, selectedTags, value, durationFilter, 24, viewMode === 'saved', sortBy, selectedLocation);
   };
 
   const updateDurationFilter = (value: string) => {
     setDurationFilter(value);
-    if (viewMode === 'discover' && !appliedSearch && applyLocalFilters(selectedTags, transportFilter, value)) return;
-    void fetchPublicItineraries(appliedSearch, selectedTags, transportFilter, value, 24, viewMode === 'saved');
+    if (viewMode === 'discover' && !appliedSearch && applyLocalFilters(selectedTags, transportFilter, value, sortBy, selectedLocation)) return;
+    void fetchPublicItineraries(appliedSearch, selectedTags, transportFilter, value, 24, viewMode === 'saved', sortBy, selectedLocation);
+  };
+
+  const updateLocationFilter = (location: string) => {
+    const nextLocation = selectedLocation === location ? '' : location;
+    setSelectedLocation(nextLocation);
+    if (viewMode === 'discover' && !appliedSearch && applyLocalFilters(selectedTags, transportFilter, durationFilter, sortBy, nextLocation)) return;
+    void fetchPublicItineraries(appliedSearch, selectedTags, transportFilter, durationFilter, 24, viewMode === 'saved', sortBy, nextLocation);
   };
 
   const clearFilters = () => {
     setSelectedTags([]);
     setTransportFilter('');
     setDurationFilter('all');
-    if (viewMode === 'discover' && !appliedSearch && applyLocalFilters([], '', 'all')) return;
-    void fetchPublicItineraries(appliedSearch, [], '', 'all', 24, viewMode === 'saved');
+    setSelectedLocation('');
+    if (viewMode === 'discover' && !appliedSearch && applyLocalFilters([], '', 'all', sortBy, '')) return;
+    void fetchPublicItineraries(appliedSearch, [], '', 'all', 24, viewMode === 'saved', sortBy, '');
+  };
+
+  const updateSort = (nextSort: ItinerarySort) => {
+    if (nextSort === sortBy) return;
+    setSortBy(nextSort);
+    if (viewMode === 'discover' && !appliedSearch && applyLocalFilters(selectedTags, transportFilter, durationFilter, nextSort, selectedLocation)) return;
+    void fetchPublicItineraries(appliedSearch, selectedTags, transportFilter, durationFilter, 24, viewMode === 'saved', nextSort, selectedLocation);
   };
 
   const togglePublicTag = (tag: string) => {
@@ -529,9 +673,9 @@ export default function DestinationsPage() {
       if (!response.ok || data.status !== 'success') throw new Error(data.message || '複製行程失敗');
       setCopiedItineraryId(String(data.itineraryId));
       const savedOnly = viewMode === 'saved';
-      await fetchPublicItineraries('', [], '', 'all', 48, savedOnly);
-      if (savedOnly || appliedSearch) await fetchPublicItineraries(appliedSearch, selectedTags, transportFilter, durationFilter, 24, savedOnly);
-      else applyLocalFilters(selectedTags, transportFilter, durationFilter);
+      await fetchPublicItineraries('', [], '', 'all', 48, savedOnly, sortBy);
+      if (savedOnly || appliedSearch) await fetchPublicItineraries(appliedSearch, selectedTags, transportFilter, durationFilter, 24, savedOnly, sortBy, selectedLocation);
+      else applyLocalFilters(selectedTags, transportFilter, durationFilter, sortBy, selectedLocation);
     } catch (requestError) {
       window.alert(requestError instanceof Error ? requestError.message : '複製行程失敗，請稍後再試。');
     } finally {
@@ -553,7 +697,7 @@ export default function DestinationsPage() {
         <div className="absolute inset-0 -z-10 bg-[linear-gradient(90deg,rgba(19,37,51,0.9)_0%,rgba(28,48,63,0.76)_42%,rgba(28,48,63,0.25)_100%)]" />
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-4">
           <div className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1.5 text-xs font-bold tracking-[0.18em] text-white/85 backdrop-blur-md"><Sparkles size={15} />TRAVMATE INSPIRATION</div>
-          <div className="flex items-center gap-2"><button type="button" onClick={() => switchViewMode('saved')} className={`inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-bold backdrop-blur-md transition ${viewMode === 'saved' ? 'border-white bg-white text-[#45647d]' : 'border-white/30 bg-white/15 text-white hover:bg-white/25'}`}><Bookmark size={17} className={viewMode === 'saved' ? 'fill-current' : ''} />我的收藏</button><button type="button" onClick={() => void openManage()} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-white/30 bg-white/15 px-4 py-2.5 text-sm font-bold text-white backdrop-blur-md transition hover:bg-white/25"><Upload size={17} />上傳行程</button></div>
+          <button type="button" onClick={() => void openManage()} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-white/30 bg-white/15 px-4 py-2.5 text-sm font-bold text-white backdrop-blur-md transition hover:bg-white/25"><Upload size={17} />上傳行程</button>
         </div>
 
         <div className="mx-auto mt-8 max-w-7xl">
@@ -568,13 +712,16 @@ export default function DestinationsPage() {
                 <button type="submit" className="rounded-xl bg-[#56758e] px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-[#45647d]">搜尋</button>
               </form>
 
+              {viewMode === 'discover' && popularTagSummaries.length > 0 && <div className="mt-3 flex max-w-xl flex-wrap items-center gap-2 text-xs text-white/80"><span className="mr-1 font-bold text-white/65">熱門主題</span>{popularTagSummaries.slice(0, 4).map(({ tag, count }) => <button type="button" key={tag} onClick={() => { setIsFilterOpen(true); toggleDiscoveryTag(tag); }} className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1.5 font-bold transition ${selectedTags.includes(tag) ? 'border-white bg-white text-[#496981]' : 'border-white/25 bg-white/10 text-white hover:bg-white/20'}`}>#{tag}<span className="text-[10px] opacity-75">{count}</span></button>)}<button type="button" onClick={() => setIsFilterOpen(true)} className="rounded-full px-2 py-1.5 font-bold text-white/70 transition hover:bg-white/10 hover:text-white">全部標籤</button></div>}
+
               <div className="mt-3 max-w-xl rounded-2xl border border-white/20 bg-slate-900/20 backdrop-blur-md">
-                <button type="button" onClick={() => setIsFilterOpen((value) => !value)} aria-expanded={isFilterOpen} className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left text-sm font-bold text-white transition hover:bg-white/10"><span className="inline-flex items-center gap-2"><SlidersHorizontal size={16} />篩選行程{(selectedTags.length > 0 || transportFilter || durationFilter !== 'all') && <span className="rounded-full bg-white/20 px-2 py-0.5 text-[11px]">{selectedTags.length + Number(Boolean(transportFilter)) + Number(durationFilter !== 'all')}</span>}</span><ChevronDown size={17} className={`transition ${isFilterOpen ? 'rotate-180' : ''}`} /></button>
+                <button type="button" onClick={() => setIsFilterOpen((value) => !value)} aria-expanded={isFilterOpen} className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left text-sm font-bold text-white transition hover:bg-white/10"><span className="inline-flex items-center gap-2"><SlidersHorizontal size={16} />篩選行程{(selectedTags.length > 0 || selectedLocation || transportFilter || durationFilter !== 'all') && <span className="rounded-full bg-white/20 px-2 py-0.5 text-[11px]">{selectedTags.length + Number(Boolean(selectedLocation)) + Number(Boolean(transportFilter)) + Number(durationFilter !== 'all')}</span>}</span><ChevronDown size={17} className={`transition ${isFilterOpen ? 'rotate-180' : ''}`} /></button>
                 {isFilterOpen && <div className="border-t border-white/15 bg-white/95 p-4 text-[#4e697e] shadow-xl backdrop-blur-md">
-                  <div className="flex items-center justify-between gap-3"><span className="text-xs font-bold">探索條件</span>{(selectedTags.length > 0 || transportFilter || durationFilter !== 'all') && <button type="button" onClick={clearFilters} className="text-xs font-bold text-[#5e7891] hover:text-[#365168]">清除篩選</button>}</div>
+                  <div className="flex items-center justify-between gap-3"><span className="text-xs font-bold">探索條件</span>{(selectedTags.length > 0 || selectedLocation || transportFilter || durationFilter !== 'all') && <button type="button" onClick={clearFilters} className="text-xs font-bold text-[#5e7891] hover:text-[#365168]">清除篩選</button>}</div>
                   <div className="mt-3 grid gap-3 sm:grid-cols-2"><label className="text-xs font-bold text-[#7891a4]">旅行天數<select value={durationFilter} onChange={(event) => updateDurationFilter(event.target.value)} className="mt-1.5 w-full rounded-xl border border-[#d6e3eb] bg-[#f8fbfd] px-3 py-2.5 text-sm font-medium text-[#4e697e] outline-none focus:border-[#7d9aaf]">{durationFilterOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label><label className="text-xs font-bold text-[#7891a4]">交通方式<select value={transportFilter} onChange={(event) => updateTransportFilter(event.target.value)} className="mt-1.5 w-full rounded-xl border border-[#d6e3eb] bg-[#f8fbfd] px-3 py-2.5 text-sm font-medium text-[#4e697e] outline-none focus:border-[#7d9aaf]">{transportFilterOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label></div>
-                  <div className="mt-4 flex flex-wrap gap-2">{publicTagOptions.map((tag) => <button type="button" key={tag} onClick={() => toggleDiscoveryTag(tag)} className={`rounded-full border px-3 py-1.5 text-xs font-bold transition ${selectedTags.includes(tag) ? 'border-[#5e7891] bg-[#5e7891] text-white shadow-sm' : 'border-[#d6e3eb] bg-[#f8fbfd] text-[#668096] hover:border-[#a9bfce] hover:bg-[#f0f6f9]'}`}>#{tag}</button>)}</div>
-                  <p className="mt-3 text-xs leading-5 text-[#91a6b7]">多選標籤會以「同時符合」搜尋。</p>
+                  {popularLocationSummaries.length > 0 && <div className="mt-4"><p className="mb-1.5 text-[11px] font-bold tracking-wide text-[#8ca3b4]">目的地</p><div className="flex flex-wrap gap-2">{popularLocationSummaries.slice(0, 8).map(({ location, count }) => <button type="button" key={location} onClick={() => updateLocationFilter(location)} className={`inline-flex items-center gap-1 rounded-full border px-3 py-1.5 text-xs font-bold transition ${selectedLocation === location ? 'border-[#5e7891] bg-[#5e7891] text-white shadow-sm' : 'border-[#d6e3eb] bg-[#f8fbfd] text-[#668096] hover:border-[#a9bfce] hover:bg-[#f0f6f9]'}`}><MapPin size={12} />{location}<span className={`text-[10px] ${selectedLocation === location ? 'text-white/75' : 'text-[#98acba]'}`}>{count}</span></button>)}</div></div>}
+                  <div className="mt-4 space-y-3">{publicTagGroups.map((group) => <div key={group.label}><p className="mb-1.5 text-[11px] font-bold tracking-wide text-[#8ca3b4]">{group.label}</p><div className="flex flex-wrap gap-2">{group.tags.map((tag) => { const count = tagCountByName.get(tag) || 0; return <button type="button" key={tag} onClick={() => toggleDiscoveryTag(tag)} className={`inline-flex items-center gap-1 rounded-full border px-3 py-1.5 text-xs font-bold transition ${selectedTags.includes(tag) ? 'border-[#5e7891] bg-[#5e7891] text-white shadow-sm' : 'border-[#d6e3eb] bg-[#f8fbfd] text-[#668096] hover:border-[#a9bfce] hover:bg-[#f0f6f9]'}`}>#{tag}{count > 0 && <span className={`text-[10px] ${selectedTags.includes(tag) ? 'text-white/75' : 'text-[#98acba]'}`}>{count}</span>}</button>; })}</div></div>)}</div>
+                  <p className="mt-3 text-xs leading-5 text-[#91a6b7]">標籤後的數字代表目前公開行程數量；多選會以「同時符合」搜尋。</p>
                 </div>}
               </div>
             </div>
@@ -598,13 +745,13 @@ export default function DestinationsPage() {
             <p className="text-xs font-bold tracking-[0.18em] text-[#8aa0b2]">COMMUNITY PLANS</p>
             <h2 className="mt-2 text-2xl font-bold text-[#30485f]">{heading}</h2>
           </div>
-          <div className="flex flex-wrap items-center justify-end gap-2"><button type="button" onClick={() => switchViewMode('discover')} className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-bold transition ${viewMode === 'discover' ? 'bg-[#5e7891] text-white shadow-sm' : 'bg-white text-[#698499] hover:bg-[#eaf2f7]'}`}><Globe2 size={14} />探索行程</button><button type="button" onClick={() => switchViewMode('saved')} className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-bold transition ${viewMode === 'saved' ? 'bg-[#5e7891] text-white shadow-sm' : 'bg-white text-[#698499] hover:bg-[#eaf2f7]'}`}><Bookmark size={14} className={viewMode === 'saved' ? 'fill-current' : ''} />我的收藏</button>{!isLoading && <span className="inline-flex items-center gap-2 text-sm text-[#91a6b7]">{isRefreshing && <Loader2 className="size-4 animate-spin" />}共 {itineraries.length} 份</span>}</div>
+          <div className="flex flex-wrap items-center justify-end gap-2"><button type="button" onClick={() => switchViewMode('discover')} className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-bold transition ${viewMode === 'discover' ? 'bg-[#5e7891] text-white shadow-sm' : 'bg-white text-[#698499] hover:bg-[#eaf2f7]'}`}><Globe2 size={14} />探索行程</button><button type="button" onClick={() => switchViewMode('saved')} className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-bold transition ${viewMode === 'saved' ? 'bg-[#5e7891] text-white shadow-sm' : 'bg-white text-[#698499] hover:bg-[#eaf2f7]'}`}><Bookmark size={14} className={viewMode === 'saved' ? 'fill-current' : ''} />我的收藏</button><label className="inline-flex items-center rounded-xl border border-[#d7e4ec] bg-white px-2 text-xs font-bold text-[#698499]"><span className="sr-only">行程排序</span><select value={sortBy} onChange={(event) => updateSort(event.target.value as ItinerarySort)} className="cursor-pointer bg-transparent py-2 text-xs font-bold outline-none">{itinerarySortOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>{!isLoading && <span className="inline-flex items-center gap-2 text-sm text-[#91a6b7]">{isRefreshing && <Loader2 className="size-4 animate-spin" />}共 {itineraries.length} 份</span>}</div>
         </div>
 
         {isLoading ? (
           <div className="flex min-h-72 items-center justify-center rounded-3xl border border-[#dce7ef] bg-white shadow-sm"><Loader2 className="size-7 animate-spin text-[#b2c3cf]" /></div>
         ) : error ? (
-          <div className="rounded-3xl border border-rose-100 bg-rose-50 px-6 py-12 text-center"><p className="font-bold text-rose-700">暫時無法載入{viewMode === 'saved' ? '收藏行程' : '行程靈感'}</p><p className="mt-2 text-sm text-rose-500">{error}</p><button type="button" onClick={() => void fetchPublicItineraries(appliedSearch, selectedTags, transportFilter, durationFilter, 24, viewMode === 'saved')} className="mt-5 rounded-xl bg-white px-4 py-2 text-sm font-bold text-rose-700 shadow-sm">重新整理</button></div>
+          <div className="rounded-3xl border border-rose-100 bg-rose-50 px-6 py-12 text-center"><p className="font-bold text-rose-700">暫時無法載入{viewMode === 'saved' ? '收藏行程' : '行程靈感'}</p><p className="mt-2 text-sm text-rose-500">{error}</p><button type="button" onClick={() => void fetchPublicItineraries(appliedSearch, selectedTags, transportFilter, durationFilter, 24, viewMode === 'saved', sortBy, selectedLocation)} className="mt-5 rounded-xl bg-white px-4 py-2 text-sm font-bold text-rose-700 shadow-sm">重新整理</button></div>
         ) : itineraries.length === 0 ? (
           <div className="rounded-3xl border border-dashed border-[#cbdce7] bg-white px-6 py-20 text-center shadow-sm">{viewMode === 'saved' ? <><Bookmark className="mx-auto text-[#b2c5d2]" size={32} /><h3 className="mt-5 text-lg font-bold text-[#4c657b]">收藏清單還是空的</h3><p className="mt-2 text-sm text-[#91a6b7]">看到喜歡的公開行程時，按下書籤就能先留在這裡。</p><button type="button" onClick={() => switchViewMode('discover')} className="mt-5 rounded-xl bg-[#5e7891] px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-[#4d677f]">探索公開行程</button></> : <><Globe2 className="mx-auto text-[#b2c5d2]" size={32} /><h3 className="mt-5 text-lg font-bold text-[#4c657b]">目前還沒有公開行程</h3><p className="mt-2 text-sm text-[#91a6b7]">完成一份行程後，可在「行程規劃」將它公開分享。</p></>}</div>
         ) : (
@@ -619,15 +766,15 @@ export default function DestinationsPage() {
                   <h3 className="line-clamp-2 min-h-12 break-words text-lg font-bold leading-6 text-[#30485f]">{itinerary.title}</h3>
                   <p className="mt-2 min-h-10 break-all text-sm leading-5 text-[#7690a3] line-clamp-2">{itinerary.description || ''}</p>
                   <div className="mt-3 min-h-7 overflow-hidden">
-                    {itinerary.tags.length > 0 && <div className="flex flex-nowrap gap-1.5">{itinerary.tags.slice(0, 3).map((tag) => <span key={tag} className="shrink-0 rounded-full bg-[#edf4f8] px-2 py-1 text-[11px] font-bold text-[#5f7c94]">#{tag}</span>)}</div>}
+                    {itinerary.tags.length > 0 && <div className="flex flex-nowrap gap-1.5">{itinerary.tags.slice(0, 3).map((tag) => <Link href={`/destinations/tag/${encodeURIComponent(tag)}`} key={tag} className="shrink-0 rounded-full bg-[#edf4f8] px-2 py-1 text-[11px] font-bold text-[#5f7c94] transition hover:bg-[#dcecf4] hover:text-[#45647d]">#{tag}</Link>)}</div>}
                   </div>
                   <div className="mt-auto flex flex-wrap gap-x-3 gap-y-1 pt-3 text-xs text-[#91a6b7]"><span className="inline-flex items-center gap-1"><CalendarDays size={13} /> {itinerary.dayCount} 天</span><span>{itinerary.itemCount} 個地點</span><span>{itinerary.copyCount} 次複製</span><span className="inline-flex items-center gap-1"><Eye size={13} />{itinerary.viewCount}</span></div>
                   <div className="mt-5 flex items-center justify-between gap-3 border-t border-[#edf2f5] pt-4">
                     <div className="flex min-w-0 items-center gap-2"><div className="flex size-7 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#edf4f8] text-[10px] font-bold text-[#688198]">{itinerary.owner.avatar ? <img src={itinerary.owner.avatar} alt="" className="size-full object-cover" /> : itinerary.owner.name.slice(0, 1)}</div><span className="truncate text-xs font-medium text-[#688198]">{itinerary.owner.name}</span></div>
-                    <div className="flex shrink-0 items-center gap-2"><button type="button" onClick={() => void toggleLike(itinerary)} disabled={likingId === itinerary.id} className={`inline-flex items-center gap-1 rounded-xl border px-2.5 py-2 text-xs font-bold transition disabled:cursor-wait disabled:opacity-60 ${itinerary.isLiked ? 'border-rose-200 bg-rose-50 text-rose-500' : 'border-[#d7e4ec] bg-white text-[#7690a3] hover:border-rose-200 hover:text-rose-500'}`} aria-label={itinerary.isLiked ? '取消按讚' : '按讚'}><Heart size={14} className={itinerary.isLiked ? 'fill-current' : ''} />{itinerary.likeCount}</button><button type="button" onClick={() => void toggleSave(itinerary)} disabled={savingId === itinerary.id} title={itinerary.isSaved ? '取消收藏' : '收藏行程'} aria-label={itinerary.isSaved ? '取消收藏' : '收藏行程'} className={`inline-flex rounded-xl border p-2 text-xs font-bold transition disabled:cursor-wait disabled:opacity-60 ${itinerary.isSaved ? 'border-[#c7dce9] bg-[#eaf4f9] text-[#4e718c]' : 'border-[#d7e4ec] bg-white text-[#7690a3] hover:border-[#a9c3d4] hover:text-[#4e718c]'}`}><Bookmark size={15} className={itinerary.isSaved ? 'fill-current' : ''} /></button>{currentAccount === itinerary.owner.account ? (
+                    <div className="flex shrink-0 items-center gap-1.5 sm:gap-2"><button type="button" onClick={() => void toggleLike(itinerary)} disabled={likingId === itinerary.id} className={`inline-flex items-center gap-1 rounded-xl border px-2 py-2 text-xs font-bold transition disabled:cursor-wait disabled:opacity-60 sm:px-2.5 ${itinerary.isLiked ? 'border-rose-200 bg-rose-50 text-rose-500' : 'border-[#d7e4ec] bg-white text-[#7690a3] hover:border-rose-200 hover:text-rose-500'}`} aria-label={itinerary.isLiked ? '取消按讚' : '按讚'}><Heart size={14} className={itinerary.isLiked ? 'fill-current' : ''} />{itinerary.likeCount}</button><button type="button" onClick={() => void toggleSave(itinerary)} disabled={savingId === itinerary.id} title={itinerary.isSaved ? '取消收藏' : '收藏行程'} aria-label={itinerary.isSaved ? '取消收藏' : '收藏行程'} className={`inline-flex rounded-xl border p-2 text-xs font-bold transition disabled:cursor-wait disabled:opacity-60 ${itinerary.isSaved ? 'border-[#c7dce9] bg-[#eaf4f9] text-[#4e718c]' : 'border-[#d7e4ec] bg-white text-[#7690a3] hover:border-[#a9c3d4] hover:text-[#4e718c]'}`}><Bookmark size={15} className={itinerary.isSaved ? 'fill-current' : ''} /></button><button type="button" onClick={() => void sharePublicItinerary(itinerary)} title="分享公開行程" aria-label="分享公開行程" className="inline-flex rounded-xl border border-[#d7e4ec] bg-white p-2 text-[#7690a3] transition hover:border-[#a9c3d4] hover:text-[#4e718c]"><Share2 size={15} /></button>{currentAccount === itinerary.owner.account ? (
                       <button type="button" onClick={() => void openManage(itinerary.id)} className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-[#c9dbe7] bg-[#f4f8fb] px-3 py-2 text-xs font-bold text-[#58758c] transition hover:bg-[#eaf2f7]"><Settings2 size={14} />管理</button>
                     ) : (
-                      <button type="button" onClick={() => void openPreview(itinerary.id)} className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-[#5e7891] px-3 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-[#4d677f]"><Eye size={14} />預覽</button>
+                      <><button type="button" onClick={() => openReport(itinerary)} title="檢舉公開行程" aria-label="檢舉公開行程" className="inline-flex rounded-xl border border-[#d7e4ec] bg-white p-2 text-[#7690a3] transition hover:border-rose-200 hover:text-rose-500"><Flag size={15} /></button><button type="button" onClick={() => void openPreview(itinerary.id)} className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-[#5e7891] px-3 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-[#4d677f]"><Eye size={14} />預覽</button></>
                     )}</div>
                   </div>
                 </div>
@@ -668,7 +815,7 @@ export default function DestinationsPage() {
                   <button type="button" onClick={() => setSelectedOwnedId(null)} className="text-sm font-bold text-[#648096] hover:text-[#3f6079]">← 返回選擇其他行程</button>
                   <div className="rounded-2xl border border-[#dce7ef] bg-white p-4"><div className="text-xs font-bold tracking-wide text-[#8aa0b2]">原始行程</div><div className="mt-1 flex items-center justify-between gap-3"><div className="min-w-0"><h3 className="truncate text-lg font-bold text-[#365168]">{selectedOwnedItinerary.title}</h3><p className="mt-1 text-xs text-[#8aa0b2]">{selectedOwnedItinerary.dayCount} 天 · {selectedOwnedItinerary.itemCount} 個地點</p></div><button type="button" onClick={() => router.push(`/planner/${selectedOwnedItinerary.id}`)} className="shrink-0 rounded-lg bg-[#eef5f9] px-3 py-2 text-xs font-bold text-[#58758c] hover:bg-[#e3eef4]">編輯原行程</button></div></div>
                   <label className="block text-sm font-bold text-[#4e697e]">公開標題<input value={publicTitle} onChange={(event) => setPublicTitle(event.target.value)} maxLength={255} placeholder="例如：台北三天兩夜慢遊行程" className="mt-2 w-full rounded-xl border border-[#cbdce7] bg-white px-4 py-3 text-sm text-[#365168] outline-none transition focus:border-[#7d9aaf]" /></label>
-                  <label className="block text-sm font-bold text-[#4e697e]">地點標籤 <span className="font-medium text-[#9aafbd]">（選填）</span><input value={publicLocation} onChange={(event) => setPublicLocation(event.target.value)} maxLength={150} placeholder="例如：日本・東京，或台灣・台中" className="mt-2 w-full rounded-xl border border-[#cbdce7] bg-white px-4 py-3 text-sm text-[#365168] outline-none transition focus:border-[#7d9aaf]" /><span className="mt-1 block text-xs font-medium text-[#9aafbd]">會顯示在公開行程封面上，方便旅人快速辨識目的地。</span></label>
+                  <label className="block text-sm font-bold text-[#4e697e]">目的地 <span className="font-medium text-[#9aafbd]">（選填）</span><input value={publicLocation} onChange={(event) => setPublicLocation(event.target.value)} onBlur={() => setPublicLocation((value) => normalizePublicLocation(value))} maxLength={150} placeholder="例如：日本・東京，或台灣・台中" className="mt-2 w-full rounded-xl border border-[#cbdce7] bg-white px-4 py-3 text-sm text-[#365168] outline-none transition focus:border-[#7d9aaf]" /><span className="mt-1 block text-xs font-medium text-[#9aafbd]">建議使用「國家・城市」；儲存時會統一分隔符號，讓其他旅人可直接依目的地篩選。</span>{popularLocationSummaries.length > 0 && <span className="mt-3 flex flex-wrap gap-2">{popularLocationSummaries.slice(0, 6).map(({ location }) => <button type="button" key={location} onClick={() => setPublicLocation(location)} className={`rounded-full border px-2.5 py-1 text-[11px] font-bold transition ${normalizePublicLocation(publicLocation) === location ? 'border-[#5e7891] bg-[#5e7891] text-white' : 'border-[#d6e3eb] bg-[#f8fbfd] text-[#668096] hover:border-[#a9bfce]'}`}>#{location}</button>)}</span>}</label>
                   <label className="block text-sm font-bold text-[#4e697e]">公開封面連結 <span className="font-medium text-[#9aafbd]">（選填）</span><input value={publicCoverImage} onChange={(event) => setPublicCoverImage(event.target.value)} type="url" placeholder="https://..." className="mt-2 w-full rounded-xl border border-[#cbdce7] bg-white px-4 py-3 text-sm text-[#365168] outline-none transition focus:border-[#7d9aaf]" /></label>
                   <label className="block text-sm font-bold text-[#4e697e]">行程簡介 <span className="font-medium text-[#9aafbd]">（選填，最多 1000 字）</span><textarea value={publicDescription} onChange={(event) => setPublicDescription(event.target.value)} maxLength={1000} rows={4} placeholder="分享這趟旅行的亮點、適合什麼樣的旅人，或行前注意事項…" className="mt-2 w-full resize-none rounded-xl border border-[#cbdce7] bg-white px-4 py-3 text-sm leading-6 text-[#365168] outline-none transition focus:border-[#7d9aaf]" /><span className="mt-1 block text-right text-xs font-medium text-[#9aafbd]">{publicDescription.length}/1000</span></label>
                   <p className="rounded-xl border border-[#dce8ef] bg-[#f1f7fa] px-4 py-3 text-xs leading-5 text-[#698398]">公開後，其他旅人可以複製行程結構與地點；你的私人功能資料不會被複製。</p>
@@ -720,6 +867,10 @@ export default function DestinationsPage() {
           </div>
         </div>
       )}
+
+      {shareNotice && <div className="fixed bottom-6 left-1/2 z-[100] -translate-x-1/2 rounded-xl bg-[#30485f] px-4 py-3 text-sm font-bold text-white shadow-xl" role="status"><div className="flex items-center gap-3"><span>{shareNotice}</span><button type="button" onClick={() => setShareNotice('')} className="rounded-md p-0.5 text-white/70 transition hover:bg-white/15 hover:text-white" aria-label="關閉提示"><X size={15} /></button></div></div>}
+
+      {reportTarget && <div className="fixed inset-0 z-[95] flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm"><div className="w-full max-w-lg rounded-3xl border border-[#d7e4ec] bg-[#f8fbfd] shadow-2xl"><div className="flex items-start justify-between gap-4 border-b border-[#dce7ef] bg-white px-6 py-5"><div><p className="text-xs font-bold tracking-[0.16em] text-[#8aa0b2]">REPORT PUBLIC ITINERARY</p><h2 className="mt-1 text-xl font-bold text-[#30485f]">檢舉公開行程</h2><p className="mt-2 line-clamp-1 text-sm text-[#7891a3]">{reportTarget.title}</p></div><button type="button" onClick={closeReport} disabled={isSubmittingReport} className="rounded-xl p-2 text-[#89a0b1] transition hover:bg-[#eef5f9] disabled:opacity-50" aria-label="關閉"><X size={21} /></button></div><div className="space-y-5 p-6"><label className="block text-sm font-bold text-[#4e697e]">檢舉原因<select value={reportReason} onChange={(event) => setReportReason(event.target.value)} disabled={isSubmittingReport} className="mt-2 w-full rounded-xl border border-[#cbdce7] bg-white px-4 py-3 text-sm text-[#365168] outline-none transition focus:border-[#7d9aaf]"><option value="不當內容">不當內容</option><option value="詐騙或不實資訊">詐騙或不實資訊</option><option value="侵犯權利">侵犯權利</option><option value="其他">其他</option></select></label><label className="block text-sm font-bold text-[#4e697e]">補充說明 <span className="font-medium text-[#9aafbd]">（選填）</span><textarea value={reportDetails} onChange={(event) => setReportDetails(event.target.value)} disabled={isSubmittingReport} maxLength={500} rows={4} placeholder="請簡單說明你認為需要確認的內容…" className="mt-2 w-full resize-none rounded-xl border border-[#cbdce7] bg-white px-4 py-3 text-sm leading-6 text-[#365168] outline-none transition focus:border-[#7d9aaf]" /><span className="mt-1 block text-right text-xs font-medium text-[#9aafbd]">{reportDetails.length}/500</span></label>{reportError && <p className="rounded-xl border border-rose-100 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-600">{reportError}</p>}<p className="rounded-xl border border-[#dce8ef] bg-[#f1f7fa] px-4 py-3 text-xs leading-5 text-[#698398]">同一份行程再次送出時，會更新你原本的檢舉內容，不會重複建立資料。</p><div className="flex items-center justify-end gap-3"><button type="button" onClick={closeReport} disabled={isSubmittingReport} className="rounded-xl px-4 py-3 text-sm font-bold text-[#7891a3] transition hover:bg-[#eef5f9] disabled:opacity-50">取消</button><button type="button" onClick={() => void submitReport()} disabled={isSubmittingReport} className="inline-flex items-center gap-2 rounded-xl bg-[#5e7891] px-5 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-[#4d677f] disabled:cursor-wait disabled:opacity-60"><Flag size={16} />{isSubmittingReport ? '送出中…' : '送出檢舉'}</button></div></div></div></div>}
     </div>
   );
 }

@@ -13,11 +13,15 @@ require_once 'public_itinerary_cache.php';
 $data = read_json_body();
 $search = trim((string)($data->Search ?? ''));
 $account = trim((string)($data->Account ?? ''));
+$ownerAccount = trim((string)($data->Owner_Account ?? ''));
 $transport = trim((string)($data->Transport ?? ''));
 $duration = (string)($data->Duration ?? 'all');
 $savedOnly = !empty($data->Saved_Only);
 $limit = min(max((int)($data->Limit ?? 24), 1), 48);
 $tags = normalize_public_itinerary_tags($data->Tags ?? []);
+$location = normalize_public_itinerary_location($data->Location ?? '');
+$sort = (string)($data->Sort ?? 'popular');
+if (!in_array($sort, ['popular', 'newest', 'copied'], true)) $sort = 'popular';
 
 if ($savedOnly && $account === '') api_error('請先登入後查看收藏。', 401);
 
@@ -28,7 +32,7 @@ $durationRanges = [
 ];
 [$durationMin, $durationMax] = $durationRanges[$duration] ?? [0, 0];
 $searchLike = '%' . $search . '%';
-$cacheKey = hash('sha256', json_encode([$account, $search, $tags, $transport, $duration, $savedOnly, $limit], JSON_UNESCAPED_UNICODE));
+$cacheKey = hash('sha256', json_encode([$account, $ownerAccount, $search, $tags, $transport, $duration, $location, $savedOnly, $sort, $limit], JSON_UNESCAPED_UNICODE));
 $cachedPayload = public_itinerary_cache_read($cacheKey);
 if ($cachedPayload !== null) api_json($cachedPayload);
 
@@ -42,7 +46,7 @@ $sql = "
     i.End_Date,
     i.Transport,
     COALESCE(NULLIF(i.Public_Cover_Image, ''), i.Cover_Image) AS Cover_Image,
-    i.Public_Description, i.Public_Location, i.Copy_Count, i.Like_Count, i.View_Count,
+    i.Public_Description, i.Public_Location, i.Public_Updated_At, i.Copy_Count, i.Like_Count, i.View_Count,
     i.Account AS Owner_Account,
     COALESCE(NULLIF(m.Name, ''), i.Account) AS Owner_Name,
     m.Avatar AS Owner_Avatar,
@@ -63,6 +67,7 @@ $sql = "
   LEFT JOIN Member m ON m.Account = i.Account
   LEFT JOIN Itinerary_Item ii ON ii.Itinerary_ID = i.Itinerary_ID
   WHERE i.Is_Public = 1
+    AND (? = '' OR i.Account = ?)
     AND (
       ? = ''
       OR COALESCE(NULLIF(i.Public_Title, ''), i.Title) LIKE ?
@@ -74,12 +79,13 @@ $sql = "
       )
     )
     AND (? = '' OR i.Transport = ?)
+    AND (? = '' OR i.Public_Location = ?)
     AND (? = 0 OR DATEDIFF(i.End_Date, i.Start_Date) + 1 >= ?)
     AND (? = 0 OR DATEDIFF(i.End_Date, i.Start_Date) + 1 <= ?)
 ";
 
-$types = 'ssssssssiiii';
-$params = [$account, $account, $search, $searchLike, $searchLike, $searchLike, $transport, $transport, $durationMin, $durationMin, $durationMax, $durationMax];
+$types = 'ssssssssssssiiii';
+$params = [$account, $account, $ownerAccount, $ownerAccount, $search, $searchLike, $searchLike, $searchLike, $transport, $transport, $location, $location, $durationMin, $durationMin, $durationMax, $durationMax];
 if ($savedOnly) {
     $sql .= " AND EXISTS (SELECT 1 FROM Public_Itinerary_Save saved_filter WHERE saved_filter.Itinerary_ID = i.Itinerary_ID AND saved_filter.Account = ?)";
     $types .= 's';
@@ -91,9 +97,15 @@ foreach ($tags as $tag) {
     $params[] = $tag;
 }
 
+$orderBy = [
+    'popular' => 'i.Like_Count DESC, i.View_Count DESC, i.Copy_Count DESC, i.Public_Updated_At DESC, i.Itinerary_ID DESC',
+    'newest' => 'i.Public_Updated_At DESC, i.Itinerary_ID DESC',
+    'copied' => 'i.Copy_Count DESC, i.Like_Count DESC, i.View_Count DESC, i.Public_Updated_At DESC, i.Itinerary_ID DESC',
+][$sort];
+
 $sql .= "
   GROUP BY i.Itinerary_ID
-  ORDER BY i.Like_Count DESC, i.View_Count DESC, i.Copy_Count DESC, i.Start_Date DESC, i.Itinerary_ID DESC
+  ORDER BY {$orderBy}
   LIMIT ?
 ";
 $types .= 'i';
@@ -120,6 +132,7 @@ while ($row = $result->fetch_assoc()) {
         'copyCount' => (int)$row['Copy_Count'],
         'likeCount' => (int)$row['Like_Count'],
         'viewCount' => (int)$row['View_Count'],
+        'publishedAt' => $row['Public_Updated_At'],
         'isLiked' => (bool)$row['Is_Liked'],
         'isSaved' => (bool)$row['Is_Saved'],
         'itemCount' => (int)$row['Item_Count'],

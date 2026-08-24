@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Image from "next/image";
 import { Link } from "./Link";
-import { Menu, X, User, LogOut, ChevronDown, Settings, Bell } from "lucide-react";
+import { Menu, X, User, LogOut, ChevronDown, Settings, Bell, ShieldCheck } from "lucide-react";
 import { TopNav } from "./TopNav";
 import { useAuth } from "../context/AuthContext";
 
@@ -12,6 +12,7 @@ export function Header() {
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const { user, logout, loading } = useAuth();
   const avatarUrl = (user as any)?.avatar;
+  const isAdmin = user?.role === 'admin';
 
   return (
     <header className="sticky top-0 z-50 bg-white border-b border-neutral-100 shadow-sm">
@@ -86,6 +87,13 @@ export function Header() {
                       <span>通知中心</span>
                     </div>
                   </Link>
+
+                  {isAdmin && <Link to="/admin">
+                    <div className="flex items-center gap-3 px-4 py-2.5 text-sm font-medium text-[#486b84] hover:bg-[#eef5f9] hover:text-[#304f66] cursor-pointer transition-colors tracking-widest">
+                      <ShieldCheck className="size-4" />
+                      <span>管理後台</span>
+                    </div>
+                  </Link>}
 
                   {/* 分隔線 */}
                   <div className="h-px bg-neutral-100 my-1 mx-2"></div>
@@ -166,6 +174,11 @@ export function Header() {
                     <Bell className="size-4" /> 通知中心
                   </div>
                 </Link>
+                {isAdmin && <Link to="/admin" onClick={() => setMobileMenuOpen(false)}>
+                  <div className="flex items-center gap-3 px-3 py-3 text-sm font-medium text-[#486b84] hover:bg-[#eef5f9] rounded-md">
+                    <ShieldCheck className="size-4" /> 管理後台
+                  </div>
+                </Link>}
 
                 <div className="h-[1px] bg-neutral-100 my-2"></div>
 
