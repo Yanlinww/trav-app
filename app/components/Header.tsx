@@ -1,8 +1,9 @@
 'use client';
 
 import { useState } from "react";
+import Image from "next/image";
 import { Link } from "./Link";
-import { Plane, Menu, X, User, LogOut, ChevronDown, Settings, Bell } from "lucide-react";
+import { Menu, X, User, LogOut, ChevronDown, Settings, Bell } from "lucide-react";
 import { TopNav } from "./TopNav";
 import { useAuth } from "../context/AuthContext";
 
@@ -17,7 +18,14 @@ export function Header() {
       <nav className="container mx-auto px-4 h-16 flex items-center justify-between">
         {/* Logo */}
         <Link to="/" className="flex items-center gap-2">
-          <Plane className="size-6 text-neutral-900" />
+          <Image
+            src="/brand/travmate-logo-v1.png"
+            alt="TRAVMATE 旅遊探索"
+            width={36}
+            height={36}
+            priority
+            className="size-8 shrink-0 object-contain sm:size-9"
+          />
           <span className="font-black text-xl tracking-widest text-neutral-900 uppercase">TRAVMATE</span>
         </Link>
 

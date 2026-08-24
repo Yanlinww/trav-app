@@ -8,8 +8,12 @@ function ensure_destinations_schema(mysqli $conn): void {
         "ALTER TABLE `Itinerary` ADD COLUMN `Public_Title` VARCHAR(255) NULL",
         "ALTER TABLE `Itinerary` ADD COLUMN `Public_Cover_Image` TEXT NULL",
         "ALTER TABLE `Itinerary` ADD COLUMN `Public_Description` TEXT NULL",
+        "ALTER TABLE `Itinerary` ADD COLUMN `Public_Location` VARCHAR(150) NULL",
+        "ALTER TABLE `Itinerary` ADD COLUMN `Like_Count` INT NOT NULL DEFAULT 0",
+        "ALTER TABLE `Itinerary` ADD COLUMN `View_Count` INT NOT NULL DEFAULT 0",
         "ALTER TABLE `Itinerary` ADD INDEX `idx_itinerary_public_start` (`Is_Public`, `Start_Date`)",
         "ALTER TABLE `Itinerary` ADD INDEX `idx_itinerary_copied_from` (`Copied_From_Itinerary_ID`)",
+        "ALTER TABLE `Itinerary_Item` ADD INDEX `idx_itinerary_item_public_lookup` (`Itinerary_ID`, `Day_Number`, `Sort_Order`)",
     ];
 
     foreach ($statements as $statement) {
@@ -24,6 +28,35 @@ function ensure_destinations_schema(mysqli $conn): void {
                 `Created_At` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 PRIMARY KEY (`Itinerary_ID`, `Tag`),
                 INDEX `idx_public_itinerary_tag` (`Tag`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+        );
+    } catch (Throwable $ignored) {}
+
+    try {
+        $conn->query(
+            "CREATE TABLE IF NOT EXISTS `Public_Itinerary_Like` (
+                `Itinerary_ID` INT NOT NULL,
+                `Account` VARCHAR(100) NOT NULL,
+                `Created_At` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (`Itinerary_ID`, `Account`),
+                INDEX `idx_public_itinerary_like_account` (`Account`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+        );
+        $conn->query(
+            "CREATE TABLE IF NOT EXISTS `Public_Itinerary_View` (
+                `Itinerary_ID` INT NOT NULL,
+                `Viewer_Key` VARCHAR(150) NOT NULL,
+                `Viewed_At` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (`Itinerary_ID`, `Viewer_Key`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+        );
+        $conn->query(
+            "CREATE TABLE IF NOT EXISTS `Public_Itinerary_Save` (
+                `Itinerary_ID` INT NOT NULL,
+                `Account` VARCHAR(100) NOT NULL,
+                `Created_At` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (`Itinerary_ID`, `Account`),
+                INDEX `idx_public_itinerary_save_account` (`Account`, `Created_At`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
         );
     } catch (Throwable $ignored) {}

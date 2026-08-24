@@ -9,8 +9,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(204); exit();
 require_once '../db_connect.php';
 require_once '../itinerary/api_helpers.php';
 require_once 'schema.php';
-
-ensure_destinations_schema($conn);
+require_once 'public_itinerary_cache.php';
 
 $data = read_json_body();
 $sourceId = (int)($data->Itinerary_ID ?? 0);
@@ -49,6 +48,7 @@ try {
 
     $conn->commit();
     $conn->close();
+    invalidate_public_itinerary_cache();
     api_json(['status' => 'success', 'itineraryId' => (string)$newItineraryId]);
 } catch (Throwable $error) {
     $conn->rollback();

@@ -23,6 +23,38 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 
+const MAX_COVER_SOURCE_BYTES = 15 * 1024 * 1024;
+const MAX_COVER_DIMENSION = 1920;
+
+async function optimizeCoverImage(file: File): Promise<File> {
+  if (!file.type.startsWith('image/')) throw new Error('請選擇圖片檔案。');
+  if (file.size > MAX_COVER_SOURCE_BYTES) throw new Error('原始圖片超過 15MB，請選擇較小的圖片。');
+
+  const sourceUrl = URL.createObjectURL(file);
+  try {
+    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const nextImage = new Image();
+      nextImage.onload = () => resolve(nextImage);
+      nextImage.onerror = () => reject(new Error('無法讀取這張圖片。'));
+      nextImage.src = sourceUrl;
+    });
+    const scale = Math.min(1, MAX_COVER_DIMENSION / Math.max(image.naturalWidth, image.naturalHeight));
+    const width = Math.max(1, Math.round(image.naturalWidth * scale));
+    const height = Math.max(1, Math.round(image.naturalHeight * scale));
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext('2d');
+    if (!context) throw new Error('圖片最佳化暫時無法使用。');
+    context.drawImage(image, 0, 0, width, height);
+    const optimizedBlob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/webp', 0.84));
+    if (!optimizedBlob) throw new Error('圖片最佳化失敗，請再試一次。');
+    return new File([optimizedBlob], `${file.name.replace(/\.[^.]+$/, '') || 'cover'}.webp`, { type: 'image/webp' });
+  } finally {
+    URL.revokeObjectURL(sourceUrl);
+  }
+}
+
 
 
 function MultiNotesPanel({ itineraryId, currentUserId }: { itineraryId: string; currentUserId: string }) {
@@ -2454,13 +2486,15 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
 
   const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]; if (!file) return;
+    const previousCoverImage = coverImage;
     const previewUrl = URL.createObjectURL(file); setCoverImage(previewUrl); setIsUploading(true);
-    const formData = new FormData(); formData.append("cover_image", file); formData.append("Itinerary_ID", params.id as string); formData.append("Account", user?.id || (user as any)?.Account);
     try {
+      const optimizedFile = await optimizeCoverImage(file);
+      const formData = new FormData(); formData.append("cover_image", optimizedFile); formData.append("Itinerary_ID", params.id as string); formData.append("Account", user?.id || (user as any)?.Account);
       const res = await fetch("http://localhost:8080/itinerary/core/update_cover_image.php", { method: "POST", body: formData });
-      const data = await res.json(); if (data.status === 'success') setCoverImage(data.new_image_url); else { alert(data.message); setCoverImage(itineraryData.coverImage); }
-    } catch (error) { alert("圖片上傳失敗"); setCoverImage(itineraryData.coverImage); } 
-    finally { setIsUploading(false); if (fileInputRef.current) fileInputRef.current.value = ""; }
+      const data = await res.json(); if (data.status === 'success') setCoverImage(data.new_image_url); else { alert(data.message); setCoverImage(previousCoverImage); }
+    } catch (error) { alert(error instanceof Error ? error.message : "圖片上傳失敗"); setCoverImage(previousCoverImage); } 
+    finally { URL.revokeObjectURL(previewUrl); setIsUploading(false); if (fileInputRef.current) fileInputRef.current.value = ""; }
   };
 
   const handleUpdateStyle = async (style: string) => {

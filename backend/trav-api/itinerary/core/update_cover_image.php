@@ -18,6 +18,15 @@ if (isset($_FILES['cover_image']) && !empty($_POST['Itinerary_ID']) && !empty($_
     $account = $_POST['Account'];
     $file = $_FILES['cover_image'];
 
+    if ($file['error'] !== UPLOAD_ERR_OK) {
+        echo json_encode(["status" => "error", "message" => "圖片上傳未完成，請再試一次。"]);
+        exit();
+    }
+    if ($file['size'] > 10 * 1024 * 1024) {
+        echo json_encode(["status" => "error", "message" => "圖片最佳化後仍超過 10MB，請換一張較小的圖片。"]);
+        exit();
+    }
+
     // 1. 權限驗證：確保這個行程是該使用者的
     $check_stmt = $conn->prepare("SELECT `Itinerary_ID` FROM `Itinerary` WHERE `Itinerary_ID` = ? AND `Account` = ?");
     $check_stmt->bind_param("is", $itinerary_id, $account);
@@ -40,6 +49,10 @@ if (isset($_FILES['cover_image']) && !empty($_POST['Itinerary_ID']) && !empty($_
     $allowed_ext = ['jpg', 'jpeg', 'png', 'webp'];
     if (!in_array(strtolower($file_extension), $allowed_ext)) {
         echo json_encode(["status" => "error", "message" => "僅允許上傳 JPG, PNG 或 WEBP 格式。"]);
+        exit();
+    }
+    if (@getimagesize($file['tmp_name']) === false) {
+        echo json_encode(["status" => "error", "message" => "無法辨識圖片檔案，請重新選擇圖片。"]);
         exit();
     }
 

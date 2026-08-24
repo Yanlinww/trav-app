@@ -9,8 +9,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(204); exit();
 require_once '../db_connect.php';
 require_once '../itinerary/api_helpers.php';
 require_once 'schema.php';
-
-ensure_destinations_schema($conn);
+require_once 'public_itinerary_cache.php';
 $data = read_json_body();
 $account = trim((string)($data->Account ?? ''));
 $itineraryId = (int)($data->Itinerary_ID ?? 0);
@@ -18,6 +17,7 @@ $isPublic = !empty($data->Is_Public) ? 1 : 0;
 $publicTitle = trim((string)($data->Public_Title ?? ''));
 $publicCoverImage = trim((string)($data->Public_Cover_Image ?? ''));
 $publicDescription = trim((string)($data->Public_Description ?? ''));
+$publicLocation = trim((string)($data->Public_Location ?? ''));
 $rawTags = $data->Tags ?? [];
 
 if ($account === '' || $itineraryId <= 0) api_error('缺少行程或使用者資料。', 400);
@@ -25,6 +25,7 @@ if (!is_array($rawTags)) api_error('標籤格式錯誤。', 422);
 if (mb_strlen($publicTitle) > 255) api_error('公開標題最多 255 個字。', 422);
 if (mb_strlen($publicCoverImage) > 2000) api_error('封面連結過長。', 422);
 if (mb_strlen($publicDescription) > 1000) api_error('行程簡介最多 1000 個字。', 422);
+if (mb_strlen($publicLocation) > 150) api_error('公開地點標籤最多 150 個字。', 422);
 
 $tags = normalize_public_itinerary_tags($rawTags);
 $submittedTags = [];
@@ -46,11 +47,11 @@ try {
 
     $stmt = $conn->prepare(
         'UPDATE Itinerary
-         SET Is_Public = ?, Public_Title = NULLIF(?, \'\'), Public_Cover_Image = NULLIF(?, \'\'), Public_Description = NULLIF(?, \'\')
+         SET Is_Public = ?, Public_Title = NULLIF(?, \'\'), Public_Cover_Image = NULLIF(?, \'\'), Public_Description = NULLIF(?, \'\'), Public_Location = NULLIF(?, \'\')
          WHERE Itinerary_ID = ? AND Account = ?'
     );
     if (!$stmt) throw new RuntimeException('無法儲存公開設定。');
-    $stmt->bind_param('isssis', $isPublic, $publicTitle, $publicCoverImage, $publicDescription, $itineraryId, $account);
+    $stmt->bind_param('issssis', $isPublic, $publicTitle, $publicCoverImage, $publicDescription, $publicLocation, $itineraryId, $account);
     if (!$stmt->execute()) throw new RuntimeException('無法儲存公開設定。');
     $stmt->close();
 
@@ -78,4 +79,5 @@ try {
 }
 
 $conn->close();
+invalidate_public_itinerary_cache();
 api_json(['status' => 'success', 'message' => $isPublic ? '公開行程已儲存。' : '公開行程已下架。']);

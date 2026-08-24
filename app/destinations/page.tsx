@@ -1,9 +1,9 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { GoogleMap, Marker, PolylineF, useJsApiLoader } from '@react-google-maps/api';
-import { CalendarDays, Clock3, Copy, Eye, Globe2, Loader2, Map as MapIcon, MapPin, Pencil, Search, Settings2, SlidersHorizontal, Sparkles, Upload, Users, X } from 'lucide-react';
+import { Bookmark, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Clock3, Copy, Eye, Globe2, Heart, Loader2, Map as MapIcon, MapPin, Pencil, Search, Settings2, SlidersHorizontal, Sparkles, Upload, Users, X } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 type PublicItinerary = {
@@ -14,8 +14,13 @@ type PublicItinerary = {
   transport: string;
   coverImage: string;
   description?: string | null;
+  location?: string | null;
   tags: string[];
   copyCount: number;
+  likeCount: number;
+  viewCount: number;
+  isLiked: boolean;
+  isSaved: boolean;
   itemCount: number;
   dayCount: number;
   owner: { account: string; name: string; avatar?: string | null };
@@ -32,6 +37,7 @@ type OwnedItinerary = {
   publicTitle?: string | null;
   publicCoverImage?: string | null;
   publicDescription?: string | null;
+  publicLocation?: string | null;
   tags: string[];
   itemCount: number;
   dayCount: number;
@@ -79,6 +85,16 @@ const transportFilterOptions = [
   { value: 'other', label: '其他' },
 ];
 
+function filterPublicItineraries(rows: PublicItinerary[], tags: string[], transport: string, duration: string): PublicItinerary[] {
+  return rows.filter((itinerary) => {
+    if (transport && itinerary.transport !== transport) return false;
+    if (duration === '1-2' && (itinerary.dayCount < 1 || itinerary.dayCount > 2)) return false;
+    if (duration === '3-4' && (itinerary.dayCount < 3 || itinerary.dayCount > 4)) return false;
+    if (duration === '5+' && itinerary.dayCount < 5) return false;
+    return tags.every((tag) => itinerary.tags.includes(tag));
+  });
+}
+
 function ItineraryPreviewMap({ items }: { items: PreviewItem[] }) {
   const mapPoints = useMemo(() => items.filter((item) => Number.isFinite(item.latitude) && Number.isFinite(item.longitude)), [items]);
   const { isLoaded, loadError } = useJsApiLoader({
@@ -107,7 +123,7 @@ function ItineraryPreviewMap({ items }: { items: PreviewItem[] }) {
 }
 
 export default function DestinationsPage() {
-  const { user, loading: authLoading } = useAuth();
+  const { user } = useAuth();
   const router = useRouter();
   const [itineraries, setItineraries] = useState<PublicItinerary[]>([]);
   const [search, setSearch] = useState('');
@@ -115,7 +131,11 @@ export default function DestinationsPage() {
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [transportFilter, setTransportFilter] = useState('');
   const [durationFilter, setDurationFilter] = useState('all');
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [viewMode, setViewMode] = useState<'discover' | 'saved'>('discover');
+  const [featuredIndex, setFeaturedIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState('');
   const [copyingId, setCopyingId] = useState<string | null>(null);
   const [ownedItineraries, setOwnedItineraries] = useState<OwnedItinerary[]>([]);
@@ -124,44 +144,85 @@ export default function DestinationsPage() {
   const [publicTitle, setPublicTitle] = useState('');
   const [publicCoverImage, setPublicCoverImage] = useState('');
   const [publicDescription, setPublicDescription] = useState('');
+  const [publicLocation, setPublicLocation] = useState('');
   const [publicTags, setPublicTags] = useState<string[]>([]);
   const [isSavingPublic, setIsSavingPublic] = useState(false);
+  const [likingId, setLikingId] = useState<string | null>(null);
+  const [savingId, setSavingId] = useState<string | null>(null);
   const [manageError, setManageError] = useState('');
   const [preview, setPreview] = useState<ItineraryPreview | null>(null);
   const [isPreviewLoading, setIsPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState('');
   const [copiedItineraryId, setCopiedItineraryId] = useState<string | null>(null);
   const [previewTab, setPreviewTab] = useState<'schedule' | 'map'>('schedule');
+  const itineraryListRef = useRef<PublicItinerary[]>([]);
+  const publicItineraryCatalogueRef = useRef<PublicItinerary[]>([]);
+  const publicRequestRef = useRef<AbortController | null>(null);
+  const publicRequestIdRef = useRef(0);
+  const hasPublicItineraryLoadedRef = useRef(false);
 
   const currentAccount = (user as any)?.id || (user as any)?.Account || '';
 
   const selectedOwnedItinerary = ownedItineraries.find((itinerary) => itinerary.id === selectedOwnedId) || null;
+  const featuredItineraries = itineraries.slice(0, 4);
+  const featuredItinerary = featuredItineraries[Math.min(featuredIndex, Math.max(featuredItineraries.length - 1, 0))];
 
-  const fetchPublicItineraries = async (
+  useEffect(() => {
+    itineraryListRef.current = itineraries;
+  }, [itineraries]);
+
+  const fetchPublicItineraries = useCallback(async (
     keyword = '',
-    tags = selectedTags,
-    transport = transportFilter,
-    duration = durationFilter,
+    tags: string[] = [],
+    transport = '',
+    duration = 'all',
+    limit = 24,
+    savedOnly = false,
   ) => {
-    setIsLoading(true);
+    publicRequestRef.current?.abort();
+    const requestId = ++publicRequestIdRef.current;
+    const controller = new AbortController();
+    publicRequestRef.current = controller;
+    const isInitialLoad = !hasPublicItineraryLoadedRef.current;
+    if (isInitialLoad) setIsLoading(true);
+    else setIsRefreshing(true);
     setError('');
     try {
       const response = await fetch('http://localhost:8080/destinations/get_public_itineraries.php', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ Search: keyword, Tags: tags, Transport: transport, Duration: duration, Limit: 24 }),
+        body: JSON.stringify({ Account: currentAccount, Search: keyword, Tags: tags, Transport: transport, Duration: duration, Limit: limit, Saved_Only: savedOnly }),
+        signal: controller.signal,
       });
       const data = await response.json();
       if (!response.ok || data.status !== 'success') throw new Error(data.message || '載入公開行程失敗');
-      setItineraries(Array.isArray(data.data) ? data.data : []);
+      if (requestId === publicRequestIdRef.current) {
+        hasPublicItineraryLoadedRef.current = true;
+        const nextRows = Array.isArray(data.data) ? data.data as PublicItinerary[] : [];
+        if (!savedOnly && !keyword && tags.length === 0 && !transport && duration === 'all') {
+          publicItineraryCatalogueRef.current = nextRows;
+        }
+        setItineraries(nextRows);
+      }
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : '載入公開行程失敗');
+      if ((requestError as Error)?.name !== 'AbortError' && requestId === publicRequestIdRef.current) {
+        setError(requestError instanceof Error ? requestError.message : '載入公開行程失敗');
+      }
     } finally {
-      setIsLoading(false);
+      if (requestId === publicRequestIdRef.current) {
+        setIsLoading(false);
+        setIsRefreshing(false);
+      }
     }
-  };
+  }, [currentAccount]);
 
-  useEffect(() => { fetchPublicItineraries(); }, []);
+  useEffect(() => {
+    void fetchPublicItineraries('', [], '', 'all', 48);
+    return () => publicRequestRef.current?.abort();
+  }, [fetchPublicItineraries]);
+  useEffect(() => {
+    setFeaturedIndex((index) => Math.min(index, Math.max(featuredItineraries.length - 1, 0)));
+  }, [featuredItineraries.length]);
 
   const fetchOwnedItineraries = async () => {
     if (!currentAccount) return [] as OwnedItinerary[];
@@ -182,6 +243,7 @@ export default function DestinationsPage() {
     setPublicTitle(itinerary.publicTitle || itinerary.title || '');
     setPublicCoverImage(itinerary.publicCoverImage || itinerary.coverImage || '');
     setPublicDescription(itinerary.publicDescription || '');
+    setPublicLocation(itinerary.publicLocation || '');
     setPublicTags(itinerary.tags || []);
     setManageError('');
   };
@@ -202,6 +264,7 @@ export default function DestinationsPage() {
         setPublicTitle('');
         setPublicCoverImage('');
         setPublicDescription('');
+        setPublicLocation('');
         setPublicTags([]);
       }
     } catch (requestError) {
@@ -235,13 +298,19 @@ export default function DestinationsPage() {
           Public_Title: publicTitle.trim(),
           Public_Cover_Image: publicCoverImage.trim(),
           Public_Description: publicDescription.trim(),
+          Public_Location: publicLocation.trim(),
           Tags: publicTags,
         }),
       });
       const data = await response.json();
       if (!response.ok || data.status !== 'success') throw new Error(data.message || '無法儲存公開設定。');
-      await fetchOwnedItineraries();
-      await fetchPublicItineraries(appliedSearch);
+      const savedOnly = viewMode === 'saved';
+      await Promise.all([
+        fetchOwnedItineraries(),
+        fetchPublicItineraries('', [], '', 'all', 48, savedOnly),
+      ]);
+      if (savedOnly || appliedSearch) await fetchPublicItineraries(appliedSearch, selectedTags, transportFilter, durationFilter, 24, savedOnly);
+      else applyLocalFilters(selectedTags, transportFilter, durationFilter);
       closeManage();
     } catch (requestError) {
       setManageError(requestError instanceof Error ? requestError.message : '無法儲存公開設定。');
@@ -255,13 +324,120 @@ export default function DestinationsPage() {
     void savePublicSettings(false);
   };
 
-  const heading = useMemo(() => appliedSearch ? `「${appliedSearch}」的行程靈感` : '公開行程靈感', [appliedSearch]);
+  const heading = useMemo(() => {
+    if (viewMode === 'saved') return appliedSearch ? `收藏中符合「${appliedSearch}」的行程` : '我的收藏';
+    return appliedSearch ? `「${appliedSearch}」的行程靈感` : '公開行程靈感';
+  }, [appliedSearch, viewMode]);
+
+  const applyLocalFilters = useCallback((tags: string[], transport: string, duration: string) => {
+    if (!hasPublicItineraryLoadedRef.current) return false;
+    setItineraries(filterPublicItineraries(publicItineraryCatalogueRef.current, tags, transport, duration).slice(0, 24));
+    return true;
+  }, []);
+
+  const updateItineraryEngagement = useCallback((itineraryId: string, patch: Partial<Pick<PublicItinerary, 'likeCount' | 'viewCount' | 'isLiked' | 'isSaved'>>) => {
+    const updateRows = (rows: PublicItinerary[]) => rows.map((item) => item.id === itineraryId ? { ...item, ...patch } : item);
+    setItineraries((rows) => updateRows(rows));
+    publicItineraryCatalogueRef.current = updateRows(publicItineraryCatalogueRef.current);
+    setPreview((current) => current?.id === itineraryId ? { ...current, ...patch } : current);
+  }, []);
+
+  const getViewerKey = () => {
+    if (currentAccount) return `account:${currentAccount}`;
+    const storageKey = 'travmate:public-itinerary-viewer';
+    let visitorId = window.sessionStorage.getItem(storageKey);
+    if (!visitorId) {
+      visitorId = window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      window.sessionStorage.setItem(storageKey, visitorId);
+    }
+    return `browser:${visitorId}`;
+  };
+
+  const recordPublicView = async (itineraryId: string) => {
+    try {
+      const response = await fetch('http://localhost:8080/destinations/record_public_itinerary_view.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ Itinerary_ID: itineraryId, Viewer_Key: getViewerKey() }),
+      });
+      const data = await response.json();
+      if (response.ok && data.status === 'success' && typeof data.viewCount === 'number') {
+        updateItineraryEngagement(itineraryId, { viewCount: data.viewCount });
+      }
+    } catch {
+      // 瀏覽數記錄不應阻擋行程預覽。
+    }
+  };
+
+  const toggleLike = async (itinerary: Pick<PublicItinerary, 'id'>) => {
+    if (!currentAccount) {
+      router.push('/auth/login');
+      return;
+    }
+    setLikingId(itinerary.id);
+    try {
+      const response = await fetch('http://localhost:8080/destinations/toggle_public_itinerary_like.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ Itinerary_ID: itinerary.id, Account: currentAccount }),
+      });
+      const data = await response.json();
+      if (!response.ok || data.status !== 'success') throw new Error(data.message || '按讚失敗');
+      updateItineraryEngagement(itinerary.id, { isLiked: Boolean(data.isLiked), likeCount: Number(data.likeCount) || 0 });
+    } catch (requestError) {
+      window.alert(requestError instanceof Error ? requestError.message : '按讚失敗，請稍後再試。');
+    } finally {
+      setLikingId(null);
+    }
+  };
+
+  const toggleSave = async (itinerary: Pick<PublicItinerary, 'id'>) => {
+    if (!currentAccount) {
+      router.push('/auth/login');
+      return;
+    }
+    setSavingId(itinerary.id);
+    try {
+      const response = await fetch('http://localhost:8080/destinations/toggle_public_itinerary_save.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ Itinerary_ID: itinerary.id, Account: currentAccount }),
+      });
+      const data = await response.json();
+      if (!response.ok || data.status !== 'success') throw new Error(data.message || '收藏更新失敗');
+      const isSaved = Boolean(data.isSaved);
+      updateItineraryEngagement(itinerary.id, { isSaved });
+      if (viewMode === 'saved' && !isSaved) {
+        setItineraries((rows) => rows.filter((item) => item.id !== itinerary.id));
+      }
+    } catch (requestError) {
+      window.alert(requestError instanceof Error ? requestError.message : '收藏更新失敗，請稍後再試。');
+    } finally {
+      setSavingId(null);
+    }
+  };
+
+  const switchViewMode = (nextMode: 'discover' | 'saved') => {
+    if (nextMode === viewMode) return;
+    if (nextMode === 'saved' && !currentAccount) {
+      router.push('/auth/login');
+      return;
+    }
+    setViewMode(nextMode);
+    setSearch('');
+    setAppliedSearch('');
+    setSelectedTags([]);
+    setTransportFilter('');
+    setDurationFilter('all');
+    void fetchPublicItineraries('', [], '', 'all', 48, nextMode === 'saved');
+  };
 
   const submitSearch = (event: React.FormEvent) => {
     event.preventDefault();
     const keyword = search.trim();
     setAppliedSearch(keyword);
-    fetchPublicItineraries(keyword);
+    if (viewMode === 'discover' && !keyword && applyLocalFilters(selectedTags, transportFilter, durationFilter)) return;
+    void fetchPublicItineraries(keyword, selectedTags, transportFilter, durationFilter, 24, viewMode === 'saved');
   };
 
   const toggleDiscoveryTag = (tag: string) => {
@@ -269,24 +445,28 @@ export default function DestinationsPage() {
       ? selectedTags.filter((item) => item !== tag)
       : [...selectedTags, tag];
     setSelectedTags(nextTags);
-    void fetchPublicItineraries(search.trim(), nextTags, transportFilter, durationFilter);
+    if (viewMode === 'discover' && !appliedSearch && applyLocalFilters(nextTags, transportFilter, durationFilter)) return;
+    void fetchPublicItineraries(appliedSearch, nextTags, transportFilter, durationFilter, 24, viewMode === 'saved');
   };
 
   const updateTransportFilter = (value: string) => {
     setTransportFilter(value);
-    void fetchPublicItineraries(search.trim(), selectedTags, value, durationFilter);
+    if (viewMode === 'discover' && !appliedSearch && applyLocalFilters(selectedTags, value, durationFilter)) return;
+    void fetchPublicItineraries(appliedSearch, selectedTags, value, durationFilter, 24, viewMode === 'saved');
   };
 
   const updateDurationFilter = (value: string) => {
     setDurationFilter(value);
-    void fetchPublicItineraries(search.trim(), selectedTags, transportFilter, value);
+    if (viewMode === 'discover' && !appliedSearch && applyLocalFilters(selectedTags, transportFilter, value)) return;
+    void fetchPublicItineraries(appliedSearch, selectedTags, transportFilter, value, 24, viewMode === 'saved');
   };
 
   const clearFilters = () => {
     setSelectedTags([]);
     setTransportFilter('');
     setDurationFilter('all');
-    void fetchPublicItineraries(search.trim(), [], '', 'all');
+    if (viewMode === 'discover' && !appliedSearch && applyLocalFilters([], '', 'all')) return;
+    void fetchPublicItineraries(appliedSearch, [], '', 'all', 24, viewMode === 'saved');
   };
 
   const togglePublicTag = (tag: string) => {
@@ -317,6 +497,7 @@ export default function DestinationsPage() {
       const data = await response.json();
       if (!response.ok || data.status !== 'success') throw new Error(data.message || '無法載入行程預覽。');
       setPreview(data.data as ItineraryPreview);
+      void recordPublicView(itineraryId);
     } catch (requestError) {
       setPreviewError(requestError instanceof Error ? requestError.message : '無法載入行程預覽。');
     } finally {
@@ -347,7 +528,10 @@ export default function DestinationsPage() {
       const data = await response.json();
       if (!response.ok || data.status !== 'success') throw new Error(data.message || '複製行程失敗');
       setCopiedItineraryId(String(data.itineraryId));
-      await fetchPublicItineraries(appliedSearch);
+      const savedOnly = viewMode === 'saved';
+      await fetchPublicItineraries('', [], '', 'all', 48, savedOnly);
+      if (savedOnly || appliedSearch) await fetchPublicItineraries(appliedSearch, selectedTags, transportFilter, durationFilter, 24, savedOnly);
+      else applyLocalFilters(selectedTags, transportFilter, durationFilter);
     } catch (requestError) {
       window.alert(requestError instanceof Error ? requestError.message : '複製行程失敗，請稍後再試。');
     } finally {
@@ -364,42 +548,46 @@ export default function DestinationsPage() {
 
   return (
     <div className="min-h-[calc(100vh-4rem)] bg-[#f3f8fb] pb-16 text-[#31485f]">
-      <section className="border-b border-[#dbe7ef] bg-white px-4 py-12 sm:px-6 lg:px-10 lg:py-16">
-        <div className="mx-auto max-w-7xl">
-          <div className="flex max-w-5xl flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
-            <div className="max-w-3xl">
-            <div className="mb-5 flex size-12 items-center justify-center rounded-2xl border border-[#d8e6ef] bg-[#eef5f9] text-[#607d96] shadow-sm"><Sparkles size={22} /></div>
-            <p className="text-xs font-bold tracking-[0.22em] text-[#8aa0b2]">TRAVMATE INSPIRATION</p>
-            <h1 className="mt-3 text-3xl font-bold tracking-tight text-[#263e55] sm:text-4xl">看看其他旅人怎麼安排</h1>
-            <p className="mt-4 max-w-2xl text-sm leading-7 text-[#6d8498] sm:text-base">探索公開行程、找到適合自己的旅行節奏，再複製成可自由修改的私人行程。</p>
-            </div>
-            <button type="button" onClick={() => void openManage()} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-[#c9dbe7] bg-[#eef5f9] px-4 py-3 text-sm font-bold text-[#4e6d86] shadow-sm transition hover:border-[#aebfd0] hover:bg-white"><Upload size={17} />上傳行程</button>
-          </div>
+      <section className="relative isolate min-h-[540px] overflow-hidden border-b border-[#d5e1e9] bg-[#3d5a70] px-4 py-8 text-white sm:px-6 lg:px-10 lg:py-10">
+        <img src={featuredItinerary?.coverImage || fallbackCover} alt="" className="absolute inset-0 -z-20 size-full object-cover" />
+        <div className="absolute inset-0 -z-10 bg-[linear-gradient(90deg,rgba(19,37,51,0.9)_0%,rgba(28,48,63,0.76)_42%,rgba(28,48,63,0.25)_100%)]" />
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4">
+          <div className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1.5 text-xs font-bold tracking-[0.18em] text-white/85 backdrop-blur-md"><Sparkles size={15} />TRAVMATE INSPIRATION</div>
+          <div className="flex items-center gap-2"><button type="button" onClick={() => switchViewMode('saved')} className={`inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-bold backdrop-blur-md transition ${viewMode === 'saved' ? 'border-white bg-white text-[#45647d]' : 'border-white/30 bg-white/15 text-white hover:bg-white/25'}`}><Bookmark size={17} className={viewMode === 'saved' ? 'fill-current' : ''} />我的收藏</button><button type="button" onClick={() => void openManage()} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-white/30 bg-white/15 px-4 py-2.5 text-sm font-bold text-white backdrop-blur-md transition hover:bg-white/25"><Upload size={17} />上傳行程</button></div>
+        </div>
 
-          <form onSubmit={submitSearch} className="mt-8 flex max-w-3xl flex-col gap-3 rounded-2xl border border-[#d8e5ee] bg-[#f6fafc] p-3 shadow-[inset_0_1px_2px_rgba(82,111,136,0.05)] sm:flex-row">
-            <label className="flex min-w-0 flex-1 items-center gap-3 px-3 text-[#7790a4]">
-              <Search size={19} className="shrink-0" />
-              <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="搜尋行程名稱或目的地" className="min-w-0 flex-1 bg-transparent py-2 text-sm outline-none placeholder:text-[#a4b5c3]" />
-            </label>
-            <button type="submit" className="rounded-xl bg-[#5e7891] px-6 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-[#4d677f]">搜尋行程</button>
-          </form>
+        <div className="mx-auto mt-8 max-w-7xl">
+          <div className="grid gap-8 lg:grid-cols-[minmax(0,1.15fr)_minmax(420px,0.85fr)] lg:items-end">
+            <div className="max-w-2xl">
+              <p className="text-sm font-bold tracking-[0.2em] text-white/70">{viewMode === 'saved' ? 'MY SAVED PLANS' : '行程靈感'}</p>
+              <h1 className="mt-3 text-3xl font-bold tracking-tight sm:text-4xl">{viewMode === 'saved' ? '留住想出發的旅行靈感' : '看看其他旅人怎麼安排'}</h1>
+              <p className="mt-3 max-w-xl text-sm leading-7 text-white/78 sm:text-base">{viewMode === 'saved' ? '先收藏，再慢慢比較；準備好時再複製成可自由修改的私人行程。' : '探索公開行程、找到適合自己的旅行節奏，再複製成可自由修改的私人行程。'}</p>
 
-          <div className="mt-4 max-w-4xl rounded-2xl border border-[#d8e5ee] bg-white p-4 shadow-sm">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="inline-flex items-center gap-2 text-sm font-bold text-[#4e697e]"><SlidersHorizontal size={16} />探索篩選</div>
-              {(selectedTags.length > 0 || transportFilter || durationFilter !== 'all') && <button type="button" onClick={clearFilters} className="text-xs font-bold text-[#628097] transition hover:text-[#365168]">清除篩選</button>}
-            </div>
-            <div className="mt-3 grid gap-3 sm:grid-cols-2">
-              <label className="text-xs font-bold text-[#7891a4]">旅行天數<select value={durationFilter} onChange={(event) => updateDurationFilter(event.target.value)} className="mt-1.5 w-full rounded-xl border border-[#d6e3eb] bg-[#f8fbfd] px-3 py-2.5 text-sm font-medium text-[#4e697e] outline-none focus:border-[#7d9aaf]">{durationFilterOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
-              <label className="text-xs font-bold text-[#7891a4]">交通方式<select value={transportFilter} onChange={(event) => updateTransportFilter(event.target.value)} className="mt-1.5 w-full rounded-xl border border-[#d6e3eb] bg-[#f8fbfd] px-3 py-2.5 text-sm font-medium text-[#4e697e] outline-none focus:border-[#7d9aaf]">{transportFilterOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
-            </div>
-            <div className="mt-4 flex flex-wrap gap-2">{publicTagOptions.map((tag) => <button type="button" key={tag} onClick={() => toggleDiscoveryTag(tag)} className={`rounded-full border px-3 py-1.5 text-xs font-bold transition ${selectedTags.includes(tag) ? 'border-[#5e7891] bg-[#5e7891] text-white shadow-sm' : 'border-[#d6e3eb] bg-[#f8fbfd] text-[#668096] hover:border-[#a9bfce] hover:bg-[#f0f6f9]'}`}>#{tag}</button>)}</div>
-            <p className="mt-3 text-xs leading-5 text-[#91a6b7]">多選標籤會以「同時符合」搜尋，方便找出真正符合旅行偏好的公開行程。</p>
-          </div>
+              <form onSubmit={submitSearch} className="mt-6 flex max-w-xl flex-col gap-2 rounded-2xl border border-white/25 bg-white/92 p-2 shadow-xl shadow-slate-950/15 backdrop-blur-md sm:flex-row">
+                <label className="flex min-w-0 flex-1 items-center gap-3 px-3 text-[#7790a4]"><Search size={19} className="shrink-0" /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="搜尋行程名稱或目的地" className="min-w-0 flex-1 bg-transparent py-2 text-sm text-[#31485f] outline-none placeholder:text-[#9cb0bf]" /></label>
+                <button type="submit" className="rounded-xl bg-[#56758e] px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-[#45647d]">搜尋</button>
+              </form>
 
-          <div className="mt-5 flex flex-wrap gap-2 text-xs">
-            <span className="rounded-full border border-[#dce8ef] bg-[#f1f7fa] px-3 py-1.5 font-medium text-[#688198]">完整行程可複製</span>
-            <span className="rounded-full border border-[#dce8ef] bg-[#f1f7fa] px-3 py-1.5 font-medium text-[#688198]">不含記帳、票券與私人備忘錄</span>
+              <div className="mt-3 max-w-xl rounded-2xl border border-white/20 bg-slate-900/20 backdrop-blur-md">
+                <button type="button" onClick={() => setIsFilterOpen((value) => !value)} aria-expanded={isFilterOpen} className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left text-sm font-bold text-white transition hover:bg-white/10"><span className="inline-flex items-center gap-2"><SlidersHorizontal size={16} />篩選行程{(selectedTags.length > 0 || transportFilter || durationFilter !== 'all') && <span className="rounded-full bg-white/20 px-2 py-0.5 text-[11px]">{selectedTags.length + Number(Boolean(transportFilter)) + Number(durationFilter !== 'all')}</span>}</span><ChevronDown size={17} className={`transition ${isFilterOpen ? 'rotate-180' : ''}`} /></button>
+                {isFilterOpen && <div className="border-t border-white/15 bg-white/95 p-4 text-[#4e697e] shadow-xl backdrop-blur-md">
+                  <div className="flex items-center justify-between gap-3"><span className="text-xs font-bold">探索條件</span>{(selectedTags.length > 0 || transportFilter || durationFilter !== 'all') && <button type="button" onClick={clearFilters} className="text-xs font-bold text-[#5e7891] hover:text-[#365168]">清除篩選</button>}</div>
+                  <div className="mt-3 grid gap-3 sm:grid-cols-2"><label className="text-xs font-bold text-[#7891a4]">旅行天數<select value={durationFilter} onChange={(event) => updateDurationFilter(event.target.value)} className="mt-1.5 w-full rounded-xl border border-[#d6e3eb] bg-[#f8fbfd] px-3 py-2.5 text-sm font-medium text-[#4e697e] outline-none focus:border-[#7d9aaf]">{durationFilterOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label><label className="text-xs font-bold text-[#7891a4]">交通方式<select value={transportFilter} onChange={(event) => updateTransportFilter(event.target.value)} className="mt-1.5 w-full rounded-xl border border-[#d6e3eb] bg-[#f8fbfd] px-3 py-2.5 text-sm font-medium text-[#4e697e] outline-none focus:border-[#7d9aaf]">{transportFilterOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label></div>
+                  <div className="mt-4 flex flex-wrap gap-2">{publicTagOptions.map((tag) => <button type="button" key={tag} onClick={() => toggleDiscoveryTag(tag)} className={`rounded-full border px-3 py-1.5 text-xs font-bold transition ${selectedTags.includes(tag) ? 'border-[#5e7891] bg-[#5e7891] text-white shadow-sm' : 'border-[#d6e3eb] bg-[#f8fbfd] text-[#668096] hover:border-[#a9bfce] hover:bg-[#f0f6f9]'}`}>#{tag}</button>)}</div>
+                  <p className="mt-3 text-xs leading-5 text-[#91a6b7]">多選標籤會以「同時符合」搜尋。</p>
+                </div>}
+              </div>
+            </div>
+
+            <div className="min-w-0">
+              {featuredItinerary ? <>
+                <div className="mb-3 flex items-center justify-between text-sm font-bold text-white/85"><span>旅人推薦</span><span className="text-xs font-medium text-white/60">{featuredIndex + 1} / {featuredItineraries.length}</span></div>
+                <div className="flex gap-3 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                  {featuredItineraries.map((itinerary, index) => <button type="button" key={itinerary.id} onClick={() => setFeaturedIndex(index)} className={`group relative h-56 w-40 shrink-0 overflow-hidden rounded-2xl border text-left shadow-xl transition sm:w-44 ${featuredItinerary.id === itinerary.id ? 'border-white/80 ring-2 ring-white/45' : 'border-white/20 opacity-80 hover:opacity-100'}`}><img src={itinerary.coverImage || fallbackCover} alt="" className="size-full object-cover transition duration-500 group-hover:scale-105" onError={(event) => { event.currentTarget.src = fallbackCover; }} /><span className="absolute inset-0 bg-gradient-to-t from-slate-950/85 via-slate-950/10 to-transparent" /><span className="absolute inset-x-3 bottom-3 line-clamp-2 text-sm font-bold leading-5 text-white">{itinerary.title}</span></button>)}
+                </div>
+                <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/20 bg-slate-950/25 px-4 py-3 backdrop-blur-md"><div className="min-w-0"><p className="truncate text-sm font-bold text-white">{featuredItinerary.title}</p><p className="mt-1 text-xs text-white/70">{featuredItinerary.owner.name} · {featuredItinerary.dayCount} 天 · {featuredItinerary.itemCount} 個地點</p></div><div className="flex items-center gap-2"><button type="button" aria-label="上一個推薦" onClick={() => setFeaturedIndex((index) => (index - 1 + featuredItineraries.length) % featuredItineraries.length)} className="rounded-lg p-2 text-white/85 transition hover:bg-white/15"><ChevronLeft size={18} /></button><button type="button" onClick={() => void openPreview(featuredItinerary.id)} className="rounded-lg bg-white px-3 py-2 text-xs font-bold text-[#45647d] transition hover:bg-[#eef5f9]">查看行程</button><button type="button" aria-label="下一個推薦" onClick={() => setFeaturedIndex((index) => (index + 1) % featuredItineraries.length)} className="rounded-lg p-2 text-white/85 transition hover:bg-white/15"><ChevronRight size={18} /></button></div></div>
+              </> : <div className="rounded-3xl border border-white/20 bg-white/10 p-6 text-sm leading-6 text-white/75 backdrop-blur-md">公開行程會在這裡顯示，成為其他旅人的下一段靈感。</div>}
+            </div>
           </div>
         </div>
       </section>
@@ -410,35 +598,37 @@ export default function DestinationsPage() {
             <p className="text-xs font-bold tracking-[0.18em] text-[#8aa0b2]">COMMUNITY PLANS</p>
             <h2 className="mt-2 text-2xl font-bold text-[#30485f]">{heading}</h2>
           </div>
-          {!isLoading && <span className="text-sm text-[#91a6b7]">共 {itineraries.length} 份</span>}
+          <div className="flex flex-wrap items-center justify-end gap-2"><button type="button" onClick={() => switchViewMode('discover')} className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-bold transition ${viewMode === 'discover' ? 'bg-[#5e7891] text-white shadow-sm' : 'bg-white text-[#698499] hover:bg-[#eaf2f7]'}`}><Globe2 size={14} />探索行程</button><button type="button" onClick={() => switchViewMode('saved')} className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-bold transition ${viewMode === 'saved' ? 'bg-[#5e7891] text-white shadow-sm' : 'bg-white text-[#698499] hover:bg-[#eaf2f7]'}`}><Bookmark size={14} className={viewMode === 'saved' ? 'fill-current' : ''} />我的收藏</button>{!isLoading && <span className="inline-flex items-center gap-2 text-sm text-[#91a6b7]">{isRefreshing && <Loader2 className="size-4 animate-spin" />}共 {itineraries.length} 份</span>}</div>
         </div>
 
-        {isLoading || authLoading ? (
+        {isLoading ? (
           <div className="flex min-h-72 items-center justify-center rounded-3xl border border-[#dce7ef] bg-white shadow-sm"><Loader2 className="size-7 animate-spin text-[#b2c3cf]" /></div>
         ) : error ? (
-          <div className="rounded-3xl border border-rose-100 bg-rose-50 px-6 py-12 text-center"><p className="font-bold text-rose-700">暫時無法載入行程靈感</p><p className="mt-2 text-sm text-rose-500">{error}</p><button type="button" onClick={() => fetchPublicItineraries(appliedSearch)} className="mt-5 rounded-xl bg-white px-4 py-2 text-sm font-bold text-rose-700 shadow-sm">重新整理</button></div>
+          <div className="rounded-3xl border border-rose-100 bg-rose-50 px-6 py-12 text-center"><p className="font-bold text-rose-700">暫時無法載入{viewMode === 'saved' ? '收藏行程' : '行程靈感'}</p><p className="mt-2 text-sm text-rose-500">{error}</p><button type="button" onClick={() => void fetchPublicItineraries(appliedSearch, selectedTags, transportFilter, durationFilter, 24, viewMode === 'saved')} className="mt-5 rounded-xl bg-white px-4 py-2 text-sm font-bold text-rose-700 shadow-sm">重新整理</button></div>
         ) : itineraries.length === 0 ? (
-          <div className="rounded-3xl border border-dashed border-[#cbdce7] bg-white px-6 py-20 text-center shadow-sm"><Globe2 className="mx-auto text-[#b2c5d2]" size={32} /><h3 className="mt-5 text-lg font-bold text-[#4c657b]">目前還沒有公開行程</h3><p className="mt-2 text-sm text-[#91a6b7]">完成一份行程後，可在「行程規劃」將它公開分享。</p></div>
+          <div className="rounded-3xl border border-dashed border-[#cbdce7] bg-white px-6 py-20 text-center shadow-sm">{viewMode === 'saved' ? <><Bookmark className="mx-auto text-[#b2c5d2]" size={32} /><h3 className="mt-5 text-lg font-bold text-[#4c657b]">收藏清單還是空的</h3><p className="mt-2 text-sm text-[#91a6b7]">看到喜歡的公開行程時，按下書籤就能先留在這裡。</p><button type="button" onClick={() => switchViewMode('discover')} className="mt-5 rounded-xl bg-[#5e7891] px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-[#4d677f]">探索公開行程</button></> : <><Globe2 className="mx-auto text-[#b2c5d2]" size={32} /><h3 className="mt-5 text-lg font-bold text-[#4c657b]">目前還沒有公開行程</h3><p className="mt-2 text-sm text-[#91a6b7]">完成一份行程後，可在「行程規劃」將它公開分享。</p></>}</div>
         ) : (
           <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {itineraries.map((itinerary) => (
-              <article key={itinerary.id} className="group overflow-hidden rounded-2xl border border-[#dce7ef] bg-white shadow-[0_6px_18px_rgba(66,96,120,0.06)] transition duration-300 hover:-translate-y-1 hover:border-[#c4d8e6] hover:shadow-[0_14px_28px_rgba(66,96,120,0.12)]">
+              <article key={itinerary.id} className="group flex h-full flex-col overflow-hidden rounded-2xl border border-[#dce7ef] bg-white shadow-[0_6px_18px_rgba(66,96,120,0.06)] transition duration-300 hover:-translate-y-1 hover:border-[#c4d8e6] hover:shadow-[0_14px_28px_rgba(66,96,120,0.12)]">
                 <div className="relative aspect-[4/3] overflow-hidden bg-[#edf4f8]">
                   <img src={itinerary.coverImage || fallbackCover} alt="" className="size-full object-cover transition duration-500 group-hover:scale-105" onError={(event) => { event.currentTarget.src = fallbackCover; }} />
-                  <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950/75 to-transparent px-4 pb-3 pt-12 text-xs font-bold text-white"><span className="inline-flex items-center gap-1"><MapPin size={13} /> {transportLabel[itinerary.transport] || '自助旅行'}</span></div>
+                  {itinerary.location && <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950/75 to-transparent px-4 pb-3 pt-12 text-xs font-bold text-white"><span className="inline-flex items-center gap-1"><MapPin size={13} /> {itinerary.location}</span></div>}
                 </div>
-                <div className="p-5">
-                  <h3 className="line-clamp-2 min-h-12 text-lg font-bold leading-6 text-[#30485f]">{itinerary.title}</h3>
-                  {itinerary.description && <p className="mt-2 line-clamp-2 min-h-10 text-sm leading-5 text-[#7690a3]">{itinerary.description}</p>}
-                  {itinerary.tags.length > 0 && <div className="mt-3 flex flex-wrap gap-1.5">{itinerary.tags.slice(0, 4).map((tag) => <span key={tag} className="rounded-full bg-[#edf4f8] px-2 py-1 text-[11px] font-bold text-[#5f7c94]">#{tag}</span>)}</div>}
-                  <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-xs text-[#91a6b7]"><span className="inline-flex items-center gap-1"><CalendarDays size={13} /> {itinerary.dayCount} 天</span><span>{itinerary.itemCount} 個地點</span><span>{itinerary.copyCount} 次複製</span></div>
+                <div className="flex flex-1 flex-col p-5">
+                  <h3 className="line-clamp-2 min-h-12 break-words text-lg font-bold leading-6 text-[#30485f]">{itinerary.title}</h3>
+                  <p className="mt-2 min-h-10 break-all text-sm leading-5 text-[#7690a3] line-clamp-2">{itinerary.description || ''}</p>
+                  <div className="mt-3 min-h-7 overflow-hidden">
+                    {itinerary.tags.length > 0 && <div className="flex flex-nowrap gap-1.5">{itinerary.tags.slice(0, 3).map((tag) => <span key={tag} className="shrink-0 rounded-full bg-[#edf4f8] px-2 py-1 text-[11px] font-bold text-[#5f7c94]">#{tag}</span>)}</div>}
+                  </div>
+                  <div className="mt-auto flex flex-wrap gap-x-3 gap-y-1 pt-3 text-xs text-[#91a6b7]"><span className="inline-flex items-center gap-1"><CalendarDays size={13} /> {itinerary.dayCount} 天</span><span>{itinerary.itemCount} 個地點</span><span>{itinerary.copyCount} 次複製</span><span className="inline-flex items-center gap-1"><Eye size={13} />{itinerary.viewCount}</span></div>
                   <div className="mt-5 flex items-center justify-between gap-3 border-t border-[#edf2f5] pt-4">
                     <div className="flex min-w-0 items-center gap-2"><div className="flex size-7 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#edf4f8] text-[10px] font-bold text-[#688198]">{itinerary.owner.avatar ? <img src={itinerary.owner.avatar} alt="" className="size-full object-cover" /> : itinerary.owner.name.slice(0, 1)}</div><span className="truncate text-xs font-medium text-[#688198]">{itinerary.owner.name}</span></div>
-                    {currentAccount === itinerary.owner.account ? (
+                    <div className="flex shrink-0 items-center gap-2"><button type="button" onClick={() => void toggleLike(itinerary)} disabled={likingId === itinerary.id} className={`inline-flex items-center gap-1 rounded-xl border px-2.5 py-2 text-xs font-bold transition disabled:cursor-wait disabled:opacity-60 ${itinerary.isLiked ? 'border-rose-200 bg-rose-50 text-rose-500' : 'border-[#d7e4ec] bg-white text-[#7690a3] hover:border-rose-200 hover:text-rose-500'}`} aria-label={itinerary.isLiked ? '取消按讚' : '按讚'}><Heart size={14} className={itinerary.isLiked ? 'fill-current' : ''} />{itinerary.likeCount}</button><button type="button" onClick={() => void toggleSave(itinerary)} disabled={savingId === itinerary.id} title={itinerary.isSaved ? '取消收藏' : '收藏行程'} aria-label={itinerary.isSaved ? '取消收藏' : '收藏行程'} className={`inline-flex rounded-xl border p-2 text-xs font-bold transition disabled:cursor-wait disabled:opacity-60 ${itinerary.isSaved ? 'border-[#c7dce9] bg-[#eaf4f9] text-[#4e718c]' : 'border-[#d7e4ec] bg-white text-[#7690a3] hover:border-[#a9c3d4] hover:text-[#4e718c]'}`}><Bookmark size={15} className={itinerary.isSaved ? 'fill-current' : ''} /></button>{currentAccount === itinerary.owner.account ? (
                       <button type="button" onClick={() => void openManage(itinerary.id)} className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-[#c9dbe7] bg-[#f4f8fb] px-3 py-2 text-xs font-bold text-[#58758c] transition hover:bg-[#eaf2f7]"><Settings2 size={14} />管理</button>
                     ) : (
-                      <button type="button" onClick={() => void openPreview(itinerary.id)} className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-[#5e7891] px-3 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-[#4d677f]"><Eye size={14} />預覽行程</button>
-                    )}
+                      <button type="button" onClick={() => void openPreview(itinerary.id)} className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-[#5e7891] px-3 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-[#4d677f]"><Eye size={14} />預覽</button>
+                    )}</div>
                   </div>
                 </div>
               </article>
@@ -478,6 +668,7 @@ export default function DestinationsPage() {
                   <button type="button" onClick={() => setSelectedOwnedId(null)} className="text-sm font-bold text-[#648096] hover:text-[#3f6079]">← 返回選擇其他行程</button>
                   <div className="rounded-2xl border border-[#dce7ef] bg-white p-4"><div className="text-xs font-bold tracking-wide text-[#8aa0b2]">原始行程</div><div className="mt-1 flex items-center justify-between gap-3"><div className="min-w-0"><h3 className="truncate text-lg font-bold text-[#365168]">{selectedOwnedItinerary.title}</h3><p className="mt-1 text-xs text-[#8aa0b2]">{selectedOwnedItinerary.dayCount} 天 · {selectedOwnedItinerary.itemCount} 個地點</p></div><button type="button" onClick={() => router.push(`/planner/${selectedOwnedItinerary.id}`)} className="shrink-0 rounded-lg bg-[#eef5f9] px-3 py-2 text-xs font-bold text-[#58758c] hover:bg-[#e3eef4]">編輯原行程</button></div></div>
                   <label className="block text-sm font-bold text-[#4e697e]">公開標題<input value={publicTitle} onChange={(event) => setPublicTitle(event.target.value)} maxLength={255} placeholder="例如：台北三天兩夜慢遊行程" className="mt-2 w-full rounded-xl border border-[#cbdce7] bg-white px-4 py-3 text-sm text-[#365168] outline-none transition focus:border-[#7d9aaf]" /></label>
+                  <label className="block text-sm font-bold text-[#4e697e]">地點標籤 <span className="font-medium text-[#9aafbd]">（選填）</span><input value={publicLocation} onChange={(event) => setPublicLocation(event.target.value)} maxLength={150} placeholder="例如：日本・東京，或台灣・台中" className="mt-2 w-full rounded-xl border border-[#cbdce7] bg-white px-4 py-3 text-sm text-[#365168] outline-none transition focus:border-[#7d9aaf]" /><span className="mt-1 block text-xs font-medium text-[#9aafbd]">會顯示在公開行程封面上，方便旅人快速辨識目的地。</span></label>
                   <label className="block text-sm font-bold text-[#4e697e]">公開封面連結 <span className="font-medium text-[#9aafbd]">（選填）</span><input value={publicCoverImage} onChange={(event) => setPublicCoverImage(event.target.value)} type="url" placeholder="https://..." className="mt-2 w-full rounded-xl border border-[#cbdce7] bg-white px-4 py-3 text-sm text-[#365168] outline-none transition focus:border-[#7d9aaf]" /></label>
                   <label className="block text-sm font-bold text-[#4e697e]">行程簡介 <span className="font-medium text-[#9aafbd]">（選填，最多 1000 字）</span><textarea value={publicDescription} onChange={(event) => setPublicDescription(event.target.value)} maxLength={1000} rows={4} placeholder="分享這趟旅行的亮點、適合什麼樣的旅人，或行前注意事項…" className="mt-2 w-full resize-none rounded-xl border border-[#cbdce7] bg-white px-4 py-3 text-sm leading-6 text-[#365168] outline-none transition focus:border-[#7d9aaf]" /><span className="mt-1 block text-right text-xs font-medium text-[#9aafbd]">{publicDescription.length}/1000</span></label>
                   <p className="rounded-xl border border-[#dce8ef] bg-[#f1f7fa] px-4 py-3 text-xs leading-5 text-[#698398]">公開後，其他旅人可以複製行程結構與地點；你的私人功能資料不會被複製。</p>

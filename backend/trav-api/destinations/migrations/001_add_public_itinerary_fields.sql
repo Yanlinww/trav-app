@@ -7,3 +7,6 @@ ALTER TABLE `Itinerary`
   ADD COLUMN `Public_Description` TEXT NULL,
   ADD INDEX `idx_itinerary_public_start` (`Is_Public`, `Start_Date`),
   ADD INDEX `idx_itinerary_copied_from` (`Copied_From_Itinerary_ID`);
+
+ALTER TABLE `Itinerary_Item`
+  ADD INDEX `idx_itinerary_item_public_lookup` (`Itinerary_ID`, `Day_Number`, `Sort_Order`);
