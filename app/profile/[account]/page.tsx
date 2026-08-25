@@ -50,20 +50,15 @@ export default function PublicProfilePage() {
     likes: itineraries.reduce((total, itinerary) => total + itinerary.likeCount, 0),
     copies: itineraries.reduce((total, itinerary) => total + itinerary.copyCount, 0),
   }), [itineraries]);
-  const frequentTags = useMemo(() => {
-    const counts = new Map<string, number>();
-    itineraries.forEach((itinerary) => itinerary.tags.forEach((tag) => counts.set(tag, (counts.get(tag) || 0) + 1)));
-    return Array.from(counts.entries()).sort(([, firstCount], [, secondCount]) => secondCount - firstCount).slice(0, 5).map(([tag]) => tag);
-  }, [itineraries]);
-
   // 1. 抓取基本資料
   useEffect(() => {
     if (!targetAccount) return;
     const fetchProfile = async () => {
       try {
+        const authToken = window.localStorage.getItem('auth_token');
         const res = await fetch("http://localhost:8080/get_user_profile.php", {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ Account: targetAccount, Viewer_Account: currentAccount })
+          method: "POST", headers: { "Content-Type": "application/json", ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}) },
+          body: JSON.stringify({ Account: targetAccount })
         });
         const data = await res.json();
         if (data.status === 'success') setProfileUser(data.data);
@@ -83,9 +78,10 @@ export default function PublicProfilePage() {
 
     setIsTogglingFollow(true);
     try {
+      const authToken = window.localStorage.getItem('auth_token');
       const res = await fetch("http://localhost:8080/toggle_follow.php", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ Follower_Account: currentAccount, Target_Account: targetAccount })
+        method: "POST", headers: { "Content-Type": "application/json", ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}) },
+        body: JSON.stringify({ Target_Account: targetAccount })
       });
       const data = await res.json();
       if (data.status === 'success' && profileUser) {
@@ -94,6 +90,8 @@ export default function PublicProfilePage() {
           isFollowing: data.isFollowing,
           followersCount: data.followersCount
         });
+      } else {
+        alert(data.message || '追蹤狀態更新失敗，請重新登入後再試。');
       }
     } catch (e) {
       console.error(e);
@@ -230,8 +228,10 @@ export default function PublicProfilePage() {
               </button>
             )}
 
-            <div className="flex items-center gap-6 text-neutral-800">
+            <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-3 text-neutral-800 md:justify-end">
               <div className="text-center flex items-baseline gap-1.5"><span className="text-2xl font-bold">{profileUser.followersCount}</span> <span className="text-sm text-neutral-500 font-medium">粉絲</span></div>
+              <div className="w-px h-6 bg-neutral-200"></div>
+              <div className="text-center flex items-baseline gap-1.5"><span className="text-2xl font-bold">{profileUser.followingCount}</span> <span className="text-sm text-neutral-500 font-medium">追蹤中</span></div>
               <div className="w-px h-6 bg-neutral-200"></div>
               <div className="text-center flex items-baseline gap-1.5"><span className="text-2xl font-bold">{publicStats.likes}</span> <span className="text-sm text-neutral-500 font-medium">獲得喜歡</span></div>
               <div className="w-px h-6 bg-neutral-200"></div>
@@ -283,7 +283,7 @@ export default function PublicProfilePage() {
           isLoadingItineraries ? (
             <div className="flex justify-center py-20"><Loader2 className="w-8 h-8 animate-spin text-neutral-300" /></div>
           ) : itineraries.length > 0 ? (
-            <div className="mb-12 animate-in fade-in duration-300"><div className="mb-6 flex flex-col gap-4 rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between"><div><p className="text-xs font-bold tracking-[0.16em] text-neutral-400">TRAVEL STYLE</p><h2 className="mt-1 text-lg font-bold text-neutral-800">{profileUser.name} 的公開旅行靈感</h2></div><div className="flex flex-wrap gap-2">{frequentTags.map((tag) => <span key={tag} className="rounded-full bg-[#edf4f8] px-3 py-1.5 text-xs font-bold text-[#5f7c94]">#{tag}</span>)}</div></div><div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6">
+            <div className="mb-12 animate-in fade-in duration-300"><div className="mb-6 rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm"><p className="text-xs font-bold tracking-[0.16em] text-neutral-400">TRAVEL STYLE</p><h2 className="mt-1 text-lg font-bold text-neutral-800">{profileUser.name} 的公開旅行靈感</h2></div><div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6">
               {itineraries.map((itinerary) => (
                 <div 
                   key={itinerary.id} 

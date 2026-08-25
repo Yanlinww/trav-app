@@ -37,8 +37,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const savedUser = localStorage.getItem('user_info');
         const savedToken = localStorage.getItem('auth_token');
 
-        if (savedUser && savedToken) {
+        if (savedUser && savedToken && savedToken !== 'auth_token_from_php') {
           setUser(JSON.parse(savedUser));
+        } else if (savedToken === 'auth_token_from_php') {
+          localStorage.removeItem('user_info');
+          localStorage.removeItem('auth_token');
         }
       } catch (error) {
         console.error("讀取登入狀態失敗:", error);

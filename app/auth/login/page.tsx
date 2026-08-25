@@ -50,12 +50,12 @@ export default function LoginPage() {
         })
         .then(res => res.json())
         .then(data => {
-          if (data.status === 'success') {
-            login(data.user, "auth_token_from_php");
+          if (data.status === 'success' && data.token) {
+            login(data.user, data.token);
             setSuccessInfo({ isOpen: true, message: data.message });
             setTimeout(() => router.push("/"), 1500);
           } else {
-            setFailureInfo({ isOpen: true, message: data.message });
+            setFailureInfo({ isOpen: true, message: data.message || '登入工作階段建立失敗，請再試一次。' });
           }
         })
         .catch(err => setFailureInfo({ isOpen: true, message: "Facebook 登入連線失敗" }))
@@ -83,11 +83,11 @@ export default function LoginPage() {
         body: JSON.stringify({ AccessToken: tokenResponse.access_token }),
       });
       const data = await res.json();
-      if (data.status === 'success') {
-        login(data.user, "auth_token_from_php");
+      if (data.status === 'success' && data.token) {
+        login(data.user, data.token);
         setSuccessInfo({ isOpen: true, message: data.message });
         setTimeout(() => router.push("/"), 1500);
-      } else setFailureInfo({ isOpen: true, message: data.message });
+      } else setFailureInfo({ isOpen: true, message: data.message || '登入工作階段建立失敗，請再試一次。' });
     } catch (err) {
       setFailureInfo({ isOpen: true, message: "Google 登入連線失敗" });
     } finally { setIsLoading(false); }
@@ -104,9 +104,9 @@ export default function LoginPage() {
         body: JSON.stringify({ Account: email, Password: password }),
       });
       const data = await res.json();
-      if (data.status === 'success') {
+      if (data.status === 'success' && data.token) {
         setSuccessInfo({ isOpen: true, message: "登入成功，歡迎回來 TRAVMADE！" });
-        login(data.user, "auth_token_from_php");
+        login(data.user, data.token);
         setTimeout(() => { router.push("/"); }, 1500);
       } else {
         setFailureInfo({ isOpen: true, message: data.message || "登入失敗" });
@@ -121,14 +121,14 @@ export default function LoginPage() {
 
         {/* 成功彈窗 */}
         {successInfo.isOpen && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
-            <div className="bg-white border-2 border-[#F04D79] w-full max-w-sm rounded-3xl shadow-2xl p-8 text-center animate-in zoom-in-95 duration-200">
-              <div className="size-16 bg-pink-50 rounded-full flex items-center justify-center mx-auto mb-4">
-                <CheckCircle2 className="text-[#F04D79] size-8" />
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm">
+            <div className="w-full max-w-sm rounded-3xl border border-[#d7e4ec] bg-white p-8 text-center shadow-[0_20px_50px_rgba(66,96,120,0.22)] animate-in zoom-in-95 fade-in duration-200">
+              <div className="mx-auto flex size-16 items-center justify-center rounded-full bg-[#edf4f8]">
+                <CheckCircle2 className="size-8 text-[#5e7891]" />
               </div>
-              <h3 className="text-xl font-bold text-slate-800 mb-2">登入成功</h3>
-              <p className="text-sm text-slate-500 font-medium tracking-wide">{successInfo.message}</p>
-              <div className="mt-6 flex justify-center"><Loader2 className="animate-spin text-[#F04D79] size-6" /></div>
+              <h3 className="mt-5 text-xl font-bold text-[#30485f]">登入成功</h3>
+              <p className="mt-2 text-sm font-medium leading-6 text-[#718da1]">{successInfo.message}</p>
+              <div className="mt-6 flex justify-center"><Loader2 className="size-5 animate-spin text-[#5e7891]" /></div>
             </div>
           </div>
         )}

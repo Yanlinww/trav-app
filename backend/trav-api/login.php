@@ -12,6 +12,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'OPTIONS') {
 
 // 載入連線鑰匙
 require_once 'db_connect.php';
+require_once __DIR__ . '/auth/auth_session_helpers.php';
 
 // 接收前端傳來的 JSON
 $data = json_decode(file_get_contents("php://input"));
@@ -32,18 +33,24 @@ if (!empty($data->Account) && !empty($data->Password)) {
         // 🔒 安全解密：比對前端傳來的密碼，跟資料庫裡的加密雜湊值是否吻合
         if (password_verify($password, $user['Password'])) {
             
-            // 登入成功！回傳成功狀態與會員資料給 React
-            echo json_encode([
-                "status" => "success",
-                "message" => "登入成功！歡迎回來 TRAVMADE！",
-                "user" => [
-                    "id" => $user['Account'],
-                    "email" => $user['Email'],
-                    "nickname" => $user['Name'],
-                    "avatar" => $user['Avatar'],
-                    "role" => $user['Role'] ?? 'user'
-                ]
-            ], JSON_UNESCAPED_UNICODE);
+            try {
+                $sessionToken = issue_auth_session($conn, $user['Account']);
+                echo json_encode([
+                    "status" => "success",
+                    "message" => "登入成功！歡迎回來 TRAVMADE！",
+                    "token" => $sessionToken,
+                    "user" => [
+                        "id" => $user['Account'],
+                        "email" => $user['Email'],
+                        "nickname" => $user['Name'],
+                        "avatar" => $user['Avatar'],
+                        "role" => $user['Role'] ?? 'user'
+                    ]
+                ], JSON_UNESCAPED_UNICODE);
+            } catch (Throwable $error) {
+                http_response_code(500);
+                echo json_encode(["status" => "error", "message" => "登入工作階段建立失敗，請稍後再試。"], JSON_UNESCAPED_UNICODE);
+            }
             
         } else {
             echo json_encode(["status" => "error", "message" => "密碼輸入錯誤喔，請再確認一次！"], JSON_UNESCAPED_UNICODE);

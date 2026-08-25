@@ -1,28 +1,31 @@
 <?php
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: POST, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type');
+header('Access-Control-Allow-Headers: Content-Type, Authorization');
 header('Content-Type: application/json; charset=utf-8');
 
 if ($_SERVER['REQUEST_METHOD'] == 'OPTIONS') { http_response_code(200); exit(); }
 
 require_once 'db_connect.php';
-
-// 🌟 1. 自動建表防呆機制 (保證資料表一定存在)
-$conn->query("CREATE TABLE IF NOT EXISTS `User_Follows` (
-    `Follow_ID` INT AUTO_INCREMENT PRIMARY KEY,
-    `Follower_Account` VARCHAR(50) NOT NULL COMMENT '按下追蹤的人',
-    `Target_Account` VARCHAR(50) NOT NULL COMMENT '被追蹤的對象',
-    `Created_At` DATETIME DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE KEY `unique_follow` (`Follower_Account`, `Target_Account`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci");
+require_once __DIR__ . '/auth/auth_session_helpers.php';
 
 $data = json_decode(file_get_contents("php://input"));
 
-$follower = $data->Follower_Account ?? '';
-$target = $data->Target_Account ?? '';
+$follower = require_authenticated_account($conn);
+$target = trim((string)($data->Target_Account ?? ''));
 
 if (!empty($follower) && !empty($target) && $follower !== $target) {
+    $targetMember = $conn->prepare("SELECT 1 FROM Member WHERE Account = ? LIMIT 1");
+    $targetMember->bind_param("s", $target);
+    $targetMember->execute();
+    $targetExists = $targetMember->get_result()->num_rows > 0;
+    $targetMember->close();
+    if (!$targetExists) {
+        http_response_code(404);
+        echo json_encode(["status" => "error", "message" => "找不到要追蹤的旅行者。"], JSON_UNESCAPED_UNICODE);
+        $conn->close();
+        exit();
+    }
     
     // 🌟 2. 檢查是否已追蹤
     $stmt = $conn->prepare("SELECT 1 FROM User_Follows WHERE Follower_Account = ? AND Target_Account = ?");
@@ -61,7 +64,8 @@ if (!empty($follower) && !empty($target) && $follower !== $target) {
         "followersCount" => (int)$followersCount
     ]);
 } else {
-    echo json_encode(["status" => "error", "message" => "參數錯誤或不能追蹤自己"]);
+    http_response_code(422);
+    echo json_encode(["status" => "error", "message" => "參數錯誤或不能追蹤自己"], JSON_UNESCAPED_UNICODE);
 }
 $conn->close();
 ?>

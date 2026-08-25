@@ -173,7 +173,11 @@ export default function SettingsPage() {
       });
       const data = await res.json();
       if (data.status === 'success') {
-        const token = localStorage.getItem('auth_token') || 'auth_token_from_php';
+        const token = localStorage.getItem('auth_token');
+        if (!token) {
+          alert('登入已失效，請重新登入後再更新個人資料。');
+          return;
+        }
         login({ ...user, nickname: editName, avatar: editAvatar } as any, token);
         setShowSuccessHint(true);
         setTimeout(() => setShowSuccessHint(false), 3000);

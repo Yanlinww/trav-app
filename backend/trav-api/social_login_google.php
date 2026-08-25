@@ -7,7 +7,17 @@ header('Content-Type: application/json; charset=utf-8');
 if ($_SERVER['REQUEST_METHOD'] == 'OPTIONS') { http_response_code(200); exit(); }
 
 require_once 'db_connect.php'; // 確保路徑對應到你的 db_connect.php
+require_once __DIR__ . '/auth/auth_session_helpers.php';
 $data = json_decode(file_get_contents("php://input"));
+
+function respond_google_login_success(mysqli $conn, string $message, array $user): void {
+    try {
+        echo json_encode(["status" => "success", "message" => $message, "token" => issue_auth_session($conn, $user['id']), "user" => $user], JSON_UNESCAPED_UNICODE);
+    } catch (Throwable $error) {
+        http_response_code(500);
+        echo json_encode(["status" => "error", "message" => "登入工作階段建立失敗，請稍後再試。"], JSON_UNESCAPED_UNICODE);
+    }
+}
 
 if (!empty($data->AccessToken)) {
     $token = $data->AccessToken;
@@ -43,7 +53,7 @@ if (!empty($data->AccessToken)) {
                 $upd->bind_param("ss", $g_id, $user['Account']);
                 $upd->execute(); $upd->close();
             }
-            echo json_encode(["status" => "success", "message" => "🎉 Google 登入成功！", "user" => ["id" => $user['Account'], "email" => $user['Email'], "nickname" => $user['Name'], "avatar" => $user['Avatar'], "role" => $user['Role'] ?? 'user']]);
+            respond_google_login_success($conn, "🎉 Google 登入成功！", ["id" => $user['Account'], "email" => $user['Email'], "nickname" => $user['Name'], "avatar" => $user['Avatar'], "role" => $user['Role'] ?? 'user']);
         } else {
             // 🆕 情境 B：帳號不存在 -> 自動註冊並登入
             $account = $email; // 將 Email 作為帳號
@@ -53,7 +63,7 @@ if (!empty($data->AccessToken)) {
             $ins->bind_param("ssssss", $account, $random_password, $email, $name, $avatar, $g_id);
             
             if ($ins->execute()) {
-                echo json_encode(["status" => "success", "message" => "🎉 帳號建立完成，Google 登入成功！", "user" => ["id" => $account, "email" => $email, "nickname" => $name, "avatar" => $avatar, "role" => 'user']]);
+                respond_google_login_success($conn, "🎉 帳號建立完成，Google 登入成功！", ["id" => $account, "email" => $email, "nickname" => $name, "avatar" => $avatar, "role" => 'user']);
             } else {
                 echo json_encode(["status" => "error", "message" => "自動註冊失敗：" . $conn->error]);
             }

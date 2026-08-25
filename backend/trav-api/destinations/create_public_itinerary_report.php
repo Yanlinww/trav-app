@@ -36,7 +36,8 @@ try {
     $statement = $conn->prepare(
         "INSERT INTO Public_Itinerary_Report (Itinerary_ID, Reporter_Account, Reason, Details, Status)
          VALUES (?, ?, ?, NULLIF(?, ''), 'pending')
-         ON DUPLICATE KEY UPDATE Reason = VALUES(Reason), Details = VALUES(Details), Status = 'pending', Updated_At = CURRENT_TIMESTAMP"
+         ON DUPLICATE KEY UPDATE Reason = VALUES(Reason), Details = VALUES(Details), Status = 'pending',
+             Admin_Note = NULL, Reviewed_By = NULL, Reviewed_At = NULL, Updated_At = CURRENT_TIMESTAMP"
     );
     if (!$statement) throw new RuntimeException('無法送出檢舉。');
     $statement->bind_param('isss', $itineraryId, $account, $reason, $details);
