@@ -203,11 +203,13 @@ export default function DestinationsPage() {
   const [reportDetails, setReportDetails] = useState('');
   const [reportError, setReportError] = useState('');
   const [isSubmittingReport, setIsSubmittingReport] = useState(false);
+  const [publishItineraryId, setPublishItineraryId] = useState<string | null>(null);
   const itineraryListRef = useRef<PublicItinerary[]>([]);
   const publicItineraryCatalogueRef = useRef<PublicItinerary[]>([]);
   const publicRequestRef = useRef<AbortController | null>(null);
   const publicRequestIdRef = useRef(0);
   const hasPublicItineraryLoadedRef = useRef(false);
+  const handledPublishItineraryRef = useRef<string | null>(null);
 
   const currentAccount = (user as any)?.id || (user as any)?.Account || '';
 
@@ -235,6 +237,10 @@ export default function DestinationsPage() {
   useEffect(() => {
     itineraryListRef.current = itineraries;
   }, [itineraries]);
+
+  useEffect(() => {
+    setPublishItineraryId(new URLSearchParams(window.location.search).get('publish'));
+  }, []);
 
   const fetchPublicItineraries = useCallback(async (
     keyword = '',
@@ -327,6 +333,9 @@ export default function DestinationsPage() {
       const rows = await fetchOwnedItineraries();
       const target = itineraryId ? rows.find((itinerary) => itinerary.id === itineraryId) : null;
       if (target) selectOwnedItinerary(target);
+      else if (itineraryId) {
+        setManageError('找不到這份行程，或你目前沒有管理它的權限。');
+      }
       else if (!itineraryId) {
         setSelectedOwnedId(null);
         setPublicTitle('');
@@ -344,7 +353,16 @@ export default function DestinationsPage() {
     setIsManageOpen(false);
     setSelectedOwnedId(null);
     setManageError('');
+    if (publishItineraryId) router.replace('/destinations', { scroll: false });
   };
+
+  useEffect(() => {
+    if (!publishItineraryId || !currentAccount || handledPublishItineraryRef.current === publishItineraryId) return;
+    handledPublishItineraryRef.current = publishItineraryId;
+    void openManage(publishItineraryId);
+    // openManage intentionally stays out of the dependency list so this only runs for a new URL target.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentAccount, publishItineraryId]);
 
   const savePublicSettings = async (isPublic: boolean) => {
     if (!selectedOwnedItinerary || !currentAccount) return;

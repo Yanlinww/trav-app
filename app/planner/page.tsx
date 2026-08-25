@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "../context/AuthContext";
 import { 
   Plus, UserPlus, X, Calendar, MapPin, Share2, Loader2, User, Pin, Trash2, MoreHorizontal, Train, Car, Bike, Compass, ChevronLeft, CheckCircle2,
-  Globe, Lock // 🌟 引入公開與私密的 Icon
+  Globe, Lock
 } from "lucide-react";
 
 interface Itinerary {
@@ -178,29 +178,10 @@ export default function PlannerDashboard() {
     } catch (error) { alert("加入行程時發生錯誤"); } finally { setIsSubmitting(false); }
   };
 
-  // 🌟 切換行程公開/私密狀態 🌟
-  const handleToggleVisibility = async (id: string, isCurrentlyPublic: boolean, e: React.MouseEvent) => {
+  const openPublicSettings = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    const targetStatus = !isCurrentlyPublic;
-    
-    // 樂觀更新 UI
-    setItineraries(itineraries.map(it => it.id === id ? { ...it, isPublic: targetStatus } : it));
     setActiveDropdown(null);
-
-    try {
-      const res = await fetch("http://localhost:8080/itinerary/core/toggle_itinerary_visibility.php", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ Account: user?.id || (user as any)?.Account, Itinerary_ID: id, Is_Public: targetStatus }),
-      });
-      const data = await res.json();
-      if (data.status !== 'success') {
-        setItineraries(itineraries.map(it => it.id === id ? { ...it, isPublic: isCurrentlyPublic } : it));
-        alert(data.message);
-      }
-    } catch (error) {
-      setItineraries(itineraries.map(it => it.id === id ? { ...it, isPublic: isCurrentlyPublic } : it));
-      alert("伺服器連線發生錯誤");
-    }
+    router.push(`/destinations?publish=${encodeURIComponent(id)}`);
   };
 
   const handleDelete = async (id: string, e: React.MouseEvent) => {
@@ -310,10 +291,9 @@ export default function PlannerDashboard() {
                     <button onClick={(e) => handleGetInviteCode(itinerary.id, e)} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-100"><Share2 className="size-4" /> 邀請共編</button>
                     <button onClick={(e) => handlePin(itinerary.id, itinerary.isPinned, e)} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-100"><Pin className="size-4" /> {itinerary.isPinned ? '取消釘選' : '釘選行程'}</button>
                     
-                    {/* 🌟 公開/私密狀態切換按鈕 🌟 */}
-                    <button onClick={(e) => handleToggleVisibility(itinerary.id, itinerary.isPublic, e)} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-100">
-                      {itinerary.isPublic ? <Lock className="size-4 text-amber-600" /> : <Globe className="size-4 text-emerald-600" />} 
-                      {itinerary.isPublic ? '取消公開' : '發佈到行程靈感'}
+                    <button onClick={(e) => openPublicSettings(itinerary.id, e)} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-100">
+                      <Globe className="size-4 text-emerald-600" />
+                      {itinerary.isPublic ? '管理公開資訊' : '前往發布'}
                     </button>
 
                     <button onClick={(e) => handleDelete(itinerary.id, e)} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-500 hover:bg-red-50"><Trash2 className="size-4" /> 刪除行程</button>

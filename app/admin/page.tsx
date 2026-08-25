@@ -2,12 +2,17 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { AlertTriangle, ArchiveX, ArrowLeft, CheckCircle2, ClipboardList, Eye, Globe2, Loader2, MapPin, RefreshCw, ShieldCheck, Undo2, X, XCircle } from 'lucide-react';
+import { AlertTriangle, ArchiveX, ArrowLeft, BarChart3, CheckCircle2, ClipboardList, Eye, History, Loader2, MapPin, RefreshCw, Search, ShieldCheck, SlidersHorizontal, Undo2, UserRound, Users, X, XCircle } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 type ReportStatus = 'pending' | 'resolved' | 'dismissed' | string;
 type ReportFilter = 'all' | 'pending' | 'resolved' | 'dismissed';
+type ReportPeriod = 'all' | '7' | '30' | '90';
+type ReportSort = 'newest' | 'oldest' | 'updated';
 type ModerationHistory = { id: string; reportId: string; action: string; note: string; adminAccount: string; createdAt: string };
+type AdminAuditLog = { id: string; itineraryId: string; reportId: string; action: string; note: string; adminAccount: string; createdAt: string; itineraryTitle: string; location: string; reportReason: string };
+type AdminDashboardStats = { pendingCount: number; reportsThisWeek: number; processedThisWeek: number; completionRateThisWeek: number; hiddenItineraries: number };
+type AdminUser = { account: string; name: string; avatar: string; role: string; publicItineraryCount: number; reportCount: number; hiddenItineraryCount: number };
 type Report = {
   id: string;
   reason: string;
@@ -17,6 +22,7 @@ type Report = {
   reviewedBy: string;
   reviewedAt: string;
   reportedAt: string;
+  updatedAt: string;
   history: ModerationHistory[];
   reporter: { account: string; name: string };
   itinerary: { id: string; title: string; location: string; ownerAccount: string; ownerName: string; isPublic: boolean; moderationStatus: string; moderationNote: string; moderatedBy: string; moderatedAt: string };
@@ -52,11 +58,22 @@ async function parseJson<T>(response: Response, fallback: string): Promise<T> {
 export default function AdminPage() {
   const { user, loading } = useAuth();
   const isAdmin = user?.role === 'admin';
-  const currentAccount = String(user?.id || user?.Account || '');
   const [reports, setReports] = useState<Report[]>([]);
+  const [auditLogs, setAuditLogs] = useState<AdminAuditLog[]>([]);
+  const [adminUsers, setAdminUsers] = useState<AdminUser[]>([]);
+  const [dashboardStats, setDashboardStats] = useState<AdminDashboardStats | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [loadError, setLoadError] = useState('');
+  const [isAuditLoading, setIsAuditLoading] = useState(false);
+  const [auditError, setAuditError] = useState('');
+  const [isStatsLoading, setIsStatsLoading] = useState(false);
+  const [isUsersLoading, setIsUsersLoading] = useState(false);
+  const [usersError, setUsersError] = useState('');
+  const [userQuery, setUserQuery] = useState('');
   const [reportFilter, setReportFilter] = useState<ReportFilter>('all');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [reportPeriod, setReportPeriod] = useState<ReportPeriod>('all');
+  const [reportSort, setReportSort] = useState<ReportSort>('newest');
   const [activeReport, setActiveReport] = useState<Report | null>(null);
   const [action, setAction] = useState<'resolved' | 'dismissed'>('resolved');
   const [note, setNote] = useState('');
@@ -68,13 +85,21 @@ export default function AdminPage() {
   const [visibilityError, setVisibilityError] = useState('');
   const [isUpdatingVisibility, setIsUpdatingVisibility] = useState(false);
 
+  const getAdminHeaders = () => {
+    const token = window.localStorage.getItem('auth_token');
+    return {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    };
+  };
+
   const loadReports = useCallback(async () => {
-    if (!isAdmin || !currentAccount) return;
+    if (!isAdmin) return;
     setIsLoading(true);
     setLoadError('');
     try {
       const response = await fetch(`${API_BASE}/get_public_itinerary_reports.php`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ Account: currentAccount }),
+        method: 'POST', headers: getAdminHeaders(), body: JSON.stringify({}),
       });
       const data = await parseJson<{ status?: string; message?: string; data?: Report[] }>(response, '檢舉服務回傳格式錯誤，請稍後重新整理。');
       if (!response.ok || data.status !== 'success') throw new Error(data.message || '無法讀取檢舉清單。');
@@ -82,9 +107,56 @@ export default function AdminPage() {
     } catch (error) {
       setLoadError(error instanceof Error ? error.message : '無法讀取檢舉清單。');
     } finally { setIsLoading(false); }
-  }, [currentAccount, isAdmin]);
+  }, [isAdmin]);
 
-  useEffect(() => { void loadReports(); }, [loadReports]);
+  const loadAuditLogs = useCallback(async () => {
+    if (!isAdmin) return;
+    setIsAuditLoading(true);
+    setAuditError('');
+    try {
+      const response = await fetch(`${API_BASE}/get_public_itinerary_moderation_log.php`, {
+        method: 'POST', headers: getAdminHeaders(), body: JSON.stringify({}),
+      });
+      const data = await parseJson<{ status?: string; message?: string; data?: AdminAuditLog[] }>(response, '管理紀錄服務回傳格式錯誤，請稍後重新整理。');
+      if (!response.ok || data.status !== 'success') throw new Error(data.message || '無法讀取管理操作紀錄。');
+      setAuditLogs(Array.isArray(data.data) ? data.data : []);
+    } catch (error) {
+      setAuditError(error instanceof Error ? error.message : '無法讀取管理操作紀錄。');
+    } finally { setIsAuditLoading(false); }
+  }, [isAdmin]);
+
+  const loadDashboardStats = useCallback(async () => {
+    if (!isAdmin) return;
+    setIsStatsLoading(true);
+    try {
+      const response = await fetch(`${API_BASE}/get_admin_dashboard_stats.php`, {
+        method: 'POST', headers: getAdminHeaders(), body: JSON.stringify({}),
+      });
+      const data = await parseJson<{ status?: string; data?: AdminDashboardStats }>(response, '管理統計服務回傳格式錯誤。');
+      if (!response.ok || data.status !== 'success' || !data.data) throw new Error('無法讀取管理統計資料。');
+      setDashboardStats(data.data);
+    } catch {
+      setDashboardStats(null);
+    } finally { setIsStatsLoading(false); }
+  }, [isAdmin]);
+
+  const loadAdminUsers = useCallback(async () => {
+    if (!isAdmin) return;
+    setIsUsersLoading(true);
+    setUsersError('');
+    try {
+      const response = await fetch(`${API_BASE}/get_admin_users.php`, {
+        method: 'POST', headers: getAdminHeaders(), body: JSON.stringify({}),
+      });
+      const data = await parseJson<{ status?: string; message?: string; data?: AdminUser[] }>(response, '使用者管理服務回傳格式錯誤，請稍後重新整理。');
+      if (!response.ok || data.status !== 'success') throw new Error(data.message || '無法讀取使用者管理清單。');
+      setAdminUsers(Array.isArray(data.data) ? data.data : []);
+    } catch (error) {
+      setUsersError(error instanceof Error ? error.message : '無法讀取使用者管理清單。');
+    } finally { setIsUsersLoading(false); }
+  }, [isAdmin]);
+
+  useEffect(() => { void loadReports(); void loadAuditLogs(); void loadDashboardStats(); void loadAdminUsers(); }, [loadAdminUsers, loadAuditLogs, loadDashboardStats, loadReports]);
   const pendingReports = useMemo(() => reports.filter((report) => report.status === 'pending'), [reports]);
   const reportCounts = useMemo<Record<ReportFilter, number>>(() => ({
     all: reports.length,
@@ -92,10 +164,49 @@ export default function AdminPage() {
     resolved: reports.filter((report) => report.status === 'resolved').length,
     dismissed: reports.filter((report) => report.status === 'dismissed').length,
   }), [reports]);
-  const filteredReports = useMemo(
-    () => reportFilter === 'all' ? reports : reports.filter((report) => report.status === reportFilter),
-    [reportFilter, reports],
-  );
+  const filteredReports = useMemo(() => {
+    const normalizedQuery = searchQuery.trim().toLocaleLowerCase('zh-TW');
+    const periodDays = reportPeriod === 'all' ? 0 : Number(reportPeriod);
+    const cutoff = periodDays > 0 ? Date.now() - periodDays * 24 * 60 * 60 * 1000 : 0;
+
+    return reports
+      .filter((report) => reportFilter === 'all' || report.status === reportFilter)
+      .filter((report) => {
+        if (!normalizedQuery) return true;
+        return [
+          report.itinerary.title,
+          report.itinerary.location,
+          report.itinerary.ownerName,
+          report.itinerary.ownerAccount,
+          report.reporter.name,
+          report.reporter.account,
+          report.reason,
+          report.details,
+        ].some((value) => value.toLocaleLowerCase('zh-TW').includes(normalizedQuery));
+      })
+      .filter((report) => {
+        if (!cutoff) return true;
+        const reportedAt = new Date(report.reportedAt.replace(' ', 'T')).getTime();
+        return Number.isNaN(reportedAt) || reportedAt >= cutoff;
+      })
+      .sort((left, right) => {
+        const leftTime = new Date((reportSort === 'updated' ? left.updatedAt : left.reportedAt).replace(' ', 'T')).getTime() || 0;
+        const rightTime = new Date((reportSort === 'updated' ? right.updatedAt : right.reportedAt).replace(' ', 'T')).getTime() || 0;
+        return reportSort === 'oldest' ? leftTime - rightTime : rightTime - leftTime;
+      });
+  }, [reportFilter, reportPeriod, reportSort, reports, searchQuery]);
+
+  const hasExtraFilters = Boolean(searchQuery.trim()) || reportPeriod !== 'all' || reportSort !== 'newest';
+  const filteredAdminUsers = useMemo(() => {
+    const normalizedQuery = userQuery.trim().toLocaleLowerCase('zh-TW');
+    if (!normalizedQuery) return adminUsers;
+    return adminUsers.filter((member) => [member.account, member.name, member.role].some((value) => value.toLocaleLowerCase('zh-TW').includes(normalizedQuery)));
+  }, [adminUsers, userQuery]);
+  const resetExtraFilters = () => {
+    setSearchQuery('');
+    setReportPeriod('all');
+    setReportSort('newest');
+  };
 
   const openAction = (report: Report, nextAction: 'resolved' | 'dismissed') => {
     setActiveReport(report); setAction(nextAction); setNote(''); setActionError('');
@@ -114,38 +225,44 @@ export default function AdminPage() {
   };
 
   const submitAction = async () => {
-    if (!activeReport || !currentAccount) return;
+    if (!activeReport) return;
     if (!note.trim()) { setActionError('請填寫處理備註。'); return; }
     setIsSubmitting(true); setActionError('');
     try {
       const response = await fetch(`${API_BASE}/update_public_itinerary_report.php`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ Account: currentAccount, Report_ID: activeReport.id, Status: action, Admin_Note: note.trim() }),
+        headers: getAdminHeaders(),
+        body: JSON.stringify({ Report_ID: activeReport.id, Status: action, Admin_Note: note.trim() }),
       });
       const data = await parseJson<{ status?: string; message?: string }>(response, '處理服務回傳格式錯誤，請稍後再試。');
       if (!response.ok || data.status !== 'success') throw new Error(data.message || '無法更新檢舉案件。');
       setActiveReport(null); setNote('');
       await loadReports();
+      await loadAuditLogs();
+      await loadDashboardStats();
+      await loadAdminUsers();
     } catch (error) {
       setActionError(error instanceof Error ? error.message : '無法更新檢舉案件。');
     } finally { setIsSubmitting(false); }
   };
 
   const submitVisibilityAction = async () => {
-    if (!visibilityTarget || !currentAccount) return;
+    if (!visibilityTarget) return;
     if (!visibilityNote.trim()) { setVisibilityError('請填寫管理備註。'); return; }
     setIsUpdatingVisibility(true); setVisibilityError('');
     try {
       const response = await fetch(`${API_BASE}/update_public_itinerary_visibility.php`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ Account: currentAccount, Itinerary_ID: visibilityTarget.itinerary.id, Report_ID: visibilityTarget.id, Action: visibilityAction, Moderation_Note: visibilityNote.trim() }),
+        headers: getAdminHeaders(),
+        body: JSON.stringify({ Itinerary_ID: visibilityTarget.itinerary.id, Report_ID: visibilityTarget.id, Action: visibilityAction, Moderation_Note: visibilityNote.trim() }),
       });
       const data = await parseJson<{ status?: string; message?: string }>(response, '公開狀態服務回傳格式錯誤，請稍後再試。');
       if (!response.ok || data.status !== 'success') throw new Error(data.message || '無法更新公開狀態。');
       setVisibilityTarget(null); setVisibilityNote('');
       await loadReports();
+      await loadAuditLogs();
+      await loadDashboardStats();
+      await loadAdminUsers();
     } catch (error) {
       setVisibilityError(error instanceof Error ? error.message : '無法更新公開狀態。');
     } finally { setIsUpdatingVisibility(false); }
@@ -156,12 +273,15 @@ export default function AdminPage() {
 
   return <main className="min-h-[calc(100vh-4rem)] bg-[#f3f8fb] px-4 py-8 text-[#30485f] sm:px-6 lg:px-10 lg:py-12"><section className="mx-auto max-w-6xl"><header className="flex flex-wrap items-start justify-between gap-5"><div><span className="inline-flex items-center gap-2 rounded-full border border-[#cfe0ea] bg-white px-3 py-1.5 text-xs font-bold tracking-[0.14em] text-[#58788f] shadow-sm"><ShieldCheck size={15} />ADMIN CONSOLE</span><h1 className="mt-4 text-3xl font-bold sm:text-4xl">管理後台</h1><p className="mt-3 max-w-2xl text-sm leading-6 text-[#7891a3]">管理公開行程的檢舉案件；每次處理都會留下備註，方便日後追蹤。</p></div><Link href="/destinations" className="inline-flex items-center gap-2 rounded-xl border border-[#d3e1e9] bg-white px-4 py-2.5 text-sm font-bold text-[#5e7891] shadow-sm"><Eye size={16} />查看公開行程</Link></header>
 
-    <div className="mt-8 grid gap-5 md:grid-cols-3"><SummaryCard icon={<AlertTriangle size={22} />} iconClass="bg-rose-50 text-rose-500" label="待處理檢舉" value={String(pendingReports.length)} featured /><SummaryCard icon={<Globe2 size={22} />} label="全部檢舉" value={String(reports.length)} /><SummaryCard icon={<ClipboardList size={22} />} label="目前模式" value="可處理檢舉" /></div>
+    <div className="mt-8 grid gap-5 sm:grid-cols-2 xl:grid-cols-4"><SummaryCard icon={<AlertTriangle size={22} />} iconClass="bg-rose-50 text-rose-500" label="待處理檢舉" value={isStatsLoading ? '—' : String(dashboardStats?.pendingCount ?? pendingReports.length)} description="需要管理員處理" featured /><SummaryCard icon={<ClipboardList size={22} />} label="本週新增檢舉" value={isStatsLoading ? '—' : String(dashboardStats?.reportsThisWeek ?? 0)} description="最近 7 天送出案件" /><SummaryCard icon={<BarChart3 size={22} />} label="本週完成處理率" value={isStatsLoading ? '—' : `${dashboardStats?.completionRateThisWeek ?? 0}%`} description={dashboardStats ? `${dashboardStats.processedThisWeek} 件已完成處理` : '統計資料暫時無法取得'} /><SummaryCard icon={<ArchiveX size={22} />} iconClass="bg-amber-50 text-amber-700" label="目前下架行程" value={isStatsLoading ? '—' : String(dashboardStats?.hiddenItineraries ?? 0)} description="由管理員限制公開" /></div>
 
-    <section className="mt-8 overflow-hidden rounded-3xl border border-[#d7e4ec] bg-white shadow-[0_14px_35px_rgba(66,96,120,0.06)]"><div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#e5eef3] px-5 py-5 sm:px-6"><div><p className="text-xs font-bold tracking-[0.15em] text-[#8ca6b7]">REPORT CENTER</p><h2 className="mt-1 text-xl font-bold text-[#365168]">公開行程檢舉</h2></div><button type="button" onClick={() => void loadReports()} disabled={isLoading} className="inline-flex items-center gap-2 rounded-xl border border-[#d3e1e9] bg-white px-3.5 py-2.5 text-sm font-bold text-[#5e7891] disabled:opacity-60"><RefreshCw size={16} className={isLoading ? 'animate-spin' : ''} />重新整理</button></div>
+    <section className="mt-8 overflow-hidden rounded-3xl border border-[#d7e4ec] bg-white shadow-[0_14px_35px_rgba(66,96,120,0.06)]"><div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#e5eef3] px-5 py-5 sm:px-6"><div><p className="text-xs font-bold tracking-[0.15em] text-[#8ca6b7]">REPORT CENTER</p><h2 className="mt-1 text-xl font-bold text-[#365168]">公開行程檢舉</h2></div><button type="button" onClick={() => { void loadReports(); void loadAuditLogs(); void loadDashboardStats(); void loadAdminUsers(); }} disabled={isLoading || isAuditLoading || isStatsLoading || isUsersLoading} className="inline-flex items-center gap-2 rounded-xl border border-[#d3e1e9] bg-white px-3.5 py-2.5 text-sm font-bold text-[#5e7891] disabled:opacity-60"><RefreshCw size={16} className={isLoading || isAuditLoading || isStatsLoading || isUsersLoading ? 'animate-spin' : ''} />重新整理</button></div>
       <div className="flex flex-wrap gap-2 border-b border-[#e5eef3] px-5 py-4 sm:px-6">{([['all', '全部'], ['pending', '待處理'], ['resolved', '已處理'], ['dismissed', '已駁回']] as const).map(([value, label]) => <button key={value} type="button" onClick={() => setReportFilter(value)} aria-pressed={reportFilter === value} className={`inline-flex items-center gap-2 rounded-full border px-3.5 py-2 text-sm font-bold transition ${reportFilter === value ? 'border-[#587994] bg-[#587994] text-white shadow-sm' : 'border-[#d6e4ec] bg-[#f8fbfd] text-[#668298] hover:border-[#adc5d4] hover:bg-white'}`}><span>{label}</span><span className={`min-w-5 rounded-full px-1.5 py-0.5 text-xs ${reportFilter === value ? 'bg-white/20 text-white' : 'bg-white text-[#718da1]'}`}>{reportCounts[value]}</span></button>)}</div>
-      {isLoading ? <div className="flex min-h-72 items-center justify-center"><Loader2 className="size-7 animate-spin text-[#9db5c4]" /></div> : loadError ? <div className="px-6 py-14 text-center"><p className="font-bold text-rose-600">檢舉清單暫時無法載入</p><p className="mt-2 text-sm text-rose-500">{loadError}</p></div> : reports.length === 0 ? <div className="px-6 py-16 text-center"><ShieldCheck className="mx-auto size-10 text-[#a7bdca]" /><h3 className="mt-4 font-bold text-[#49677e]">目前沒有檢舉案件</h3><p className="mt-2 text-sm text-[#8da5b5]">新的公開行程檢舉會顯示在這裡。</p></div> : filteredReports.length === 0 ? <div className="px-6 py-16 text-center"><ClipboardList className="mx-auto size-10 text-[#a7bdca]" /><h3 className="mt-4 font-bold text-[#49677e]">這個狀態目前沒有案件</h3><p className="mt-2 text-sm text-[#8da5b5]">可切換到其他狀態查看案件。</p></div> : <div className="divide-y divide-[#e8f0f4]">{filteredReports.map((report) => <ReportRow key={report.id} report={report} onAction={openAction} onVisibilityAction={openVisibilityAction} />)}</div>}
+      <div className="border-b border-[#e5eef3] bg-[#f8fbfd] px-5 py-4 sm:px-6"><div className="flex flex-col gap-3 lg:flex-row lg:items-center"><label className="relative block min-w-0 flex-1"><Search size={17} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-[#8ca6b7]" /><input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="搜尋行程、作者、檢舉人、原因或內容" className="w-full rounded-xl border border-[#d6e4ec] bg-white py-2.5 pl-10 pr-4 text-sm text-[#365168] outline-none placeholder:text-[#a0b3c0] focus:border-[#7393aa] focus:ring-2 focus:ring-[#dceaf2]" /></label><div className="flex flex-wrap items-center gap-2"><span className="inline-flex items-center gap-1.5 text-xs font-bold text-[#7891a3]"><SlidersHorizontal size={15} />篩選</span><select value={reportPeriod} onChange={(event) => setReportPeriod(event.target.value as ReportPeriod)} className="rounded-xl border border-[#d6e4ec] bg-white px-3 py-2.5 text-sm font-bold text-[#5e7891] outline-none"><option value="all">不限時間</option><option value="7">近 7 天</option><option value="30">近 30 天</option><option value="90">近 90 天</option></select><select value={reportSort} onChange={(event) => setReportSort(event.target.value as ReportSort)} className="rounded-xl border border-[#d6e4ec] bg-white px-3 py-2.5 text-sm font-bold text-[#5e7891] outline-none"><option value="newest">最新檢舉</option><option value="oldest">最早檢舉</option><option value="updated">最近處理</option></select>{hasExtraFilters && <button type="button" onClick={resetExtraFilters} className="rounded-xl px-3 py-2.5 text-sm font-bold text-[#668398] hover:bg-white">清除</button>}</div></div>{!isLoading && !loadError && reports.length > 0 && <p className="mt-3 text-xs font-medium text-[#829aaa]">目前顯示 {filteredReports.length} / {reports.length} 件案件</p>}</div>
+      {isLoading ? <div className="flex min-h-72 items-center justify-center"><Loader2 className="size-7 animate-spin text-[#9db5c4]" /></div> : loadError ? <div className="px-6 py-14 text-center"><p className="font-bold text-rose-600">檢舉清單暫時無法載入</p><p className="mt-2 text-sm text-rose-500">{loadError}</p></div> : reports.length === 0 ? <div className="px-6 py-16 text-center"><ShieldCheck className="mx-auto size-10 text-[#a7bdca]" /><h3 className="mt-4 font-bold text-[#49677e]">目前沒有檢舉案件</h3><p className="mt-2 text-sm text-[#8da5b5]">新的公開行程檢舉會顯示在這裡。</p></div> : filteredReports.length === 0 ? <div className="px-6 py-16 text-center"><ClipboardList className="mx-auto size-10 text-[#a7bdca]" /><h3 className="mt-4 font-bold text-[#49677e]">找不到符合條件的案件</h3><p className="mt-2 text-sm text-[#8da5b5]">可調整搜尋字詞、日期或處理狀態後再試。</p>{hasExtraFilters && <button type="button" onClick={resetExtraFilters} className="mt-4 rounded-xl border border-[#d3e1e9] bg-white px-4 py-2.5 text-sm font-bold text-[#5e7891]">清除篩選</button>}</div> : <div className="divide-y divide-[#e8f0f4]">{filteredReports.map((report) => <ReportRow key={report.id} report={report} onAction={openAction} onVisibilityAction={openVisibilityAction} />)}</div>}
     </section>
+    <section className="mt-8 overflow-hidden rounded-3xl border border-[#d7e4ec] bg-white shadow-[0_14px_35px_rgba(66,96,120,0.06)]"><div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#e5eef3] px-5 py-5 sm:px-6"><div><p className="text-xs font-bold tracking-[0.15em] text-[#8ca6b7]">USER DIRECTORY</p><h2 className="mt-1 text-xl font-bold text-[#365168]">使用者管理</h2><p className="mt-1 text-sm text-[#7891a3]">唯讀檢視公開內容與被檢舉情況；不包含私人行程資料。</p></div><button type="button" onClick={() => void loadAdminUsers()} disabled={isUsersLoading} className="inline-flex items-center gap-2 rounded-xl border border-[#d3e1e9] bg-white px-3.5 py-2.5 text-sm font-bold text-[#5e7891] disabled:opacity-60"><RefreshCw size={16} className={isUsersLoading ? 'animate-spin' : ''} />重新整理</button></div><div className="border-b border-[#e5eef3] bg-[#f8fbfd] px-5 py-4 sm:px-6"><label className="relative block max-w-xl"><Search size={17} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-[#8ca6b7]" /><input value={userQuery} onChange={(event) => setUserQuery(event.target.value)} placeholder="搜尋帳號、名稱或角色" className="w-full rounded-xl border border-[#d6e4ec] bg-white py-2.5 pl-10 pr-4 text-sm text-[#365168] outline-none placeholder:text-[#a0b3c0] focus:border-[#7393aa] focus:ring-2 focus:ring-[#dceaf2]" /></label>{!isUsersLoading && !usersError && adminUsers.length > 0 && <p className="mt-3 text-xs font-medium text-[#829aaa]">目前顯示 {filteredAdminUsers.length} / {adminUsers.length} 位使用者</p>}</div>{isUsersLoading ? <div className="flex min-h-48 items-center justify-center"><Loader2 className="size-7 animate-spin text-[#9db5c4]" /></div> : usersError ? <div className="px-6 py-12 text-center"><p className="font-bold text-rose-600">使用者清單暫時無法載入</p><p className="mt-2 text-sm text-rose-500">{usersError}</p></div> : adminUsers.length === 0 ? <div className="px-6 py-14 text-center"><Users className="mx-auto size-10 text-[#a7bdca]" /><h3 className="mt-4 font-bold text-[#49677e]">目前沒有可顯示的使用者</h3></div> : filteredAdminUsers.length === 0 ? <div className="px-6 py-14 text-center"><UserRound className="mx-auto size-10 text-[#a7bdca]" /><h3 className="mt-4 font-bold text-[#49677e]">找不到符合條件的使用者</h3></div> : <div className="divide-y divide-[#e8f0f4]">{filteredAdminUsers.map((member) => <AdminUserRow key={member.account} member={member} />)}</div>}</section>
+    <section className="mt-8 overflow-hidden rounded-3xl border border-[#d7e4ec] bg-white shadow-[0_14px_35px_rgba(66,96,120,0.06)]"><div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#e5eef3] px-5 py-5 sm:px-6"><div><p className="text-xs font-bold tracking-[0.15em] text-[#8ca6b7]">AUDIT TRAIL</p><h2 className="mt-1 text-xl font-bold text-[#365168]">全站管理操作紀錄</h2><p className="mt-1 text-sm text-[#7891a3]">保留最近 200 筆公開行程的管理動作。</p></div><button type="button" onClick={() => void loadAuditLogs()} disabled={isAuditLoading} className="inline-flex items-center gap-2 rounded-xl border border-[#d3e1e9] bg-white px-3.5 py-2.5 text-sm font-bold text-[#5e7891] disabled:opacity-60"><RefreshCw size={16} className={isAuditLoading ? 'animate-spin' : ''} />重新整理</button></div>{isAuditLoading ? <div className="flex min-h-48 items-center justify-center"><Loader2 className="size-7 animate-spin text-[#9db5c4]" /></div> : auditError ? <div className="px-6 py-12 text-center"><p className="font-bold text-rose-600">管理操作紀錄暫時無法載入</p><p className="mt-2 text-sm text-rose-500">{auditError}</p></div> : auditLogs.length === 0 ? <div className="px-6 py-14 text-center"><History className="mx-auto size-10 text-[#a7bdca]" /><h3 className="mt-4 font-bold text-[#49677e]">尚無管理操作紀錄</h3><p className="mt-2 text-sm text-[#8da5b5]">處理檢舉、下架或恢復公開後，紀錄會顯示在這裡。</p></div> : <div className="divide-y divide-[#e8f0f4]">{auditLogs.map((entry) => <AuditLogRow key={entry.id} entry={entry} />)}</div>}</section>
     <section className="mt-8 rounded-3xl border border-dashed border-[#bfd4e1] bg-white/70 p-6 sm:p-8"><h2 className="text-lg font-bold text-[#42627a]">公開狀態規則</h2><p className="mt-2 text-sm leading-6 text-[#708a9e]">只有被管理員下架的公開行程可從這裡恢復，避免誤把作者自行設為私人的行程重新公開。</p></section>
   </section>
   {activeReport && <ActionModal report={activeReport} action={action} note={note} error={actionError} isSubmitting={isSubmitting} onNoteChange={setNote} onClose={closeAction} onSubmit={submitAction} />}
@@ -169,14 +289,24 @@ export default function AdminPage() {
   </main>;
 }
 
-function SummaryCard({ icon, iconClass = 'bg-[#edf4f8] text-[#58788f]', label, value, featured = false }: { icon: React.ReactNode; iconClass?: string; label: string; value: string; featured?: boolean }) {
-  return <article className={`rounded-3xl border border-[#d7e4ec] p-6 shadow-[0_10px_25px_rgba(66,96,120,0.05)] ${featured ? 'bg-[linear-gradient(135deg,#ffffff_0%,#edf6fa_100%)]' : 'bg-white'}`}><div className={`flex size-11 items-center justify-center rounded-2xl ${iconClass}`}>{icon}</div><p className="mt-5 text-sm font-bold text-[#6d8799]">{label}</p><p className="mt-1 text-3xl font-bold text-[#365168]">{value}</p></article>;
+function SummaryCard({ icon, iconClass = 'bg-[#edf4f8] text-[#58788f]', label, value, description, featured = false }: { icon: React.ReactNode; iconClass?: string; label: string; value: string; description: string; featured?: boolean }) {
+  return <article className={`rounded-3xl border border-[#d7e4ec] p-6 shadow-[0_10px_25px_rgba(66,96,120,0.05)] ${featured ? 'bg-[linear-gradient(135deg,#ffffff_0%,#edf6fa_100%)]' : 'bg-white'}`}><div className={`flex size-11 items-center justify-center rounded-2xl ${iconClass}`}>{icon}</div><p className="mt-5 text-sm font-bold text-[#6d8799]">{label}</p><p className="mt-1 text-3xl font-bold text-[#365168]">{value}</p><p className="mt-2 text-xs leading-5 text-[#8aa1b1]">{description}</p></article>;
 }
 
 function ReportRow({ report, onAction, onVisibilityAction }: { report: Report; onAction: (report: Report, action: 'resolved' | 'dismissed') => void; onVisibilityAction: (report: Report, action: 'hide' | 'restore') => void }) {
   const meta = getStatusMeta(report.status);
   const canRestore = !report.itinerary.isPublic && report.itinerary.moderationStatus === 'hidden';
   return <article className="p-5 sm:p-6"><div className="flex flex-wrap items-start justify-between gap-4"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><span className={`rounded-full px-2.5 py-1 text-xs font-bold ${meta.tone}`}>{meta.label}</span><span className="rounded-full bg-[#f2f6f8] px-2.5 py-1 text-xs font-bold text-[#668398]">{report.reason}</span><span className={`rounded-full px-2.5 py-1 text-xs font-bold ${report.itinerary.isPublic ? 'bg-sky-50 text-sky-600' : 'bg-amber-50 text-amber-700'}`}>{report.itinerary.isPublic ? '公開中' : canRestore ? '管理員已下架' : '未公開'}</span></div><h3 className="mt-3 text-lg font-bold text-[#365168]">{report.itinerary.title}</h3>{report.itinerary.location && <p className="mt-1 flex items-center gap-1.5 text-sm text-[#7892a4]"><MapPin size={14} />{report.itinerary.location}</p>}</div><div className="flex flex-wrap gap-2"><Link href={`/destinations/itinerary/${report.itinerary.id}`} className="inline-flex items-center gap-1.5 rounded-xl border border-[#d3e1e9] bg-white px-3 py-2 text-xs font-bold text-[#5e7891]"><Eye size={14} />查看行程</Link>{report.itinerary.isPublic && <button type="button" onClick={() => onVisibilityAction(report, 'hide')} className="inline-flex items-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-600"><ArchiveX size={14} />下架</button>}{canRestore && <button type="button" onClick={() => onVisibilityAction(report, 'restore')} className="inline-flex items-center gap-1.5 rounded-xl bg-sky-600 px-3 py-2 text-xs font-bold text-white"><Undo2 size={14} />恢復公開</button>}{report.status === 'pending' && <><button type="button" onClick={() => onAction(report, 'resolved')} className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3 py-2 text-xs font-bold text-white"><CheckCircle2 size={14} />處理</button><button type="button" onClick={() => onAction(report, 'dismissed')} className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-600"><XCircle size={14} />駁回</button></>}</div></div>{report.details && <p className="mt-4 rounded-2xl bg-[#f5f9fb] px-4 py-3 text-sm leading-6 text-[#638095]">{report.details}</p>}{!report.itinerary.isPublic && report.itinerary.moderationNote && <div className="mt-4 rounded-2xl border border-amber-100 bg-amber-50/60 px-4 py-3"><p className="text-xs font-bold text-amber-700">公開狀態備註</p><p className="mt-1 whitespace-pre-line text-sm leading-6 text-amber-900/80">{report.itinerary.moderationNote}</p><p className="mt-2 text-xs text-amber-700/80">處理者：{report.itinerary.moderatedBy || '—'}{report.itinerary.moderatedAt ? ` ・ ${formatTime(report.itinerary.moderatedAt)}` : ''}</p></div>}{report.status !== 'pending' && <div className="mt-4 rounded-2xl border border-[#dbe8ef] bg-[#f5f9fb] px-4 py-3"><p className="text-xs font-bold text-[#6b8799]">管理處理備註</p><p className="mt-1 whitespace-pre-line text-sm leading-6 text-[#527188]">{report.adminNote || '未填寫備註'}</p><p className="mt-2 text-xs text-[#8aa1b1]">處理者：{report.reviewedBy || '—'}{report.reviewedAt ? ` ・ ${formatTime(report.reviewedAt)}` : ''}</p></div>}{report.history.length > 0 && <details className="mt-4 rounded-2xl border border-[#dbe8ef] bg-white px-4 py-3"><summary className="cursor-pointer text-sm font-bold text-[#58758c]">管理處理紀錄（{report.history.length}）</summary><div className="mt-3 space-y-3 border-t border-[#e6eef3] pt-3">{report.history.slice(0, 5).map((entry) => <div key={entry.id} className="text-sm"><p className="font-bold text-[#48677e]">{moderationActionLabel(entry.action)}</p><p className="mt-0.5 whitespace-pre-line leading-6 text-[#668398]">{entry.note}</p><p className="mt-1 text-xs text-[#8aa1b1]">{entry.adminAccount} ・ {formatTime(entry.createdAt)}</p></div>)}</div></details>}<div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-xs text-[#8aa1b1]"><span>檢舉人：{report.reporter.name}</span><span>作者：{report.itinerary.ownerName}</span><span>送出時間：{formatTime(report.reportedAt)}</span></div></article>;
+}
+
+function AuditLogRow({ entry }: { entry: AdminAuditLog }) {
+  return <article className="flex flex-wrap items-start justify-between gap-4 p-5 sm:p-6"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><span className="rounded-full bg-[#edf4f8] px-2.5 py-1 text-xs font-bold text-[#58788f]">{moderationActionLabel(entry.action)}</span>{entry.reportReason && <span className="rounded-full bg-[#f2f6f8] px-2.5 py-1 text-xs font-bold text-[#668398]">{entry.reportReason}</span>}</div><Link href={`/destinations/itinerary/${entry.itineraryId}`} className="mt-3 inline-block text-base font-bold text-[#365168] hover:text-[#587994] hover:underline">{entry.itineraryTitle}</Link>{entry.location && <p className="mt-1 flex items-center gap-1.5 text-sm text-[#7892a4]"><MapPin size={14} />{entry.location}</p>}<p className="mt-3 max-w-3xl whitespace-pre-line rounded-2xl bg-[#f5f9fb] px-4 py-3 text-sm leading-6 text-[#638095]">{entry.note}</p></div><div className="shrink-0 text-right text-xs leading-6 text-[#829aaa]"><p className="font-bold text-[#58788f]">{entry.adminAccount}</p><p>{formatTime(entry.createdAt)}</p>{entry.reportId && <p>檢舉 #{entry.reportId}</p>}</div></article>;
+}
+
+function AdminUserRow({ member }: { member: AdminUser }) {
+  const roleLabel = member.role === 'admin' ? '管理員' : member.role === 'moderator' ? '協管員' : '一般使用者';
+  const initial = (member.name || member.account).slice(0, 1).toUpperCase();
+  return <article className="flex flex-wrap items-center justify-between gap-4 p-5 sm:p-6"><div className="flex min-w-0 items-center gap-3"><div className="flex size-11 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-[#edf4f8] text-sm font-bold text-[#58788f]">{member.avatar ? <img src={member.avatar} alt="" className="size-full object-cover" /> : initial}</div><div className="min-w-0"><p className="truncate text-base font-bold text-[#365168]">{member.name}</p><p className="truncate text-sm text-[#7892a4]">@{member.account}</p></div><span className={`rounded-full px-2.5 py-1 text-xs font-bold ${member.role === 'admin' ? 'bg-violet-50 text-violet-700' : member.role === 'moderator' ? 'bg-sky-50 text-sky-700' : 'bg-[#f2f6f8] text-[#668398]'}`}>{roleLabel}</span></div><div className="flex flex-wrap items-center gap-2 text-xs font-bold"><span className="rounded-xl bg-[#f2f6f8] px-3 py-2 text-[#668398]">公開 {member.publicItineraryCount}</span><span className={`rounded-xl px-3 py-2 ${member.reportCount > 0 ? 'bg-rose-50 text-rose-600' : 'bg-[#f2f6f8] text-[#668398]'}`}>檢舉 {member.reportCount}</span><span className={`rounded-xl px-3 py-2 ${member.hiddenItineraryCount > 0 ? 'bg-amber-50 text-amber-700' : 'bg-[#f2f6f8] text-[#668398]'}`}>下架 {member.hiddenItineraryCount}</span><Link href={`/profile/${encodeURIComponent(member.account)}`} className="inline-flex items-center gap-1.5 rounded-xl border border-[#d3e1e9] bg-white px-3 py-2 text-[#5e7891]"><Eye size={14} />查看公開頁</Link></div></article>;
 }
 
 function ActionModal({ report, action, note, error, isSubmitting, onNoteChange, onClose, onSubmit }: { report: Report; action: 'resolved' | 'dismissed'; note: string; error: string; isSubmitting: boolean; onNoteChange: (value: string) => void; onClose: () => void; onSubmit: () => void }) {

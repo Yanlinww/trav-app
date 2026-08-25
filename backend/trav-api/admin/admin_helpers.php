@@ -1,8 +1,9 @@
 <?php
 
-function require_admin_access(mysqli $conn, string $account): void {
-    $account = trim($account);
-    if ($account === '') api_error('請先登入後再使用管理功能。', 401);
+require_once __DIR__ . '/../auth/auth_session_helpers.php';
+
+function require_admin_access(mysqli $conn): string {
+    $account = require_authenticated_account($conn);
 
     $statement = $conn->prepare('SELECT Role FROM Member WHERE Account = ? LIMIT 1');
     if (!$statement) api_error('管理員權限檢查失敗。', 500);
@@ -15,6 +16,8 @@ function require_admin_access(mysqli $conn, string $account): void {
     $statement->close();
 
     if (!$member || ($member['Role'] ?? 'user') !== 'admin') api_error('你沒有管理員權限。', 403);
+
+    return $account;
 }
 
 function record_public_itinerary_moderation_event(mysqli $conn, int $itineraryId, ?int $reportId, string $action, string $note, string $account): void {

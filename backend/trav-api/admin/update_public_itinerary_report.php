@@ -1,7 +1,7 @@
 <?php
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: POST, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type');
+header('Access-Control-Allow-Headers: Content-Type, Authorization');
 header('Content-Type: application/json; charset=utf-8');
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(204); exit(); }
@@ -11,12 +11,11 @@ require_once '../itinerary/api_helpers.php';
 require_once 'admin_helpers.php';
 
 $data = read_json_body();
-$account = trim((string)($data->Account ?? ''));
 $reportId = (int)($data->Report_ID ?? 0);
 $status = trim((string)($data->Status ?? ''));
 $adminNote = trim((string)($data->Admin_Note ?? ''));
 
-require_admin_access($conn, $account);
+$account = require_admin_access($conn);
 
 if ($reportId <= 0) api_error('缺少要處理的檢舉案件。', 400);
 if (!in_array($status, ['resolved', 'dismissed'], true)) api_error('請選擇有效的處理結果。', 422);

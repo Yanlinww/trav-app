@@ -1,7 +1,7 @@
 <?php
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: POST, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type');
+header('Access-Control-Allow-Headers: Content-Type, Authorization');
 header('Content-Type: application/json; charset=utf-8');
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(204); exit(); }
@@ -10,9 +10,7 @@ require_once '../db_connect.php';
 require_once '../itinerary/api_helpers.php';
 require_once 'admin_helpers.php';
 
-$data = read_json_body();
-$account = trim((string)($data->Account ?? ''));
-require_admin_access($conn, $account);
+require_admin_access($conn);
 
 try {
     $statement = $conn->prepare(

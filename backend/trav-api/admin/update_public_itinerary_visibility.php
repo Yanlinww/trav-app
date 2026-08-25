@@ -1,7 +1,7 @@
 <?php
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: POST, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type');
+header('Access-Control-Allow-Headers: Content-Type, Authorization');
 header('Content-Type: application/json; charset=utf-8');
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(204); exit(); }
@@ -12,13 +12,12 @@ require_once '../destinations/public_itinerary_cache.php';
 require_once 'admin_helpers.php';
 
 $data = read_json_body();
-$account = trim((string)($data->Account ?? ''));
 $itineraryId = (int)($data->Itinerary_ID ?? 0);
 $reportId = isset($data->Report_ID) ? (int)$data->Report_ID : null;
 $action = trim((string)($data->Action ?? ''));
 $note = trim((string)($data->Moderation_Note ?? ''));
 
-require_admin_access($conn, $account);
+$account = require_admin_access($conn);
 
 if ($itineraryId <= 0) api_error('缺少公開行程資料。', 400);
 if (!in_array($action, ['hide', 'restore'], true)) api_error('請選擇有效的公開狀態操作。', 422);
