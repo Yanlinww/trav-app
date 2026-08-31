@@ -1,38 +1,34 @@
 <?php
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: POST, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, Authorization');
+header('Access-Control-Allow-Headers: Content-Type');
 header('Content-Type: application/json; charset=utf-8');
 
 if ($_SERVER['REQUEST_METHOD'] == 'OPTIONS') { http_response_code(200); exit(); }
 
 require_once 'db_connect.php';
-require_once __DIR__ . '/auth/auth_session_helpers.php';
+
+// 自動建表防呆機制
+$conn->query("CREATE TABLE IF NOT EXISTS `User_Follows` (
+    `Follow_ID` INT AUTO_INCREMENT PRIMARY KEY,
+    `Follower_Account` VARCHAR(50) NOT NULL COMMENT '按下追蹤的人',
+    `Target_Account` VARCHAR(50) NOT NULL COMMENT '被追蹤的對象',
+    `Created_At` DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY `unique_follow` (`Follower_Account`, `Target_Account`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci");
 
 $data = json_decode(file_get_contents("php://input"));
 
-$follower = require_authenticated_account($conn);
-$target = trim((string)($data->Target_Account ?? ''));
+$follower = $data->Follower_Account ?? '';
+$target = $data->Target_Account ?? '';
 
 if (!empty($follower) && !empty($target) && $follower !== $target) {
-    $targetMember = $conn->prepare("SELECT 1 FROM Member WHERE Account = ? LIMIT 1");
-    $targetMember->bind_param("s", $target);
-    $targetMember->execute();
-    $targetExists = $targetMember->get_result()->num_rows > 0;
-    $targetMember->close();
-    if (!$targetExists) {
-        http_response_code(404);
-        echo json_encode(["status" => "error", "message" => "找不到要追蹤的旅行者。"], JSON_UNESCAPED_UNICODE);
-        $conn->close();
-        exit();
-    }
     
-    // 🌟 2. 檢查是否已追蹤
     $stmt = $conn->prepare("SELECT 1 FROM User_Follows WHERE Follower_Account = ? AND Target_Account = ?");
     $stmt->bind_param("ss", $follower, $target);
     $stmt->execute();
     $isFollowing = $stmt->get_result()->num_rows > 0;
-    $stmt->close(); // 務必關閉，避免 SQL 卡死
+    $stmt->close();
 
     if ($isFollowing) {
         $del = $conn->prepare("DELETE FROM User_Follows WHERE Follower_Account = ? AND Target_Account = ?");
@@ -43,29 +39,27 @@ if (!empty($follower) && !empty($target) && $follower !== $target) {
     } else {
         $ins = $conn->prepare("INSERT INTO User_Follows (Follower_Account, Target_Account) VALUES (?, ?)");
         $ins->bind_param("ss", $follower, $target);
-        if (!$ins->execute()) {
-            echo json_encode(["status" => "error", "message" => "寫入失敗：" . $conn->error]);
-            exit();
-        }
+        $ins->execute();
         $ins->close();
         $status = true;
+
+        // 🌟 【新增】寫入追蹤通知給對方 🌟
+        $notifMsg = "開始追蹤你了";
+        $notif = $conn->prepare("INSERT INTO Notifications (Account, Sender_Account, Type, Message) VALUES (?, ?, 'follow', ?)");
+        $notif->bind_param("sss", $target, $follower, $notifMsg);
+        $notif->execute();
+        $notif->close();
     }
 
-    // 🌟 3. 重新計算粉絲數
     $countStmt = $conn->prepare("SELECT COUNT(*) as count FROM User_Follows WHERE Target_Account = ?");
     $countStmt->bind_param("s", $target);
     $countStmt->execute();
     $followersCount = $countStmt->get_result()->fetch_assoc()['count'];
     $countStmt->close();
 
-    echo json_encode([
-        "status" => "success", 
-        "isFollowing" => $status, 
-        "followersCount" => (int)$followersCount
-    ]);
+    echo json_encode(["status" => "success", "isFollowing" => $status, "followersCount" => (int)$followersCount]);
 } else {
-    http_response_code(422);
-    echo json_encode(["status" => "error", "message" => "參數錯誤或不能追蹤自己"], JSON_UNESCAPED_UNICODE);
+    echo json_encode(["status" => "error", "message" => "參數錯誤或不能追蹤自己"]);
 }
 $conn->close();
 ?>

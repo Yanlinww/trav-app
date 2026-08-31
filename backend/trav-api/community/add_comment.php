@@ -1,92 +1,84 @@
 <?php
+header('Access-Control-Allow-Origin: *');
+header('Access-Control-Allow-Methods: POST, OPTIONS');
+header('Access-Control-Allow-Headers: Content-Type');
+header('Content-Type: application/json; charset=utf-8');
+
+if ($_SERVER['REQUEST_METHOD'] == 'OPTIONS') { http_response_code(200); exit(); }
+
 require_once '../db_connect.php';
-require_once 'community_helpers.php';
+require_once 'community_helpers.php'; // 引入共用函式庫來組裝新留言
 
-community_ensure_tables($conn);
+$data = json_decode(file_get_contents("php://input"));
+$account = $data->Account ?? '';
+$postId = $data->Post_ID ?? 0;
+$content = $data->Content ?? '';
+$parentId = $data->Parent_Comment_ID ?? null;
 
-if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    community_json_response(["status" => "error", "message" => "只支援 POST"], 405);
-}
+if ($account && $postId && $content) {
+    // 1. 新增留言
+    $stmt = $conn->prepare("INSERT INTO Community_Comment (Post_ID, Account, Parent_Comment_ID, Content) VALUES (?, ?, ?, ?)");
+    $stmt->bind_param("isis", $postId, $account, $parentId, $content);
+    $stmt->execute();
+    $commentId = $stmt->insert_id;
+    $stmt->close();
 
-$data = community_read_json();
+    // 🌟 2. 【新增】判斷要發通知給誰 🌟
+    // 先抓出貼文的擁有者
+    $getPost = $conn->prepare("SELECT Account FROM Community_Post WHERE Post_ID = ?");
+    $getPost->bind_param("i", $postId);
+    $getPost->execute();
+    $postOwner = $getPost->get_result()->fetch_assoc()['Account'] ?? '';
+    $getPost->close();
 
-$account = trim((string) community_get_request_value($data, 'Account', ''));
-$postId = (int) community_get_request_value($data, 'Post_ID', 0);
-$content = trim((string) community_get_request_value($data, 'Content', ''));
-$parentIdValue = community_get_request_value($data, 'Parent_Comment_ID', null);
-$parentId = $parentIdValue ? (int) $parentIdValue : null;
-
-if ($account === '' || $postId <= 0 || $content === '') {
-    community_json_response(["status" => "error", "message" => "缺少帳號、貼文或留言內容"], 400);
-}
-
-$member = community_get_member_by_account($conn, $account);
-if (!$member) {
-    community_json_response(["status" => "error", "message" => "找不到會員資料，請先登入"], 401);
-}
-
-$postStmt = $conn->prepare("SELECT `Post_ID` FROM `Community_Post` WHERE `Post_ID` = ? AND `Status` = 'active' LIMIT 1");
-$postStmt->bind_param("i", $postId);
-$postStmt->execute();
-$postExists = $postStmt->get_result()->num_rows > 0;
-$postStmt->close();
-
-if (!$postExists) {
-    community_json_response(["status" => "error", "message" => "找不到貼文"], 404);
-}
-
-if ($parentId !== null) {
-    $parentStmt = $conn->prepare("SELECT `Comment_ID` FROM `Community_Comment` WHERE `Comment_ID` = ? AND `Post_ID` = ? AND `Status` = 'active' LIMIT 1");
-    $parentStmt->bind_param("ii", $parentId, $postId);
-    $parentStmt->execute();
-    $parentExists = $parentStmt->get_result()->num_rows > 0;
-    $parentStmt->close();
-
-    if (!$parentExists) {
-        community_json_response(["status" => "error", "message" => "找不到要回覆的留言"], 404);
+    $targetAccount = $postOwner;
+    $msg = "在你的貼文底下留言";
+    
+    // 如果有 Parent_ID，代表是「回覆」，則通知對象改成留言的主人
+    if ($parentId) {
+        $getParent = $conn->prepare("SELECT Account FROM Community_Comment WHERE Comment_ID = ?");
+        $getParent->bind_param("i", $parentId);
+        $getParent->execute();
+        $parentOwner = $getParent->get_result()->fetch_assoc()['Account'] ?? '';
+        $getParent->close();
+        
+        if ($parentOwner) {
+            $targetAccount = $parentOwner;
+            $msg = "回覆了你的留言";
+        }
     }
+
+    // 發送通知 (不能通知自己)
+    if ($targetAccount && $targetAccount !== $account) {
+        $notif = $conn->prepare("INSERT INTO Notifications (Account, Sender_Account, Type, Reference_ID, Message) VALUES (?, ?, 'comment', ?, ?)");
+        $notif->bind_param("ssss", $targetAccount, $account, $postId, $msg);
+        $notif->execute();
+    }
+
+    // 3. 抓取剛建立的這筆留言資料回傳給前端
+    $stmt = $conn->prepare("
+        SELECT c.*, m.Name, m.Avatar 
+        FROM Community_Comment c 
+        JOIN Member m ON c.Account = m.Account 
+        WHERE c.Comment_ID = ?
+    ");
+    $stmt->bind_param("i", $commentId);
+    $stmt->execute();
+    $row = $stmt->get_result()->fetch_assoc();
+    
+    $newComment = [
+        'id' => (int) $row['Comment_ID'],
+        'parentId' => $row['Parent_Comment_ID'] ? (int) $row['Parent_Comment_ID'] : null,
+        'account' => $row['Account'],
+        'author' => $row['Name'] ?: $row['Account'],
+        'avatar' => community_public_url($row['Avatar'] ?? '') ?: '',
+        'content' => $row['Content'],
+        'createdAt' => $row['Created_At'],
+        'time' => '剛剛',
+    ];
+
+    echo json_encode(["status" => "success", "data" => $newComment]);
+} else {
+    echo json_encode(["status" => "error", "message" => "缺少參數"]);
 }
-
-$stmt = $conn->prepare(
-    "INSERT INTO `Community_Comment` (`Post_ID`, `Account`, `Parent_Comment_ID`, `Content`)
-     VALUES (?, ?, ?, ?)"
-);
-$stmt->bind_param("isis", $postId, $account, $parentId, $content);
-
-if (!$stmt->execute()) {
-    community_json_response(["status" => "error", "message" => "留言失敗：" . $stmt->error], 500);
-}
-
-$commentId = (int) $conn->insert_id;
-$stmt->close();
-
-$commentStmt = $conn->prepare(
-    "SELECT c.`Comment_ID`, c.`Parent_Comment_ID`, c.`Content`, c.`Created_At`, m.`Account`, m.`Name`, m.`Avatar`
-     FROM `Community_Comment` c
-     INNER JOIN `Member` m ON m.`Account` = c.`Account`
-     WHERE c.`Comment_ID` = ?
-     LIMIT 1"
-);
-$commentStmt->bind_param("i", $commentId);
-$commentStmt->execute();
-$row = $commentStmt->get_result()->fetch_assoc();
-$commentStmt->close();
-
-$comment = [
-    'id' => (int) $row['Comment_ID'],
-    'parentId' => $row['Parent_Comment_ID'] ? (int) $row['Parent_Comment_ID'] : null,
-    'author' => $row['Name'] ?: $row['Account'],
-    'account' => $row['Account'],
-    'avatar' => community_public_url($row['Avatar'] ?? '') ?: '',
-    'content' => $row['Content'],
-    'createdAt' => $row['Created_At'],
-    'time' => community_time_ago($row['Created_At']),
-];
-
-community_json_response([
-    "status" => "success",
-    "message" => "留言已送出",
-    "data" => $comment,
-]);
-
 ?>
