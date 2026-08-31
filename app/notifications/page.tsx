@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useRouter } from 'next/navigation';
 import { Bell, Heart, MessageCircle, UserPlus, CheckCircle2, Loader2, Info } from 'lucide-react';
-import Image from 'next/image';
+
 
 type Notification = {
   id: number;
@@ -82,7 +82,7 @@ export default function NotificationsPage() {
     if (notif.type === 'follow' && notif.sender.account) {
       router.push(`/profile/${encodeURIComponent(notif.sender.account)}`);
     } else if (notif.type === 'like' || notif.type === 'comment') {
-      router.push(`/community`); 
+      router.push(`/community`);
     }
   };
 
@@ -102,7 +102,7 @@ export default function NotificationsPage() {
   return (
     <div className="min-h-screen bg-[#FBFBFB] pt-12 pb-24">
       <div className="max-w-3xl mx-auto px-4 sm:px-6">
-        
+
         {/* 標題與操作區 */}
         <div className="flex items-end justify-between mb-8 border-b border-neutral-100 pb-6">
           <div className="flex items-center gap-3">
@@ -116,8 +116,8 @@ export default function NotificationsPage() {
               </p>
             </div>
           </div>
-          <button 
-            onClick={handleMarkAllAsRead} 
+          <button
+            onClick={handleMarkAllAsRead}
             disabled={unreadCount === 0 || isMarkingRead}
             className="flex items-center gap-2 px-4 py-2 text-xs font-bold tracking-widest uppercase rounded-full transition-all disabled:opacity-40 disabled:cursor-not-allowed bg-white border border-neutral-200 text-neutral-600 hover:border-neutral-900 hover:text-neutral-900 shadow-sm"
           >
@@ -140,20 +140,19 @@ export default function NotificationsPage() {
               const Icon = IconConfig.icon;
 
               return (
-                <div 
+                <div
                   key={notif.id}
                   onClick={() => handleNotificationClick(notif)}
-                  className={`flex items-start gap-4 p-4 rounded-2xl border transition-all cursor-pointer ${
-                    notif.isRead 
-                      ? 'bg-white border-neutral-100 hover:border-neutral-300 shadow-sm' 
+                  className={`flex items-start gap-4 p-4 rounded-2xl border transition-all cursor-pointer ${notif.isRead
+                      ? 'bg-white border-neutral-100 hover:border-neutral-300 shadow-sm'
                       : 'bg-pink-50/40 border-pink-200 shadow-md'
-                  }`}
+                    }`}
                 >
                   <div className="relative">
                     {/* 發送者大頭貼 */}
                     {notif.sender.avatar ? (
                       <div className="size-12 rounded-full overflow-hidden border-2 border-white shadow-sm shrink-0">
-                        <Image src={notif.sender.avatar} alt={notif.sender.name} width={48} height={48} className="object-cover w-full h-full" />
+                        <img src={notif.sender.avatar} alt={notif.sender.name} className="object-cover w-full h-full" />
                       </div>
                     ) : (
                       <div className="size-12 rounded-full bg-neutral-200 flex items-center justify-center text-neutral-600 font-bold border-2 border-white shadow-sm shrink-0">
@@ -175,7 +174,7 @@ export default function NotificationsPage() {
                       {new Date(notif.createdAt).toLocaleString('zh-TW', { hour12: false })}
                     </p>
                   </div>
-                  
+
                   {!notif.isRead && (
                     <div className="size-2.5 rounded-full bg-[#F04D79] mt-2 shrink-0 shadow-sm" />
                   )}
