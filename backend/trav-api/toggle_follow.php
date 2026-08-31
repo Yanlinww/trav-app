@@ -1,12 +1,15 @@
 <?php
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: POST, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type');
+// 🌟 修正 1：允許 Authorization 標頭，解決 CORS (Failed to fetch) 錯誤
+header('Access-Control-Allow-Headers: Content-Type, Authorization');
 header('Content-Type: application/json; charset=utf-8');
 
 if ($_SERVER['REQUEST_METHOD'] == 'OPTIONS') { http_response_code(200); exit(); }
 
 require_once 'db_connect.php';
+// 🌟 修正 2：載入驗證函式
+require_once __DIR__ . '/auth/auth_session_helpers.php'; 
 
 // 自動建表防呆機制
 $conn->query("CREATE TABLE IF NOT EXISTS `User_Follows` (
@@ -19,7 +22,14 @@ $conn->query("CREATE TABLE IF NOT EXISTS `User_Follows` (
 
 $data = json_decode(file_get_contents("php://input"));
 
-$follower = $data->Follower_Account ?? '';
+// 🌟 修正 3：透過 Token 安全取得現在是誰登入 (因為前端的 body 把 Follower_Account 拿掉了)
+$follower = get_authenticated_account($conn);
+
+// 如果 token 驗證不到，再退回去找前端傳的參數作為備案
+if (empty($follower)) {
+    $follower = $data->Follower_Account ?? '';
+}
+
 $target = $data->Target_Account ?? '';
 
 if (!empty($follower) && !empty($target) && $follower !== $target) {
@@ -43,7 +53,7 @@ if (!empty($follower) && !empty($target) && $follower !== $target) {
         $ins->close();
         $status = true;
 
-        // 🌟 【新增】寫入追蹤通知給對方 🌟
+        // 寫入追蹤通知給對方
         $notifMsg = "開始追蹤你了";
         $notif = $conn->prepare("INSERT INTO Notifications (Account, Sender_Account, Type, Message) VALUES (?, ?, 'follow', ?)");
         $notif->bind_param("sss", $target, $follower, $notifMsg);
@@ -59,7 +69,7 @@ if (!empty($follower) && !empty($target) && $follower !== $target) {
 
     echo json_encode(["status" => "success", "isFollowing" => $status, "followersCount" => (int)$followersCount]);
 } else {
-    echo json_encode(["status" => "error", "message" => "參數錯誤或不能追蹤自己"]);
+    echo json_encode(["status" => "error", "message" => "參數錯誤或不能追蹤自己（請確認登入狀態）"]);
 }
 $conn->close();
 ?>
