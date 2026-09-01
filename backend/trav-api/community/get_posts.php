@@ -10,10 +10,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'OPTIONS') {
 }
 
 require_once '../db_connect.php';
-require_once 'community_helpers.php'; // 🌟 引入夥伴寫好的超強函式庫
-
-// 確保資料表存在
-community_ensure_tables($conn);
+require_once 'community_helpers.php';
 
 // 接收前端參數
 $type = $_GET['type'] ?? 'all';
@@ -57,16 +54,13 @@ if (!empty($params)) {
 $stmt->execute();
 $result = $stmt->get_result();
 
-$posts = [];
+$postIds = [];
 while ($row = $result->fetch_assoc()) {
-    // 🌟 呼叫夥伴寫好的格式化函式，把貼文細節 (包含作者、標籤、圖片、留言) 一次完美撈出來！
-    $postData = community_fetch_single_post($conn, $row['Post_ID'], $currentUser);
-    if ($postData) {
-        $posts[] = $postData;
-    }
+    $postIds[] = (int) $row['Post_ID'];
 }
 
 $stmt->close();
+$posts = community_fetch_posts_by_ids($conn, $postIds, $currentUser);
 $conn->close();
 
 // 呼叫 Helper 的 JSON 回傳函式

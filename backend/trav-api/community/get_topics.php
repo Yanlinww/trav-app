@@ -2,8 +2,6 @@
 require_once '../db_connect.php';
 require_once 'community_helpers.php';
 
-community_ensure_tables($conn);
-
 $stmt = $conn->prepare(
     "SELECT t.`Tag_Name`, COUNT(*) AS `Post_Count`
      FROM `Community_Post_Tag` t

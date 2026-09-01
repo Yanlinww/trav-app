@@ -71,7 +71,7 @@ if ($account && $postId && $content) {
         'parentId' => $row['Parent_Comment_ID'] ? (int) $row['Parent_Comment_ID'] : null,
         'account' => $row['Account'],
         'author' => $row['Name'] ?: $row['Account'],
-        'avatar' => community_public_url($row['Avatar'] ?? '') ?: '',
+        'avatar' => community_avatar_url($row['Avatar'] ?? ''),
         'content' => $row['Content'],
         'createdAt' => $row['Created_At'],
         'time' => '剛剛',

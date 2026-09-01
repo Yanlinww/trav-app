@@ -6,6 +6,7 @@ import { useAuth } from '../../context/AuthContext';
 import { CalendarDays, Camera, Copy, Eye, Heart, MapPin, Bookmark, Loader2, ChevronLeft, UserPlus, UserCheck } from 'lucide-react';
 import { FaFacebook, FaInstagram, FaTwitter, FaYoutube, FaTiktok } from 'react-icons/fa';
 import { Link2 } from 'lucide-react';
+import FollowListModal from '../../components/FollowListModal';
 
 type PublicItinerary = {
   id: string;
@@ -36,6 +37,7 @@ export default function PublicProfilePage() {
   } | null>(null);
   const [isLoadingProfile, setIsLoadingProfile] = useState(true);
   const [isTogglingFollow, setIsTogglingFollow] = useState(false);
+  const [followListType, setFollowListType] = useState<'followers' | 'following' | null>(null);
   
   const [userFiles, setUserFiles] = useState<any[]>([]); 
   const [isLoadingFiles, setIsLoadingFiles] = useState(false);
@@ -229,9 +231,9 @@ export default function PublicProfilePage() {
             )}
 
             <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-3 text-neutral-800 md:justify-end">
-              <div className="text-center flex items-baseline gap-1.5"><span className="text-2xl font-bold">{profileUser.followersCount}</span> <span className="text-sm text-neutral-500 font-medium">粉絲</span></div>
+              <button type="button" onClick={() => setFollowListType('followers')} className="text-center flex items-baseline gap-1.5 rounded-lg px-1 transition hover:text-[#50718a] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#86a5ba]" aria-label="查看粉絲名單"><span className="text-2xl font-bold">{profileUser.followersCount}</span> <span className="text-sm text-neutral-500 font-medium">粉絲</span></button>
               <div className="w-px h-6 bg-neutral-200"></div>
-              <div className="text-center flex items-baseline gap-1.5"><span className="text-2xl font-bold">{profileUser.followingCount}</span> <span className="text-sm text-neutral-500 font-medium">追蹤中</span></div>
+              <button type="button" onClick={() => setFollowListType('following')} className="text-center flex items-baseline gap-1.5 rounded-lg px-1 transition hover:text-[#50718a] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#86a5ba]" aria-label="查看追蹤中名單"><span className="text-2xl font-bold">{profileUser.followingCount}</span> <span className="text-sm text-neutral-500 font-medium">追蹤中</span></button>
               <div className="w-px h-6 bg-neutral-200"></div>
               <div className="text-center flex items-baseline gap-1.5"><span className="text-2xl font-bold">{publicStats.likes}</span> <span className="text-sm text-neutral-500 font-medium">獲得喜歡</span></div>
               <div className="w-px h-6 bg-neutral-200"></div>
@@ -310,6 +312,15 @@ export default function PublicProfilePage() {
           )
         )}
       </div>
+      {followListType && currentAccount && (
+        <FollowListModal
+          account={profileUser.account}
+          listType={followListType}
+          isOwnList={currentAccount === profileUser.account}
+          onClose={() => setFollowListType(null)}
+          onOwnFollowingChanged={() => setProfileUser((profile) => profile ? { ...profile, followingCount: Math.max(0, profile.followingCount - 1) } : profile)}
+        />
+      )}
     </div>
   );
 }

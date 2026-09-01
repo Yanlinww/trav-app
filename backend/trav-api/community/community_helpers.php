@@ -215,6 +215,17 @@ function community_public_url(?string $path): ?string
     return 'http://localhost:8080/' . ltrim($path, '/');
 }
 
+function community_avatar_url(?string $path): string
+{
+    // 會員頭像若以 data URL 儲存，會在每一則貼文與留言中重複傳送數 MB 資料。
+    // 動態牆先使用姓名首字，直到既有頭像遷移為實際檔案 URL。
+    if (!$path || preg_match('/^data:image\//i', $path)) {
+        return '';
+    }
+
+    return community_public_url($path) ?: '';
+}
+
 function community_fetch_tags(mysqli $conn, int $postId): array
 {
     $stmt = $conn->prepare("SELECT `Tag_Name` FROM `Community_Post_Tag` WHERE `Post_ID` = ? ORDER BY `Tag_Name` ASC");
@@ -267,7 +278,7 @@ function community_fetch_comments(mysqli $conn, int $postId): array
             'parentId' => $row['Parent_Comment_ID'] ? (int) $row['Parent_Comment_ID'] : null,
             'account' => $row['Account'], // 🌟 就是這裡！補上留言者的帳號
             'author' => $row['Name'] ?: $row['Account'],
-            'avatar' => community_public_url($row['Avatar'] ?? '') ?: '',
+            'avatar' => community_avatar_url($row['Avatar'] ?? ''),
             'content' => $row['Content'],
             'createdAt' => $row['Created_At'],
             'time' => community_time_ago($row['Created_At']),
@@ -294,7 +305,7 @@ function community_format_post(mysqli $conn, array $row): array
         'author' => [
             'account' => $row['Account'], 
             'name' => $row['Name'] ?: $row['Account'],
-            'avatar' => community_public_url($row['Avatar'] ?? '') ?: '',
+            'avatar' => community_avatar_url($row['Avatar'] ?? ''),
         ],
         'tags' => community_fetch_tags($conn, $postId),
         'images' => community_fetch_images($conn, $postId),
@@ -304,6 +315,101 @@ function community_format_post(mysqli $conn, array $row): array
         'saved' => (bool) ($row['User_Saved'] ?? 0),
         'comments' => community_fetch_comments($conn, $postId),
     ];
+}
+
+function community_fetch_posts_by_ids(mysqli $conn, array $postIds, string $viewerAccount = ''): array
+{
+    $postIds = array_values(array_unique(array_filter(array_map('intval', $postIds))));
+    if (count($postIds) === 0) {
+        return [];
+    }
+
+    $placeholders = implode(',', array_fill(0, count($postIds), '?'));
+    $types = 'ss' . str_repeat('i', count($postIds));
+    $params = array_merge([$viewerAccount, $viewerAccount], $postIds);
+
+    $stmt = $conn->prepare(
+        "SELECT p.*, m.`Account`, m.`Name`, m.`Avatar`,
+            (SELECT COUNT(*) FROM `Community_Reaction` r WHERE r.`Post_ID` = p.`Post_ID` AND r.`Reaction_Type` = 'like') AS `Like_Count`,
+            (SELECT COUNT(*) FROM `Community_Comment` c WHERE c.`Post_ID` = p.`Post_ID` AND c.`Status` = 'active') AS `Comment_Count`,
+            EXISTS(SELECT 1 FROM `Community_Reaction` ur WHERE ur.`Post_ID` = p.`Post_ID` AND ur.`Account` = ? AND ur.`Reaction_Type` = 'like') AS `User_Liked`,
+            EXISTS(SELECT 1 FROM `Community_Reaction` sr WHERE sr.`Post_ID` = p.`Post_ID` AND sr.`Account` = ? AND sr.`Reaction_Type` = 'save') AS `User_Saved`
+         FROM `Community_Post` p
+         INNER JOIN `Member` m ON m.`Account` = p.`Account`
+         WHERE p.`Post_ID` IN ({$placeholders}) AND p.`Status` = 'active'
+         ORDER BY p.`Created_At` DESC, p.`Post_ID` DESC"
+    );
+    if (!$stmt) {
+        throw new RuntimeException('無法讀取動態貼文。');
+    }
+    community_bind_params($stmt, $types, $params);
+    $stmt->execute();
+    $result = $stmt->get_result();
+
+    $postsById = [];
+    while ($row = $result->fetch_assoc()) {
+        $postId = (int) $row['Post_ID'];
+        $postsById[$postId] = [
+            'id' => $postId,
+            'type' => $row['Post_Type'],
+            'title' => $row['Title'],
+            'content' => $row['Content'],
+            'location' => $row['Location_Name'],
+            'locationCoordinates' => $row['Location_Coordinates'],
+            'createdAt' => $row['Created_At'],
+            'time' => community_time_ago($row['Created_At']),
+            'author' => [
+                'account' => $row['Account'],
+                'name' => $row['Name'] ?: $row['Account'],
+                'avatar' => community_avatar_url($row['Avatar'] ?? ''),
+            ],
+            'tags' => [],
+            'images' => [],
+            'likes' => (int) ($row['Like_Count'] ?? 0),
+            'commentCount' => (int) ($row['Comment_Count'] ?? 0),
+            'liked' => (bool) ($row['User_Liked'] ?? 0),
+            'saved' => (bool) ($row['User_Saved'] ?? 0),
+            // 首頁不預載留言；展開時由 get_comments.php 載入。
+            'comments' => [],
+        ];
+    }
+    $stmt->close();
+
+    $tagStmt = $conn->prepare("SELECT `Post_ID`, `Tag_Name` FROM `Community_Post_Tag` WHERE `Post_ID` IN ({$placeholders}) ORDER BY `Post_ID`, `Tag_Name`");
+    if (!$tagStmt) {
+        throw new RuntimeException('無法讀取貼文標籤。');
+    }
+    $tagTypes = str_repeat('i', count($postIds));
+    $tagParams = $postIds;
+    community_bind_params($tagStmt, $tagTypes, $tagParams);
+    $tagStmt->execute();
+    $tagResult = $tagStmt->get_result();
+    while ($tag = $tagResult->fetch_assoc()) {
+        $postId = (int) $tag['Post_ID'];
+        if (isset($postsById[$postId])) {
+            $postsById[$postId]['tags'][] = $tag['Tag_Name'];
+        }
+    }
+    $tagStmt->close();
+
+    $imageStmt = $conn->prepare("SELECT `Post_ID`, `Image_URL` FROM `Community_Post_Image` WHERE `Post_ID` IN ({$placeholders}) ORDER BY `Post_ID`, `Sort_Order`, `Image_ID`");
+    if (!$imageStmt) {
+        throw new RuntimeException('無法讀取貼文圖片。');
+    }
+    $imageTypes = str_repeat('i', count($postIds));
+    $imageParams = $postIds;
+    community_bind_params($imageStmt, $imageTypes, $imageParams);
+    $imageStmt->execute();
+    $imageResult = $imageStmt->get_result();
+    while ($image = $imageResult->fetch_assoc()) {
+        $postId = (int) $image['Post_ID'];
+        if (isset($postsById[$postId])) {
+            $postsById[$postId]['images'][] = community_public_url($image['Image_URL']);
+        }
+    }
+    $imageStmt->close();
+
+    return array_values($postsById);
 }
 
 function community_fetch_single_post(mysqli $conn, int $postId, string $viewerAccount = ''): ?array
