@@ -27,7 +27,7 @@ export function Header() {
             priority
             className="size-8 shrink-0 object-contain sm:size-9"
           />
-          <span className="font-black text-xl tracking-widest text-neutral-900 uppercase">TRAVMATE</span>
+          <span className="font-black text-xl tracking-widest text-neutral-900 uppercase">TFTMATE</span>
         </Link>
 
         {/* 桌面端主導覽 */}
