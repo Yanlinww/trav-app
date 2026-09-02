@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Image from "next/image";
+import { usePathname } from "next/navigation";
 import { Link } from "./Link";
 import { Menu, X, User, LogOut, ChevronDown, Settings, Bell, ShieldCheck } from "lucide-react";
 import { TopNav } from "./TopNav";
@@ -10,9 +11,11 @@ import { useAuth } from "../context/AuthContext";
 export function Header() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const pathname = usePathname();
   const { user, logout, loading } = useAuth();
   const avatarUrl = (user as any)?.avatar;
   const isAdmin = user?.role === 'admin';
+  const showMobileBottomNav = !pathname.startsWith("/planner/");
 
   return (
     <header className="sticky top-0 z-50 bg-white border-b border-neutral-100 shadow-sm">
@@ -27,7 +30,7 @@ export function Header() {
             priority
             className="size-8 shrink-0 object-contain sm:size-9"
           />
-          <span className="font-black text-xl tracking-widest text-neutral-900 uppercase">TFTMATE</span>
+          <span className="font-black text-xl tracking-widest text-neutral-900 uppercase">Travmade</span>
         </Link>
 
         {/* 桌面端主導覽 */}
@@ -131,14 +134,10 @@ export function Header() {
         </button>
       </nav>
 
-      {/* ================= 行動端 RWD 導覽選單同步更新 ================= */}
+      {/* 行動端帳號選單：主導覽改由下方底欄提供。 */}
       {mobileMenuOpen && (
         <div className="md:hidden border-t border-neutral-100 bg-white animate-in slide-in-from-top duration-300 shadow-xl">
           <div className="container mx-auto px-4 py-6 flex flex-col gap-4">
-            <TopNav />
-            
-            <div className="h-[1px] bg-neutral-100 my-2"></div>
-            
             {loading ? (
               <div className="flex flex-col gap-3">
                 <div className="h-12 w-full animate-pulse bg-neutral-100 rounded-sm"></div>
@@ -205,6 +204,16 @@ export function Header() {
             )}
           </div>
         </div>
+      )}
+
+      {/* 手機專屬主導覽：四個主要入口固定在底部，桌面版維持上方。 */}
+      {showMobileBottomNav && (
+        <nav
+          aria-label="手機主導覽"
+          className="fixed inset-x-0 bottom-0 z-50 flex min-h-[4.5rem] border-t border-neutral-200 bg-white/95 px-1 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-1 shadow-[0_-4px_20px_rgba(15,23,42,0.08)] backdrop-blur md:hidden"
+        >
+          <TopNav mobile />
+        </nav>
       )}
     </header>
   );

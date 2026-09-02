@@ -1844,6 +1844,7 @@ export default function ItineraryEditor() {
   
   const [rightPanelTab, setRightPanelTab] = useState('overview');
   const [isMobilePanelOpen, setIsMobilePanelOpen] = useState(false);
+  const [isMobileMoreOpen, setIsMobileMoreOpen] = useState(false);
   const [chatUnreadCount, setChatUnreadCount] = useState(0);
   const [luggageCount, setLuggageCount] = useState<{ checked: number; total: number } | null>(null);
   const [budgetTotal, setBudgetTotal] = useState<number | null>(null);
@@ -2760,7 +2761,7 @@ if (!itineraryData) {
   const totalStraightLineDistanceKm = calculateStraightLineDistanceKm(itineraryItems);
 
   return (
-    <div className="itinerary-page fixed inset-0 z-40 flex flex-col bg-[#F4F2ED] font-sans text-slate-800">
+    <div className={`itinerary-page fixed inset-0 ${isMobilePanelOpen ? 'z-[60]' : 'z-40'} flex flex-col bg-[#F4F2ED] font-sans text-slate-800`}>
       
       <header className="hidden md:flex h-16 bg-white border-b border-slate-100 items-center justify-between px-6 shrink-0 z-50">
         <div className="flex items-center gap-8">
@@ -2778,7 +2779,7 @@ if (!itineraryData) {
         </div>
       </header>
 
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex flex-1 overflow-visible xl:overflow-hidden">
         <div className="w-full md:w-[380px] shrink-0 bg-white border-r border-slate-100 flex flex-col z-10 shadow-[4px_0_24px_rgba(0,0,0,0.01)] relative">
           <div className="relative h-40 w-full bg-slate-100 group overflow-hidden shrink-0">
             <img src={coverImage} alt="行程封面" className={`w-full h-full object-cover transition-all duration-700 ${isUploading ? 'opacity-50 grayscale blur-sm' : 'group-hover:scale-105 group-hover:brightness-90'}`} />
@@ -3293,9 +3294,13 @@ if (!itineraryData) {
           )}
         </div>
 
-        <div className={`${isMobilePanelOpen ? 'flex' : 'hidden'} xl:flex fixed xl:static inset-x-0 bottom-0 z-50 h-[78vh] xl:h-auto w-full xl:w-[340px] shrink-0 bg-white border-t xl:border-t-0 xl:border-l border-slate-100 flex-col rounded-t-3xl xl:rounded-none shadow-2xl xl:shadow-[-4px_0_24px_rgba(0,0,0,0.01)] relative`}>
-          <div className="flex pt-2 px-2 border-b border-slate-100 gap-1 overflow-x-auto hide-scrollbar shrink-0">
-            <button type="button" onClick={() => setIsMobilePanelOpen(false)} className="xl:hidden flex size-8 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-500" aria-label="關閉側欄"><X size={16} /></button>
+        <div className={`${isMobilePanelOpen ? 'flex' : 'hidden'} xl:flex absolute xl:static inset-0 xl:inset-auto z-[70] xl:z-auto h-full xl:h-auto w-full xl:w-[340px] shrink-0 flex-col bg-white border-0 xl:border-l xl:border-slate-100 shadow-2xl xl:shadow-[-4px_0_24px_rgba(0,0,0,0.01)]`}>
+          <div className="xl:hidden flex h-16 shrink-0 items-center gap-3 border-b border-slate-100 bg-white px-4">
+            <button type="button" onClick={() => { setIsMobilePanelOpen(false); setIsMobileMoreOpen(false); }} className="flex size-9 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-600" aria-label="返回行程"><ChevronLeft size={20} /></button>
+            <div className="min-w-0"><p className="truncate text-[11px] font-bold tracking-[0.14em] text-slate-400">{itineraryData?.title || '行程'}</p><h2 className="truncate text-base font-bold text-slate-800">{isMobileMoreOpen ? '更多工具' : rightPanelTab === 'today' ? '今日行程' : rightPanelTab === 'budget' ? '旅程記帳' : rightPanelTab === 'chat' ? '旅伴聊天' : rightPanelTab === 'luggage' ? '行李清單' : rightPanelTab === 'travelers' ? '旅伴管理' : rightPanelTab === 'reservations' ? '預訂與票券' : rightPanelTab === 'notes' ? '旅行備忘錄' : '行程總覽'}</h2></div>
+          </div>
+
+          <div className="hidden xl:flex pt-2 px-2 border-b border-slate-100 gap-1 overflow-x-auto hide-scrollbar shrink-0">
             {[
               { id: 'overview', icon: LayoutGrid, label: '總覽' },
               { id: 'budget', icon: Wallet, label: '記帳' },
@@ -3318,7 +3323,24 @@ if (!itineraryData) {
           </div>
 
           <div className="flex-1 overflow-y-auto bg-slate-50/30">
-            {rightPanelTab === 'overview' && (
+            {isMobileMoreOpen && (
+              <div className="p-5">
+                <p className="text-sm leading-6 text-slate-500">把旅程需要的資料集中管理，點選後會開啟完整工具畫面。</p>
+                <div className="mt-5 grid grid-cols-2 gap-3">
+                  {[
+                    { id: 'luggage', label: '行李清單', description: luggageCount ? `${luggageCount.checked}/${luggageCount.total} 已完成` : '整理出發物品', icon: BaggageClaim },
+                    { id: 'travelers', label: '旅伴管理', description: '查看與邀請旅伴', icon: User },
+                    { id: 'reservations', label: '預訂與票券', description: reservationCount > 0 ? `${reservationCount} 筆待管理` : '集中票券與訂位', icon: Ticket },
+                    { id: 'notes', label: '旅行備忘錄', description: '記下旅程重點', icon: FileText },
+                  ].map((tool) => {
+                    const Icon = tool.icon;
+                    return <button key={tool.id} type="button" onClick={() => { setRightPanelTab(tool.id); setIsMobileMoreOpen(false); }} className="min-h-36 rounded-2xl border border-slate-100 bg-white p-4 text-left shadow-sm transition hover:border-[#F04D79]/30 hover:shadow-md"><Icon size={24} className="text-[#F04D79]" /><div className="mt-5 text-sm font-bold text-slate-800">{tool.label}</div><div className="mt-1 text-xs leading-5 text-slate-400">{tool.description}</div></button>;
+                  })}
+                </div>
+              </div>
+            )}
+
+            {!isMobileMoreOpen && rightPanelTab === 'overview' && (
               <div className="p-5 grid grid-cols-2 gap-3 animate-in fade-in zoom-in-95 duration-200">
                 <div className="col-span-1 row-span-2 bg-white rounded-2xl p-4 shadow-sm border border-slate-100 flex flex-col justify-between hover:shadow-md hover:border-[#F04D79]/30 transition-all cursor-pointer">
                   <MapPinned size={26} className="text-[#F04D79] mb-4" />
@@ -3341,7 +3363,7 @@ if (!itineraryData) {
               </div>
             )}
 
-            {rightPanelTab === 'overview' && (
+            {!isMobileMoreOpen && rightPanelTab === 'overview' && (
               <div className="px-5 pb-5">
                 <button type="button" onClick={() => setRightPanelTab('today')} className="w-full rounded-2xl border border-slate-100 bg-white p-4 text-left shadow-sm transition hover:border-[#F04D79]/30 hover:shadow-md">
                   <div className="mb-2 flex items-center justify-between"><span className="text-xs font-bold text-slate-500">Day {activeDay} 行程摘要</span><span className="text-[11px] font-bold text-[#F04D79]">查看今日</span></div>
@@ -3350,31 +3372,29 @@ if (!itineraryData) {
               </div>
             )}
 
-            {rightPanelTab === 'budget' && <BudgetPanel itineraryId={params.id as string} currentUserId={String(user?.id || (user as any)?.Account || '')} itineraryItems={itineraryItems} onTotalChange={setBudgetTotal} />}
-            {rightPanelTab === 'today' && <TodayPanel dayNumber={activeDay} items={currentDayItems} onFocusItem={focusMapOnItem} />}
-            {rightPanelTab === 'reservations' && <ReservationsPanel itineraryId={params.id as string} currentUserId={String(user?.id || (user as any)?.Account || '')} itineraryItems={itineraryItems} onFocusItem={focusMapOnItem} onCountChange={setReservationCount} />}
-            {rightPanelTab === 'notes' && <ManualNotesPanel itineraryId={params.id as string} currentUserId={String(user?.id || (user as any)?.Account || '')} />}
-            {rightPanelTab === 'travelers' && <TravelersPanel itineraryId={params.id as string} currentUserId={String(user?.id || (user as any)?.Account || '')} />}
-            {rightPanelTab === 'luggage' && <div className="p-4"><LuggagePanel itineraryId={params.id as string} currentUserId={String(user?.id || (user as any)?.Account || '')} onCountChange={setLuggageCount} /></div>}
-            <div className={rightPanelTab === 'chat' ? 'flex h-full min-h-0' : 'hidden'}><ChatPanel itineraryId={params.id as string} currentUserId={String(user?.id || (user as any)?.Account || '')} isActive={rightPanelTab === 'chat'} onUnreadChange={setChatUnreadCount} /></div>
+            {!isMobileMoreOpen && rightPanelTab === 'budget' && <BudgetPanel itineraryId={params.id as string} currentUserId={String(user?.id || (user as any)?.Account || '')} itineraryItems={itineraryItems} onTotalChange={setBudgetTotal} />}
+            {!isMobileMoreOpen && rightPanelTab === 'today' && <TodayPanel dayNumber={activeDay} items={currentDayItems} onFocusItem={focusMapOnItem} />}
+            {!isMobileMoreOpen && rightPanelTab === 'reservations' && <ReservationsPanel itineraryId={params.id as string} currentUserId={String(user?.id || (user as any)?.Account || '')} itineraryItems={itineraryItems} onFocusItem={focusMapOnItem} onCountChange={setReservationCount} />}
+            {!isMobileMoreOpen && rightPanelTab === 'notes' && <ManualNotesPanel itineraryId={params.id as string} currentUserId={String(user?.id || (user as any)?.Account || '')} />}
+            {!isMobileMoreOpen && rightPanelTab === 'travelers' && <TravelersPanel itineraryId={params.id as string} currentUserId={String(user?.id || (user as any)?.Account || '')} />}
+            {!isMobileMoreOpen && rightPanelTab === 'luggage' && <div className="p-4"><LuggagePanel itineraryId={params.id as string} currentUserId={String(user?.id || (user as any)?.Account || '')} onCountChange={setLuggageCount} /></div>}
+            <div className={!isMobileMoreOpen && rightPanelTab === 'chat' ? 'flex h-full min-h-0' : 'hidden'}><ChatPanel itineraryId={params.id as string} currentUserId={String(user?.id || (user as any)?.Account || '')} isActive={rightPanelTab === 'chat'} onUnreadChange={setChatUnreadCount} /></div>
 
           </div>
         </div>
       </div>
 
-      <nav className="xl:hidden fixed bottom-0 inset-x-0 z-40 flex gap-1 overflow-x-auto border-t border-slate-200 bg-white/95 px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 shadow-[0_-4px_20px_rgba(15,23,42,0.08)] backdrop-blur">
+      <nav className="xl:hidden fixed bottom-0 inset-x-0 z-40 grid grid-cols-5 gap-1 border-t border-slate-200 bg-white/95 px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 shadow-[0_-4px_20px_rgba(15,23,42,0.08)] backdrop-blur">
         {[
-          { id: 'overview', label: '總覽', icon: LayoutGrid },
-          { id: 'budget', label: '記帳', icon: Wallet },
-          { id: 'luggage', label: '行李', icon: BaggageClaim },
-          { id: 'chat', label: '聊天', icon: MessageCircle },
-          { id: 'travelers', label: '旅伴', icon: User },
+          { id: 'overview', label: '行程', icon: LayoutGrid },
           { id: 'today', label: '今日', icon: Clock },
-          { id: 'reservations', label: '預訂', icon: Ticket },
-          { id: 'notes', label: '備忘', icon: FileText },
+          { id: 'budget', label: '記帳', icon: Wallet },
+          { id: 'chat', label: '聊天', icon: MessageCircle },
+          { id: 'more', label: '更多', icon: MoreHorizontal },
         ].map((tab) => {
           const Icon = tab.icon;
-          return <button key={tab.id} type="button" onClick={() => { setRightPanelTab(tab.id); setIsMobilePanelOpen(true); }} className={`relative flex min-w-[58px] flex-1 flex-col items-center gap-1 py-1 text-[10px] font-bold ${rightPanelTab === tab.id && isMobilePanelOpen ? 'text-[#F04D79]' : 'text-slate-400'}`}><Icon size={18} />{tab.label}{tab.id === 'chat' && chatUnreadCount > 0 && <span className="absolute right-2 top-0 min-w-4 rounded-full bg-[#F04D79] px-1 text-[9px] leading-4 text-white">{chatUnreadCount > 99 ? '99+' : chatUnreadCount}</span>}</button>;
+          const isActive = tab.id === 'overview' ? !isMobilePanelOpen : tab.id === 'more' ? isMobilePanelOpen && isMobileMoreOpen : isMobilePanelOpen && !isMobileMoreOpen && rightPanelTab === tab.id;
+          return <button key={tab.id} type="button" onClick={() => { if (tab.id === 'overview') { setRightPanelTab('overview'); setIsMobileMoreOpen(false); setIsMobilePanelOpen(false); } else if (tab.id === 'more') { setIsMobileMoreOpen(true); setIsMobilePanelOpen(true); } else { setRightPanelTab(tab.id); setIsMobileMoreOpen(false); setIsMobilePanelOpen(true); } }} className={`relative flex min-w-0 flex-col items-center gap-1 py-1 text-[10px] font-bold ${isActive ? 'text-[#F04D79]' : 'text-slate-400'}`}><Icon size={18} />{tab.label}{tab.id === 'chat' && chatUnreadCount > 0 && <span className="absolute right-1 top-0 min-w-4 rounded-full bg-[#F04D79] px-1 text-[9px] leading-4 text-white">{chatUnreadCount > 99 ? '99+' : chatUnreadCount}</span>}</button>;
         })}
       </nav>
 

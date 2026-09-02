@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../context/AuthContext";
 import { 
-  Plus, UserPlus, X, Calendar, MapPin, Share2, Loader2, User, Pin, Trash2, MoreHorizontal, Train, Car, Bike, Compass, ChevronLeft, CheckCircle2,
+  Plus, UserPlus, X, Calendar, MapPin, Share2, Loader2, User, Pin, Trash2, MoreVertical, Train, Car, Bike, Compass, ChevronLeft, CheckCircle2,
   Globe, Lock
 } from "lucide-react";
 
@@ -258,14 +258,14 @@ export default function PlannerDashboard() {
     <div className="min-h-screen bg-[#FAFAFA] relative">
       {activeDropdown && <div className="fixed inset-0 z-10" onClick={() => setActiveDropdown(null)} />}
       <div className="max-w-7xl mx-auto px-6 py-12">
-        <div className="flex justify-between items-center mb-12">
-          <h1 className="text-3xl font-bold text-slate-900 tracking-wide">我的行程</h1>
-          <div className="flex gap-3">
-             <button onClick={() => setIsJoinModalOpen(true)} className="flex items-center gap-2 px-5 py-2.5 bg-white border border-slate-200 rounded-lg text-sm font-medium hover:border-[#F04D79] transition-all">
-              <UserPlus size={16} /> 收藏他人行程
+        <div className="mb-8 md:mb-12 md:flex md:items-center md:justify-between">
+          <h1 className="text-[28px] font-bold leading-tight text-slate-900 tracking-wide md:text-3xl">我的行程</h1>
+          <div className="mt-4 grid grid-cols-2 gap-3 md:mt-0 md:flex">
+             <button onClick={() => setIsJoinModalOpen(true)} className="flex h-12 min-w-0 items-center justify-center gap-2 whitespace-nowrap rounded-lg border border-slate-200 bg-white px-3 text-xs font-medium transition-all hover:border-[#F04D79] sm:text-sm md:px-5">
+              <UserPlus className="size-4" /> <span>收藏他人行程</span>
              </button>
-            <button onClick={() => setIsModalOpen(true)} className="flex items-center gap-2 px-5 py-2.5 bg-slate-900 text-white rounded-lg text-sm font-medium hover:bg-amber-600 transition-all">
-              <Plus size={16} /> 建立新行程
+            <button onClick={() => setIsModalOpen(true)} className="flex h-12 min-w-0 items-center justify-center gap-2 whitespace-nowrap rounded-lg bg-slate-900 px-3 text-xs font-medium text-white transition-all hover:bg-amber-600 sm:text-sm md:px-5">
+              <Plus className="size-4" /> <span>建立新行程</span>
              </button>
           </div>
         </div>
@@ -277,13 +277,20 @@ export default function PlannerDashboard() {
             <button onClick={() => setIsModalOpen(true)} className="px-7 py-3 bg-slate-900 text-white font-medium rounded-lg">建立第一個行程</button>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6">
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-3 md:gap-6 lg:grid-cols-4">
            {sortedItineraries.map((itinerary) => (
               <div key={itinerary.id} onClick={() => router.push(`/planner/${itinerary.id}`)} className="bg-white border border-slate-100 rounded-xl group cursor-pointer hover:shadow-xl relative">
                 <div className="relative aspect-[4/3] overflow-hidden bg-slate-100 rounded-t-xl">
                   <img src={itinerary.coverImage} className="w-full h-full object-cover grayscale-[40%] group-hover:grayscale-0 transition-all" />
                   {itinerary.isPinned && <div className="absolute top-3 left-3 bg-slate-900/90 text-white p-1.5 rounded-full"><Pin className="size-3.5" /></div>}
-                  <button onClick={(e) => { e.stopPropagation(); setActiveDropdown(activeDropdown === itinerary.id ? null : itinerary.id); }} className="absolute top-3 right-3 size-8 bg-white/90 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100"><MoreHorizontal className="size-4" /></button>
+                  <button
+                    type="button"
+                    aria-label={`開啟「${itinerary.title}」的行程選單`}
+                    onClick={(e) => { e.stopPropagation(); setActiveDropdown(activeDropdown === itinerary.id ? null : itinerary.id); }}
+                    className="absolute right-2 top-2 flex size-7 items-center justify-center rounded-full bg-white/90 text-slate-700 shadow-sm transition-opacity md:right-3 md:top-3 md:size-8 md:opacity-0 md:group-hover:opacity-100"
+                  >
+                    <MoreVertical className="size-3.5 md:size-4" />
+                  </button>
                 </div>
                 
                 {activeDropdown === itinerary.id && (
@@ -302,11 +309,14 @@ export default function PlannerDashboard() {
                 
                 <div className="p-5">
                   <h3 className="text-lg font-medium text-slate-900 mb-1.5 truncate">{itinerary.title}</h3>
-                  <div className="flex items-center justify-between mt-2">
-                    <p className="text-xs text-slate-400 font-mono">{itinerary.startDate} - {itinerary.endDate}</p>
+                  <div className="mt-3 flex items-end justify-between gap-2">
+                    <p className="flex min-w-0 flex-col gap-1 text-xs font-mono leading-tight text-slate-400">
+                      <span className="whitespace-nowrap">{itinerary.startDate}</span>
+                      <span className="whitespace-nowrap">{itinerary.endDate}</span>
+                    </p>
                     
                     {/* 🌟 狀態標示區塊 🌟 */}
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex shrink-0 items-center gap-1.5 pb-0.5">
                       <span title={itinerary.isPublic ? '公開行程' : '私密行程'}>
                         {itinerary.isPublic ? <Globe size={12} className="text-emerald-500" /> : <Lock size={12} className="text-slate-300" />}
                       </span>

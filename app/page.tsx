@@ -361,10 +361,6 @@ export default function Home() {
 
             {/* CTA Section */}
             <section className="py-40 bg-neutral-900 text-white overflow-hidden relative">
-                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 opacity-[0.02] text-[20vw] font-bold whitespace-nowrap pointer-events-none">
-                    VOYAGE VOYAGE
-                </div>
-
                 <div className="container mx-auto px-6 text-center relative z-10">
                     <h2 className="mb-8 text-5xl md:text-7xl font-extralight tracking-tighter italic">
                         開始您的旅程
