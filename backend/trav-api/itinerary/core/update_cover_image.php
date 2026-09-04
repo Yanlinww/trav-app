@@ -38,7 +38,7 @@ if (isset($_FILES['cover_image']) && !empty($_POST['Itinerary_ID']) && !empty($_
     $check_stmt->close();
 
     // 2. 建立上傳目錄 (若不存在則自動建立)
-    $upload_dir = '../uploads/covers/';
+    $upload_dir = dirname(__DIR__, 2) . '/uploads/covers/';
     if (!is_dir($upload_dir)) {
         mkdir($upload_dir, 0777, true);
     }

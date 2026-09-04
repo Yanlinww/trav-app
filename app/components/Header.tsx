@@ -136,7 +136,7 @@ export function Header() {
 
       {/* 行動端帳號選單：主導覽改由下方底欄提供。 */}
       {mobileMenuOpen && (
-        <div className="md:hidden border-t border-neutral-100 bg-white animate-in slide-in-from-top duration-300 shadow-xl">
+        <div className={`absolute inset-x-0 top-full z-40 overflow-y-auto border-t border-neutral-100 bg-white shadow-xl animate-in fade-in slide-in-from-top-2 duration-200 md:hidden ${showMobileBottomNav ? 'max-h-[calc(100dvh-8.5rem)]' : 'max-h-[calc(100dvh-4rem)]'}`}>
           <div className="container mx-auto px-4 py-6 flex flex-col gap-4">
             {loading ? (
               <div className="flex flex-col gap-3">

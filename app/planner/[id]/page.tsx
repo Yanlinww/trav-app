@@ -25,6 +25,14 @@ import { CSS } from '@dnd-kit/utilities';
 
 const MAX_COVER_SOURCE_BYTES = 15 * 1024 * 1024;
 const MAX_COVER_DIMENSION = 1920;
+const FALLBACK_COVER_IMAGE = "https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?q=80&w=800&auto=format&fit=crop";
+
+function coverImageWithVersion(imageUrl: string, version: number) {
+  if (!imageUrl || imageUrl.startsWith("blob:") || imageUrl.startsWith("data:")) return imageUrl || FALLBACK_COVER_IMAGE;
+  const localCoverMatch = imageUrl.match(/\/uploads\/covers\/([^/?#]+)/i);
+  if (localCoverMatch) return `/api/cover?file=${encodeURIComponent(localCoverMatch[1])}&v=${version}`;
+  return `${imageUrl}${imageUrl.includes("?") ? "&" : "?"}v=${version}`;
+}
 
 async function optimizeCoverImage(file: File): Promise<File> {
   if (!file.type.startsWith('image/')) throw new Error('請選擇圖片檔案。');
@@ -708,6 +716,9 @@ function TodayPanel({ dayNumber, items, onFocusItem }: { dayNumber: number; item
   );
 }
 
+const CHAT_MESSAGE_MAX_LENGTH = 120;
+const getChatMessageLength = (value: string) => Array.from(value).length;
+
 function ChatPanel({ itineraryId, currentUserId, isActive, onUnreadChange }: { itineraryId: string; currentUserId: string; isActive: boolean; onUnreadChange: (count: number) => void }) {
   const [members, setMembers] = useState<any[]>([]);
   const [messages, setMessages] = useState<any[]>([]);
@@ -802,6 +813,10 @@ function ChatPanel({ itineraryId, currentUserId, isActive, onUnreadChange }: { i
     event.preventDefault();
     const message = draft.trim();
     if (!message || !currentUserId || isSending) return;
+    if (getChatMessageLength(message) > CHAT_MESSAGE_MAX_LENGTH) {
+      setSendError(`訊息最多可輸入 ${CHAT_MESSAGE_MAX_LENGTH} 字`);
+      return;
+    }
     setIsSending(true);
     setSendError('');
     try {
@@ -851,7 +866,7 @@ function ChatPanel({ itineraryId, currentUserId, isActive, onUnreadChange }: { i
               </div>
               <div className={`max-w-[78%] ${isMine ? 'items-end' : ''}`}>
                 <div className={`mb-1 text-[10px] font-bold text-slate-400 ${isMine ? 'text-right' : ''}`}>{message.name}</div>
-                <div className={`rounded-2xl px-3 py-2 text-sm leading-relaxed ${isMine ? 'rounded-tr-sm bg-[#F04D79] text-white' : 'rounded-tl-sm bg-white text-slate-700 shadow-sm'}`}>{message.message}</div>
+                <div className={`whitespace-pre-wrap break-all rounded-2xl px-3 py-2 text-sm leading-relaxed ${isMine ? 'rounded-tr-sm bg-[#F04D79] text-white' : 'rounded-tl-sm bg-white text-slate-700 shadow-sm'}`}>{message.message}</div>
               </div>
             </div>
           );
@@ -860,9 +875,10 @@ function ChatPanel({ itineraryId, currentUserId, isActive, onUnreadChange }: { i
       <form onSubmit={sendMessage} className="border-t border-slate-100 bg-white p-3">
         {sendError && <div className="mb-2 rounded-lg bg-red-50 px-3 py-2 text-xs font-bold text-red-500">{sendError}</div>}
         <div className="flex items-end gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-1.5 focus-within:border-pink-300">
-          <textarea value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} rows={1} placeholder="輸入訊息..." className="max-h-24 min-h-9 flex-1 resize-none bg-transparent px-2 py-2 text-sm text-slate-700 outline-none" />
+          <textarea value={draft} onChange={(event) => { setDraft(Array.from(event.target.value).slice(0, CHAT_MESSAGE_MAX_LENGTH).join('')); setSendError(''); }} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} rows={1} placeholder="輸入訊息..." className="max-h-24 min-h-9 flex-1 resize-none bg-transparent px-2 py-2 text-sm text-slate-700 outline-none" />
           <button type="submit" disabled={!draft.trim() || isSending} className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-[#F04D79] text-white transition hover:bg-pink-600 disabled:cursor-not-allowed disabled:opacity-40"><Send size={16} /></button>
         </div>
+        <div className={`mt-1 text-right text-[10px] font-medium ${getChatMessageLength(draft) >= CHAT_MESSAGE_MAX_LENGTH * 0.9 ? 'text-amber-500' : 'text-slate-400'}`}>{getChatMessageLength(draft)}/{CHAT_MESSAGE_MAX_LENGTH}</div>
       </form>
     </div>
   );
@@ -1828,6 +1844,8 @@ export default function ItineraryEditor() {
   const [itineraryData, setItineraryData] = useState<any>(null);
   
   const [coverImage, setCoverImage] = useState("");
+  const [coverImageVersion, setCoverImageVersion] = useState(0);
+  const [hasRetriedCoverImage, setHasRetriedCoverImage] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -1839,12 +1857,14 @@ export default function ItineraryEditor() {
   const [isEditingStyle, setIsEditingStyle] = useState(false);
 
   const [activeDay, setActiveDay] = useState(1);
+  const [mobilePlannerView, setMobilePlannerView] = useState<'list' | 'map'>('list');
   const [isAddItemOpen, setIsAddItemOpen] = useState(false);
   const [addItemMode, setAddItemMode] = useState<'choose' | 'search' | 'custom'>('choose');
   
   const [rightPanelTab, setRightPanelTab] = useState('overview');
   const [isMobilePanelOpen, setIsMobilePanelOpen] = useState(false);
   const [isMobileMoreOpen, setIsMobileMoreOpen] = useState(false);
+  const [mobilePanelPreviousView, setMobilePanelPreviousView] = useState<'overview' | 'more'>('overview');
   const [chatUnreadCount, setChatUnreadCount] = useState(0);
   const [luggageCount, setLuggageCount] = useState<{ checked: number; total: number } | null>(null);
   const [budgetTotal, setBudgetTotal] = useState<number | null>(null);
@@ -1908,6 +1928,7 @@ export default function ItineraryEditor() {
   const [mapLayers, setMapLayers] = useState({ itinerary: true, search: true, userLocation: true });
   const [mapReady, setMapReady] = useState(false);
   const [isMapFocusMode, setIsMapFocusMode] = useState(true);
+  const [isMapToolbarOpen, setIsMapToolbarOpen] = useState(false);
   const [isMapUtilityOpen, setIsMapUtilityOpen] = useState(false);
   const [activeMapUtility, setActiveMapUtility] = useState<string | null>(null);
   const [isLocating, setIsLocating] = useState(false);
@@ -2053,29 +2074,6 @@ export default function ItineraryEditor() {
     );
   }, []);
 
-  const fitAllPlaces = useCallback(() => {
-    if (!mapRef.current || !window.google) return;
-    const points = itineraryItems
-      .filter((item) => Number.isFinite(Number(item.Latitude)) && Number.isFinite(Number(item.Longitude)))
-      .map((item) => ({ lat: Number(item.Latitude), lng: Number(item.Longitude) }));
-
-    if (points.length === 0) {
-      const destination = {
-        lat: Number(itineraryData?.destLat) || 25.0478,
-        lng: Number(itineraryData?.destLng) || 121.5170,
-      };
-      mapRef.current.setCenter(destination);
-      mapRef.current.setZoom(12);
-      setMapCenter(destination);
-      setMapZoom(12);
-      return;
-    }
-
-    const bounds = new window.google.maps.LatLngBounds();
-    points.forEach((point) => bounds.extend(point));
-    mapRef.current.fitBounds(bounds, 80);
-  }, [itineraryData, itineraryItems]);
-
   const resetMapView = useCallback(() => {
     const destination = {
       lat: Number(itineraryData?.destLat) || 25.0478,
@@ -2088,6 +2086,43 @@ export default function ItineraryEditor() {
     setMapCenter(destination);
     setMapZoom(12);
   }, [itineraryData]);
+
+  const fitCurrentDayPlaces = useCallback(() => {
+    if (!mapRef.current || !window.google) return;
+    const points = itineraryItems
+      .filter((item) => item.dayNumber === activeDay && Number.isFinite(Number(item.Latitude)) && Number.isFinite(Number(item.Longitude)))
+      .map((item) => ({ lat: Number(item.Latitude), lng: Number(item.Longitude) }));
+
+    if (points.length === 0) {
+      resetMapView();
+      return;
+    }
+
+    if (points.length === 1) {
+      mapRef.current.setCenter(points[0]);
+      mapRef.current.setZoom(15);
+      setMapCenter(points[0]);
+      setMapZoom(15);
+      return;
+    }
+
+    const bounds = new window.google.maps.LatLngBounds();
+    points.forEach((point) => bounds.extend(point));
+    mapRef.current.fitBounds(bounds, 64);
+  }, [activeDay, itineraryItems, resetMapView]);
+
+  const switchMobilePlannerView = useCallback((view: 'list' | 'map') => {
+    setMobilePlannerView(view);
+    if (view !== 'map') return;
+
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        if (!mapRef.current || !window.google) return;
+        window.google.maps.event.trigger(mapRef.current, 'resize');
+        fitCurrentDayPlaces();
+      });
+    });
+  }, [fitCurrentDayPlaces]);
 
   const clearMapSelection = useCallback(() => {
     setSelectedPlace(null);
@@ -2470,7 +2505,9 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
         const data = await res.json();
         if (data.status === 'success') {
           setItineraryData(data.data);
-          setCoverImage(data.data.coverImage || "https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?q=80&w=800&auto=format&fit=crop");
+          setCoverImage(data.data.coverImage || FALLBACK_COVER_IMAGE);
+          setCoverImageVersion(Date.now());
+          setHasRetriedCoverImage(false);
           fetch("http://localhost:8080/itinerary/core/get_itinerary_style.php", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ Itinerary_ID: params.id }) })
             .then((styleRes) => styleRes.json()).then((styleData) => { if (styleData.status === 'success') setTravelStyle(styleData.style); }).catch(() => {});
         } else { alert(data.message); router.push("/planner"); }
@@ -2493,7 +2530,7 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
       const optimizedFile = await optimizeCoverImage(file);
       const formData = new FormData(); formData.append("cover_image", optimizedFile); formData.append("Itinerary_ID", params.id as string); formData.append("Account", user?.id || (user as any)?.Account);
       const res = await fetch("http://localhost:8080/itinerary/core/update_cover_image.php", { method: "POST", body: formData });
-      const data = await res.json(); if (data.status === 'success') setCoverImage(data.new_image_url); else { alert(data.message); setCoverImage(previousCoverImage); }
+      const data = await res.json(); if (data.status === 'success') { setCoverImage(data.new_image_url); setCoverImageVersion(Date.now()); setHasRetriedCoverImage(false); } else { alert(data.message); setCoverImage(previousCoverImage); }
     } catch (error) { alert(error instanceof Error ? error.message : "圖片上傳失敗"); setCoverImage(previousCoverImage); } 
     finally { URL.revokeObjectURL(previewUrl); setIsUploading(false); if (fileInputRef.current) fileInputRef.current.value = ""; }
   };
@@ -2780,14 +2817,29 @@ if (!itineraryData) {
       </header>
 
       <div className="flex flex-1 overflow-visible xl:overflow-hidden">
-        <div className="w-full md:w-[380px] shrink-0 bg-white border-r border-slate-100 flex flex-col z-10 shadow-[4px_0_24px_rgba(0,0,0,0.01)] relative">
-          <div className="relative h-40 w-full bg-slate-100 group overflow-hidden shrink-0">
-            <img src={coverImage} alt="行程封面" className={`w-full h-full object-cover transition-all duration-700 ${isUploading ? 'opacity-50 grayscale blur-sm' : 'group-hover:scale-105 group-hover:brightness-90'}`} />
+        <div className={`${mobilePlannerView === 'list' ? 'flex' : 'hidden'} w-full md:flex md:w-[380px] shrink-0 bg-white border-r border-slate-100 flex-col z-10 shadow-[4px_0_24px_rgba(0,0,0,0.01)] relative`}>
+          <div className="relative aspect-video w-full shrink-0 overflow-hidden bg-slate-100 group md:h-40 md:aspect-auto">
+            <img
+              src={coverImageWithVersion(coverImage, coverImageVersion)}
+              alt="行程封面"
+              onError={() => {
+                if (!hasRetriedCoverImage && coverImage && !coverImage.startsWith("blob:")) {
+                  setHasRetriedCoverImage(true);
+                  setCoverImageVersion(Date.now());
+                  return;
+                }
+                if (coverImage !== FALLBACK_COVER_IMAGE) {
+                  setCoverImage(FALLBACK_COVER_IMAGE);
+                  setCoverImageVersion(Date.now());
+                }
+              }}
+              className={`h-full w-full object-cover object-center transition-all duration-700 ${isUploading ? 'opacity-50 grayscale blur-sm' : 'group-hover:scale-105 group-hover:brightness-90'}`}
+            />
             <input type="file" ref={fileInputRef} onChange={handleImageChange} accept="image/png, image/jpeg, image/webp" className="hidden" />
-            <button onClick={() => fileInputRef.current?.click()} disabled={isUploading} className="absolute inset-0 m-auto size-12 rounded-full bg-slate-900/60 backdrop-blur-md text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-300 hover:bg-[#F04D79] hover:scale-110 disabled:opacity-100 disabled:bg-slate-900/40">
-              {isUploading ? <Loader2 size={20} className="animate-spin" /> : <Camera size={20} />}
+            <button onClick={() => fileInputRef.current?.click()} disabled={isUploading} className="absolute inset-0 flex cursor-pointer items-end justify-end p-3 text-white transition hover:bg-slate-950/10 disabled:cursor-wait md:m-auto md:size-12 md:items-center md:justify-center md:rounded-full md:bg-slate-900/60 md:p-0 md:opacity-0 md:group-hover:opacity-100 md:hover:scale-110 md:hover:bg-[#F04D79]">
+              {isUploading ? <Loader2 size={20} className="animate-spin" /> : <><Camera size={18} /><span className="ml-1.5 rounded-full bg-slate-900/65 px-2.5 py-1 text-xs font-bold backdrop-blur-sm md:hidden">更換封面</span></>}
             </button>
-            <button onClick={() => router.push('/planner')} className="absolute top-4 left-4 flex items-center justify-center size-8 rounded-full bg-slate-900/40 backdrop-blur-sm text-white hover:bg-[#F04D79] transition-colors">
+            <button onClick={() => router.push('/planner')} className="absolute top-4 left-4 z-10 flex size-8 items-center justify-center rounded-full bg-slate-900/40 text-white backdrop-blur-sm transition-colors hover:bg-[#F04D79]">
               <ChevronLeft size={18} strokeWidth={2.5} />
             </button>
           </div>
@@ -2820,9 +2872,14 @@ if (!itineraryData) {
                   <Calendar size={14} className="mr-2 opacity-70" />
                   {itineraryData.startDate} - {itineraryData.endDate}
                 </div>
-                <button onClick={() => { setEditInfoTitle(itineraryData.title); setEditInfoStart(itineraryData.startDate.replace(/\//g, '-')); setEditInfoEnd(itineraryData.endDate.replace(/\//g, '-')); setIsEditingInfo(true); }} className="absolute top-5 right-6 p-2 rounded-full bg-slate-50 text-slate-400 opacity-0 group-hover/header:opacity-100 hover:bg-[#F04D79] hover:text-white transition-all duration-300" title="編輯行程資訊"><Edit2 size={16} /></button>
+                <button onClick={() => { setEditInfoTitle(itineraryData.title); setEditInfoStart(itineraryData.startDate.replace(/\//g, '-')); setEditInfoEnd(itineraryData.endDate.replace(/\//g, '-')); setIsEditingInfo(true); }} className="absolute right-4 top-5 inline-flex items-center gap-1.5 rounded-full bg-slate-900 px-3 py-2 text-xs font-bold text-white shadow-sm transition-all hover:bg-[#F04D79] md:right-6 md:bg-slate-50 md:p-2 md:text-slate-400 md:opacity-0 md:group-hover/header:opacity-100 md:hover:text-white" title="編輯行程名稱與日期" aria-label="編輯行程名稱與日期"><Edit2 size={16} /><span className="md:hidden">編輯</span></button>
               </>
             )}
+          </div>
+
+          <div className="flex gap-1 border-b border-slate-100 bg-white p-3 md:hidden">
+            <button type="button" onClick={() => switchMobilePlannerView('list')} className={`flex flex-1 items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-bold transition-colors ${mobilePlannerView === 'list' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-400 hover:bg-slate-50 hover:text-slate-600'}`}><LayoutGrid size={16} />清單</button>
+            <button type="button" onClick={() => switchMobilePlannerView('map')} className={`flex flex-1 items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-bold transition-colors ${mobilePlannerView === 'map' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-400 hover:bg-slate-50 hover:text-slate-600'}`}><MapIcon size={16} />地圖</button>
           </div>
 
           <div className="flex overflow-x-auto hide-scrollbar px-6 border-b border-slate-100 gap-6">
@@ -2873,7 +2930,7 @@ if (!itineraryData) {
         </div>
 
 {/* 中欄：動態地圖區域 */}
-        <div className="hidden md:flex flex-1 relative items-center justify-center overflow-hidden bg-slate-100">
+        <div className={`${mobilePlannerView === 'map' && !isMobilePanelOpen ? 'flex' : 'hidden'} md:flex flex-1 relative items-center justify-center overflow-hidden bg-slate-100`}>
           {loadError ? (
             <div className="max-w-sm px-6 text-center text-sm text-slate-500">
               <MapPin className="mx-auto mb-3 text-[#F04D79]" size={28} />
@@ -2886,7 +2943,7 @@ if (!itineraryData) {
             <>
 {/* 👇 新增：地圖左側浮動搜尋面板 */}
               {!isMapFocusMode && (
-              <div className="absolute top-4 left-4 z-[50] w-80 bg-white/95 backdrop-blur-md shadow-xl rounded-2xl p-4 border border-slate-200 flex flex-col gap-3">
+              <div className="absolute top-4 left-4 z-[50] hidden w-80 flex-col gap-3 rounded-2xl border border-slate-200 bg-white/95 p-4 shadow-xl backdrop-blur-md md:flex">
                 <div className="text-sm font-bold text-slate-800 tracking-widest flex items-center justify-between gap-2">
                   {searchMarkers.length > 0 && (
                     <button type="button" onClick={clearSearchResults} className="order-2 flex items-center gap-1 text-[10px] font-medium tracking-normal text-slate-400 hover:text-[#F04D79] transition-colors">
@@ -2940,12 +2997,11 @@ if (!itineraryData) {
               </div>
               )}
 
-              <div className="absolute right-4 top-4 z-[50] flex flex-col items-center gap-2 rounded-3xl border border-slate-200/80 bg-white/90 p-1.5 shadow-xl backdrop-blur-md [&>button]:relative [&>button]:size-10 [&>button]:rounded-full [&>button]:after:pointer-events-none [&>button]:after:absolute [&>button]:after:right-[calc(100%+0.75rem)] [&>button]:after:top-1/2 [&>button]:after:z-[60] [&>button]:after:-translate-y-1/2 [&>button]:after:whitespace-nowrap [&>button]:after:rounded-lg [&>button]:after:bg-slate-800 [&>button]:after:px-3 [&>button]:after:py-1.5 [&>button]:after:text-xs [&>button]:after:font-bold [&>button]:after:text-white [&>button]:after:opacity-0 [&>button]:after:shadow-lg [&>button]:after:transition-opacity [&>button]:after:content-[attr(aria-label)] [&>button:hover]:after:opacity-100 [&>button:focus-visible]:after:opacity-100">
+              <div className={`${isMapToolbarOpen ? 'flex' : 'hidden'} absolute right-4 top-32 z-[50] flex-col items-center gap-2 rounded-3xl border border-slate-200/80 bg-white/90 p-1.5 shadow-xl backdrop-blur-md md:top-4 md:flex [&>button]:relative [&>button]:size-10 [&>button]:rounded-full [&>button]:after:pointer-events-none [&>button]:after:absolute [&>button]:after:right-[calc(100%+0.75rem)] [&>button]:after:top-1/2 [&>button]:after:z-[60] [&>button]:after:-translate-y-1/2 [&>button]:after:whitespace-nowrap [&>button]:after:rounded-lg [&>button]:after:bg-slate-800 [&>button]:after:px-3 [&>button]:after:py-1.5 [&>button]:after:text-xs [&>button]:after:font-bold [&>button]:after:text-white [&>button]:after:opacity-0 [&>button]:after:shadow-lg [&>button]:after:transition-opacity [&>button]:after:content-[attr(aria-label)] [&>button:hover]:after:opacity-100 [&>button:focus-visible]:after:opacity-100`}>
                 <button type="button" onClick={() => { setIsMapFocusMode((focused) => !focused); setIsLayerMenuOpen(false); }} aria-pressed={isMapFocusMode} className={`flex size-9 items-center justify-center rounded-xl transition-colors ${isMapFocusMode ? 'bg-pink-50 text-[#F04D79]' : 'text-slate-500 hover:bg-pink-50 hover:text-[#F04D79]'}`} title={isMapFocusMode ? '顯示地圖面板' : '專注地圖'} aria-label={isMapFocusMode ? '顯示地圖面板' : '專注地圖'}>
                   {isMapFocusMode ? <Eye size={17} /> : <EyeOff size={17} />}
                 </button>
                 <button type="button" onClick={() => setIsLayerMenuOpen((open) => !open)} aria-expanded={isLayerMenuOpen} className={`flex size-9 items-center justify-center rounded-xl transition-colors ${isLayerMenuOpen ? 'bg-pink-50 text-[#F04D79]' : 'text-slate-500 hover:bg-pink-50 hover:text-[#F04D79]'}`} title="地圖圖層" aria-label="地圖圖層"><Layers size={17} /></button>
-                <button type="button" onClick={fitAllPlaces} className="flex size-9 items-center justify-center rounded-xl text-slate-500 transition-colors hover:bg-pink-50 hover:text-[#F04D79]" title="顯示全部地點" aria-label="顯示全部地點"><MapPinned size={17} /></button>
                 <button type="button" onClick={resetMapView} className="flex size-9 items-center justify-center rounded-xl text-slate-500 transition-colors hover:bg-pink-50 hover:text-[#F04D79]" title="重置地圖視角" aria-label="重置地圖視角"><RefreshCw size={17} /></button>
                 <button type="button" onClick={clearMapSelection} className="flex size-9 items-center justify-center rounded-xl text-slate-500 transition-colors hover:bg-pink-50 hover:text-[#F04D79]" title="清除地圖選取" aria-label="清除地圖選取"><XCircle size={17} /></button>
                 <button type="button" onClick={() => setIsRouteVisible((visible) => !visible)} aria-pressed={isRouteVisible} className={`flex size-9 items-center justify-center rounded-xl transition-colors ${isRouteVisible ? 'bg-pink-50 text-[#F04D79]' : 'text-slate-400 hover:bg-pink-50 hover:text-[#F04D79]'}`} title={isRouteVisible ? '隱藏目前 Day 路線' : '顯示目前 Day 路線'} aria-label={isRouteVisible ? '隱藏目前 Day 路線' : '顯示目前 Day 路線'}><MapIcon size={17} /></button>
@@ -2959,20 +3015,12 @@ if (!itineraryData) {
               >
                 <LocateFixed size={18} className={isLocating ? 'animate-pulse text-[#F04D79]' : ''} />
               </button>
+              <button type="button" onClick={() => { setIsMapUtilityOpen((open) => !open); setIsLayerMenuOpen(false); }} aria-expanded={isMapUtilityOpen} className={`flex size-9 items-center justify-center rounded-xl transition-colors ${isMapUtilityOpen ? 'bg-pink-50 text-[#F04D79]' : 'text-slate-500 hover:bg-pink-50 hover:text-[#F04D79]'}`} title={isMapUtilityOpen ? '收合沿途工具' : '開啟沿途工具'} aria-label={isMapUtilityOpen ? '收合沿途工具' : '開啟沿途工具'}><MapPin size={17} /></button>
               </div>
 
-              <div className="absolute right-4 top-[23rem] z-[50]">
-                {!isMapUtilityOpen ? (
-                  <button
-                    type="button"
-                    onClick={() => { setIsMapUtilityOpen(true); setIsLayerMenuOpen(false); }}
-                    className="flex items-center gap-2 rounded-2xl border border-slate-200/80 bg-white/95 px-3 py-2 text-xs font-bold text-slate-600 shadow-xl backdrop-blur-md transition hover:text-[#F04D79]"
-                    aria-label="開啟地圖沿途工具"
-                  >
-                    <MapPin size={15} /> 沿途工具
-                  </button>
-                ) : (
-                  <div className="absolute right-0 top-[3rem] w-56 rounded-2xl border border-slate-200/80 bg-white/95 p-3 shadow-xl backdrop-blur-md">
+              <div className={`absolute right-4 ${isMapToolbarOpen ? 'top-[33rem]' : 'top-36'} z-[50] md:top-[23rem]`}>
+                {isMapUtilityOpen && (
+                  <div className="absolute right-0 top-0 w-56 rounded-2xl border border-slate-200/80 bg-white/95 p-3 shadow-xl backdrop-blur-md">
                     <div className="mb-2 flex items-center justify-between">
                       <div><p className="text-xs font-bold text-slate-700">沿途工具</p><p className="mt-0.5 text-[10px] text-slate-400">點擊後搜尋附近地點</p></div>
                       <button type="button" onClick={() => setIsMapUtilityOpen(false)} className="rounded-md p-1 text-slate-400 hover:bg-slate-100" aria-label="收合沿途工具"><X size={14} /></button>
@@ -2992,7 +3040,7 @@ if (!itineraryData) {
               </div>
 
               {isLayerMenuOpen && (
-                <div className="absolute right-4 top-[23rem] z-[50] w-52 rounded-2xl border border-slate-200/80 bg-white/95 p-3 shadow-xl backdrop-blur-md">
+                <div className={`${isMapToolbarOpen ? 'block' : 'hidden'} absolute right-4 top-[23rem] z-[50] w-52 rounded-2xl border border-slate-200/80 bg-white/95 p-3 shadow-xl backdrop-blur-md md:block`}>
                   <div className="mb-2 flex items-center justify-between">
                     <span className="text-xs font-bold tracking-wide text-slate-700">地圖圖層</span>
                     <button type="button" onClick={() => setIsLayerMenuOpen(false)} className="rounded-md p-1 text-slate-400 hover:bg-slate-100" aria-label="關閉圖層選單"><X size={14} /></button>
@@ -3036,7 +3084,7 @@ if (!itineraryData) {
                 mapContainerStyle={{ width: '100%', height: '100%' }}
                 center={mapCenter}
                 zoom={mapZoom}
-                options={{ disableDefaultUI: true, zoomControl: true, gestureHandling: 'greedy', draggable: true, scrollwheel: true }}
+                options={{ disableDefaultUI: true, zoomControl: mobilePlannerView !== 'map', gestureHandling: 'greedy', draggable: true, scrollwheel: true }}
                 onClick={(event) => {
                   const mapEvent = event as google.maps.MapMouseEvent & { placeId?: string };
                   if (mapEvent.placeId) {
@@ -3290,13 +3338,47 @@ if (!itineraryData) {
               </div>
               )}
             </GoogleMap>
+            {mobilePlannerView === 'map' && (
+              <div className="absolute bottom-24 right-4 z-[100] flex flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg md:hidden">
+                <button type="button" onClick={() => { const zoom = mapRef.current?.getZoom(); if (typeof zoom !== 'number') return; const nextZoom = Math.min(20, zoom + 1); mapRef.current?.setZoom(nextZoom); setMapZoom(nextZoom); }} className="flex size-10 items-center justify-center border-b border-slate-200 text-2xl font-light text-slate-600 transition hover:bg-slate-50" aria-label="放大地圖">+</button>
+                <button type="button" onClick={() => { const zoom = mapRef.current?.getZoom(); if (typeof zoom !== 'number') return; const nextZoom = Math.max(3, zoom - 1); mapRef.current?.setZoom(nextZoom); setMapZoom(nextZoom); }} className="flex size-10 items-center justify-center text-2xl font-light text-slate-600 transition hover:bg-slate-50" aria-label="縮小地圖">−</button>
+              </div>
+            )}
+            <div className="absolute left-4 top-20 z-[110] md:top-4 md:hidden">
+              <button type="button" onClick={() => switchMobilePlannerView('list')} className="flex size-11 items-center justify-center rounded-xl border border-slate-200 bg-white/95 text-slate-600 shadow-lg backdrop-blur transition hover:bg-slate-100" aria-label="切換至清單"><LayoutGrid size={18} /></button>
+            </div>
+            <div className="absolute left-1/2 top-20 z-[100] w-[calc(100%-8rem)] max-w-sm -translate-x-1/2 rounded-xl border border-slate-200 bg-white/95 px-2 shadow-lg backdrop-blur md:hidden">
+              <PlaceAutocomplete
+                value={newItemTitle}
+                onChange={setNewItemTitle}
+                locationBias={{
+                  lat: Number(itineraryData?.destLat) || 25.0478,
+                  lng: Number(itineraryData?.destLng) || 121.5170,
+                }}
+                onPlaceSelect={handlePlaceSelect}
+                onKeywordSearch={handleKeywordSearch}
+              />
+            </div>
+            <div className="absolute right-4 top-20 z-[110] md:top-4 md:hidden">
+              <button type="button" onClick={() => { setIsMapToolbarOpen((open) => !open); setIsLayerMenuOpen(false); }} aria-expanded={isMapToolbarOpen} className={`flex size-11 items-center justify-center rounded-xl border shadow-lg backdrop-blur transition ${isMapToolbarOpen ? 'border-pink-200 bg-pink-50 text-[#F04D79]' : 'border-slate-200 bg-white/95 text-slate-600 hover:bg-slate-100'}`} aria-label={isMapToolbarOpen ? '隱藏地圖工具列' : '顯示地圖工具列'}><Layers size={18} /></button>
+            </div>
             </>
           )}
         </div>
 
         <div className={`${isMobilePanelOpen ? 'flex' : 'hidden'} xl:flex absolute xl:static inset-0 xl:inset-auto z-[70] xl:z-auto h-full xl:h-auto w-full xl:w-[340px] shrink-0 flex-col bg-white border-0 xl:border-l xl:border-slate-100 shadow-2xl xl:shadow-[-4px_0_24px_rgba(0,0,0,0.01)]`}>
           <div className="xl:hidden flex h-16 shrink-0 items-center gap-3 border-b border-slate-100 bg-white px-4">
-            <button type="button" onClick={() => { setIsMobilePanelOpen(false); setIsMobileMoreOpen(false); }} className="flex size-9 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-600" aria-label="返回行程"><ChevronLeft size={20} /></button>
+            <button type="button" onClick={() => {
+              if (!isMobileMoreOpen && mobilePanelPreviousView === 'more') {
+                setIsMobileMoreOpen(true);
+                setRightPanelTab('overview');
+                setMobilePanelPreviousView('overview');
+                return;
+              }
+              setIsMobilePanelOpen(false);
+              setIsMobileMoreOpen(false);
+              setMobilePanelPreviousView('overview');
+            }} className="flex size-9 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-600" aria-label={mobilePanelPreviousView === 'more' && !isMobileMoreOpen ? '返回更多工具' : '返回行程'}><ChevronLeft size={20} /></button>
             <div className="min-w-0"><p className="truncate text-[11px] font-bold tracking-[0.14em] text-slate-400">{itineraryData?.title || '行程'}</p><h2 className="truncate text-base font-bold text-slate-800">{isMobileMoreOpen ? '更多工具' : rightPanelTab === 'today' ? '今日行程' : rightPanelTab === 'budget' ? '旅程記帳' : rightPanelTab === 'chat' ? '旅伴聊天' : rightPanelTab === 'luggage' ? '行李清單' : rightPanelTab === 'travelers' ? '旅伴管理' : rightPanelTab === 'reservations' ? '預訂與票券' : rightPanelTab === 'notes' ? '旅行備忘錄' : '行程總覽'}</h2></div>
           </div>
 
@@ -3334,7 +3416,7 @@ if (!itineraryData) {
                     { id: 'notes', label: '旅行備忘錄', description: '記下旅程重點', icon: FileText },
                   ].map((tool) => {
                     const Icon = tool.icon;
-                    return <button key={tool.id} type="button" onClick={() => { setRightPanelTab(tool.id); setIsMobileMoreOpen(false); }} className="min-h-36 rounded-2xl border border-slate-100 bg-white p-4 text-left shadow-sm transition hover:border-[#F04D79]/30 hover:shadow-md"><Icon size={24} className="text-[#F04D79]" /><div className="mt-5 text-sm font-bold text-slate-800">{tool.label}</div><div className="mt-1 text-xs leading-5 text-slate-400">{tool.description}</div></button>;
+                    return <button key={tool.id} type="button" onClick={() => { setRightPanelTab(tool.id); setIsMobileMoreOpen(false); setMobilePanelPreviousView('more'); }} className="min-h-36 rounded-2xl border border-slate-100 bg-white p-4 text-left shadow-sm transition hover:border-[#F04D79]/30 hover:shadow-md"><Icon size={24} className="text-[#F04D79]" /><div className="mt-5 text-sm font-bold text-slate-800">{tool.label}</div><div className="mt-1 text-xs leading-5 text-slate-400">{tool.description}</div></button>;
                   })}
                 </div>
               </div>
@@ -3384,7 +3466,7 @@ if (!itineraryData) {
         </div>
       </div>
 
-      <nav className="xl:hidden fixed bottom-0 inset-x-0 z-40 grid grid-cols-5 gap-1 border-t border-slate-200 bg-white/95 px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 shadow-[0_-4px_20px_rgba(15,23,42,0.08)] backdrop-blur">
+      <nav className={`${mobilePlannerView === 'map' ? 'hidden' : 'grid'} fixed inset-x-0 bottom-0 z-40 grid-cols-5 gap-1 border-t border-slate-200 bg-white/95 px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 shadow-[0_-4px_20px_rgba(15,23,42,0.08)] backdrop-blur xl:hidden`}>
         {[
           { id: 'overview', label: '行程', icon: LayoutGrid },
           { id: 'today', label: '今日', icon: Clock },
@@ -3394,7 +3476,7 @@ if (!itineraryData) {
         ].map((tab) => {
           const Icon = tab.icon;
           const isActive = tab.id === 'overview' ? !isMobilePanelOpen : tab.id === 'more' ? isMobilePanelOpen && isMobileMoreOpen : isMobilePanelOpen && !isMobileMoreOpen && rightPanelTab === tab.id;
-          return <button key={tab.id} type="button" onClick={() => { if (tab.id === 'overview') { setRightPanelTab('overview'); setIsMobileMoreOpen(false); setIsMobilePanelOpen(false); } else if (tab.id === 'more') { setIsMobileMoreOpen(true); setIsMobilePanelOpen(true); } else { setRightPanelTab(tab.id); setIsMobileMoreOpen(false); setIsMobilePanelOpen(true); } }} className={`relative flex min-w-0 flex-col items-center gap-1 py-1 text-[10px] font-bold ${isActive ? 'text-[#F04D79]' : 'text-slate-400'}`}><Icon size={18} />{tab.label}{tab.id === 'chat' && chatUnreadCount > 0 && <span className="absolute right-1 top-0 min-w-4 rounded-full bg-[#F04D79] px-1 text-[9px] leading-4 text-white">{chatUnreadCount > 99 ? '99+' : chatUnreadCount}</span>}</button>;
+          return <button key={tab.id} type="button" onClick={() => { if (tab.id === 'overview') { setRightPanelTab('overview'); setIsMobileMoreOpen(false); setIsMobilePanelOpen(false); setMobilePanelPreviousView('overview'); } else if (tab.id === 'more') { setIsMobileMoreOpen(true); setIsMobilePanelOpen(true); setMobilePanelPreviousView('overview'); } else { setRightPanelTab(tab.id); setIsMobileMoreOpen(false); setIsMobilePanelOpen(true); setMobilePanelPreviousView('overview'); } }} className={`relative flex min-w-0 flex-col items-center gap-1 py-1 text-[10px] font-bold ${isActive ? 'text-[#F04D79]' : 'text-slate-400'}`}><Icon size={18} />{tab.label}{tab.id === 'chat' && chatUnreadCount > 0 && <span className="absolute right-1 top-0 min-w-4 rounded-full bg-[#F04D79] px-1 text-[9px] leading-4 text-white">{chatUnreadCount > 99 ? '99+' : chatUnreadCount}</span>}</button>;
         })}
       </nav>
 

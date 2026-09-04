@@ -47,11 +47,13 @@ body {
   letter-spacing: 0.01em;
 }
 
-.itinerary-page [class*="bg-[#F04D79]"] { background-color: var(--planner-accent) !important; }
+.itinerary-page .bg-\[\#F04D79\] { background-color: var(--planner-accent) !important; }
+.itinerary-page .hover\:bg-\[\#F04D79\]:hover { background-color: var(--planner-accent) !important; }
 .itinerary-page [class*="hover:bg-pink-600"]:hover { background-color: var(--planner-accent-strong) !important; }
-.itinerary-page [class*="text-[#F04D79]"] { color: var(--planner-accent) !important; }
-.itinerary-page [class*="hover:text-[#F04D79]"]:hover { color: var(--planner-accent-strong) !important; }
-.itinerary-page [class*="border-[#F04D79]"] { border-color: var(--planner-accent) !important; }
+.itinerary-page .text-\[\#F04D79\] { color: var(--planner-accent) !important; }
+.itinerary-page .hover\:text-\[\#F04D79\]:hover { color: var(--planner-accent-strong) !important; }
+.itinerary-page .border-\[\#F04D79\] { border-color: var(--planner-accent) !important; }
+.itinerary-page .hover\:border-\[\#F04D79\]:hover { border-color: var(--planner-accent) !important; }
 .itinerary-page [class*="border-slate-100"] { border-color: var(--planner-line) !important; }
 .itinerary-page [class*="border-slate-200"] { border-color: #ddd8ce !important; }
 .itinerary-page [class*="bg-pink-50"] { background-color: #edf2f6 !important; }
