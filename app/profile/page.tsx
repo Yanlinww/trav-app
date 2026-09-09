@@ -2,6 +2,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { AvatarImage } from '../components/AvatarImage';
 import { useRouter } from 'next/navigation';
 import { 
   Camera, MapPin, Bookmark,
@@ -262,7 +263,7 @@ export default function ProfilePage() {
         <div className="bg-white rounded-2xl shadow-xl p-8 md:p-10 flex flex-col md:flex-row items-center md:items-start justify-between gap-8 relative border border-neutral-100">
           <div className="flex flex-col md:flex-row items-center gap-6 text-center md:text-left">
             <div className="w-28 h-28 bg-neutral-100 rounded-full border-4 border-white flex items-center justify-center flex-shrink-0 shadow-md overflow-hidden">
-              {avatarUrl ? <img src={avatarUrl} alt="Avatar" className="w-full h-full object-cover" /> : <span className="text-4xl font-light text-neutral-300">{displayName.charAt(0)}</span>}
+              <AvatarImage src={avatarUrl} name={displayName} fallbackClassName="text-4xl" />
             </div>
             <div>
               <h1 className="text-2xl font-bold text-neutral-900 mb-2">{displayName}</h1>

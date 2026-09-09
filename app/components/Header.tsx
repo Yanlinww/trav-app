@@ -7,6 +7,7 @@ import { Link } from "./Link";
 import { Menu, X, User, LogOut, ChevronDown, Settings, Bell, ShieldCheck } from "lucide-react";
 import { TopNav } from "./TopNav";
 import { useAuth } from "../context/AuthContext";
+import { AvatarImage } from "./AvatarImage";
 
 export function Header() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -50,11 +51,7 @@ export function Header() {
               >
                 {/* 大頭貼 */}
                 <div className="size-9 bg-neutral-50 rounded-full flex items-center justify-center text-neutral-600 border border-neutral-200 overflow-hidden shadow-sm">
-                  {avatarUrl ? (
-                    <img src={avatarUrl} alt="Avatar" className="w-full h-full object-cover grayscale-[20%]" />
-                  ) : (
-                    <User className="size-5" />
-                  )}
+                  <AvatarImage src={avatarUrl} name={user.nickname} />
                 </div>
                 
                 <div className="flex flex-col">
@@ -148,11 +145,7 @@ export function Header() {
                 {/* 用戶基本資訊顯示 */}
                 <div className="flex items-center gap-3 px-3 py-2 mb-2">
                   <div className="size-10 bg-neutral-50 rounded-full border border-neutral-200 flex items-center justify-center text-neutral-600 overflow-hidden shadow-sm">
-                    {avatarUrl ? (
-                      <img src={avatarUrl} alt="Avatar" className="w-full h-full object-cover grayscale-[20%]" />
-                    ) : (
-                      <User className="size-6" />
-                    )}
+                    <AvatarImage src={avatarUrl} name={user.nickname} />
                   </div>
                   <span className="font-bold text-neutral-700 tracking-wider uppercase">{user.nickname}</span>
                 </div>
