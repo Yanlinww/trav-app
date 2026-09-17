@@ -18,25 +18,16 @@ if (!empty($data->Account)) {
     $yt = $data->youtube ?? '';
     $fb = $data->facebook ?? '';
 
-    // 檢查這個帳號是否已經有紀錄
-    $stmt = $conn->prepare("SELECT Account FROM MemberSocialLinks WHERE Account = ?");
-    $stmt->bind_param("s", $account);
-    $stmt->execute();
-    $result = $stmt->get_result();
-
-    if ($result->num_rows > 0) {
-        // 更新現有紀錄
-        $update = $conn->prepare("UPDATE MemberSocialLinks SET instagram=?, twitter=?, xiaohongshu=?, tiktok=?, youtube=?, facebook=? WHERE Account=?");
-        $update->bind_param("sssssss", $ig, $tw, $xhs, $tk, $yt, $fb, $account);
-        $update->execute();
+    // 因為已經合併進 Member 表，我們不需要再判斷 INSERT 還是 UPDATE，一律 UPDATE 即可！
+    $update = $conn->prepare("UPDATE Member SET Link_Instagram=?, Link_Twitter=?, Link_Xiaohongshu=?, Link_Tiktok=?, Link_Youtube=?, Link_Facebook=? WHERE Account=?");
+    $update->bind_param("sssssss", $ig, $tw, $xhs, $tk, $yt, $fb, $account);
+    
+    if ($update->execute()) {
+        echo json_encode(["status" => "success", "message" => "社群連結已更新！"]);
     } else {
-        // 新增第一筆紀錄
-        $insert = $conn->prepare("INSERT INTO MemberSocialLinks (Account, instagram, twitter, xiaohongshu, tiktok, youtube, facebook) VALUES (?, ?, ?, ?, ?, ?, ?)");
-        $insert->bind_param("sssssss", $account, $ig, $tw, $xhs, $tk, $yt, $fb);
-        $insert->execute();
+        echo json_encode(["status" => "error", "message" => "更新失敗：" . $conn->error]);
     }
-
-    echo json_encode(["status" => "success", "message" => "社群連結已更新！"]);
+    $update->close();
 } else {
     echo json_encode(["status" => "error", "message" => "缺少帳號資訊"]);
 }

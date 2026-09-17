@@ -15,13 +15,17 @@ if (empty($data->Itinerary_ID)) {
     exit();
 }
 
-$conn->query("CREATE TABLE IF NOT EXISTS `Itinerary_Style` (`Itinerary_ID` INT NOT NULL PRIMARY KEY, `Style` VARCHAR(50) NOT NULL DEFAULT '自助旅行') ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-$stmt = $conn->prepare('SELECT `Style` FROM `Itinerary_Style` WHERE `Itinerary_ID` = ?');
+// 直接從主檔 Itinerary 表的 Style 欄位撈取，不再查詢獨立的 Itinerary_Style 表
+$stmt = $conn->prepare('SELECT `Style` FROM `Itinerary` WHERE `Itinerary_ID` = ?');
 $stmt->bind_param('i', $data->Itinerary_ID);
 $stmt->execute();
 $result = $stmt->get_result()->fetch_assoc();
-
-echo json_encode(['status' => 'success', 'style' => $result['Style'] ?? '自助旅行'], JSON_UNESCAPED_UNICODE);
 $stmt->close();
+
+// 若主表剛好沒填，預設回傳 '自助旅行'
+$style = !empty($result['Style']) ? $result['Style'] : '自助旅行';
+
+echo json_encode(['status' => 'success', 'style' => $style], JSON_UNESCAPED_UNICODE);
+
 $conn->close();
 ?>

@@ -24,6 +24,7 @@ if (!empty($data->Itinerary_ID) && !empty($data->Title) && !empty($data->Day_Num
     $title = $data->Title;
     $start_time = normalize_time_value($data->StartTime ?? null);
     $end_time = normalize_time_value($data->EndTime ?? null);
+    
     if ($start_time === false || $end_time === false) {
         http_response_code(422);
         echo json_encode(["status" => "error", "message" => "時間格式不正確，請使用 HH:mm。"]);
@@ -35,11 +36,11 @@ if (!empty($data->Itinerary_ID) && !empty($data->Title) && !empty($data->Day_Num
         exit();
     }
     
-    // 【新增】接收座標資料
+    // 接收新的 Place_ID 與動態 Item_Type
+    $place_id = (isset($data->Place_ID) && $data->Place_ID !== '') ? (int)$data->Place_ID : null;
+    $item_type = isset($data->Item_Type) ? $data->Item_Type : 'custom'; 
     $lat = isset($data->Latitude) ? $data->Latitude : null;
     $lng = isset($data->Longitude) ? $data->Longitude : null;
-    
-    $item_type = 'attraction'; 
 
     $sort_stmt = $conn->prepare("SELECT MAX(`Sort_Order`) as MaxSort FROM `Itinerary_Item` WHERE `Itinerary_ID` = ? AND `Day_Number` = ?");
     $sort_stmt->bind_param("ii", $itinerary_id, $day_number);
@@ -48,11 +49,11 @@ if (!empty($data->Itinerary_ID) && !empty($data->Title) && !empty($data->Day_Num
     $new_sort_order = ($sort_result['MaxSort'] !== null) ? $sort_result['MaxSort'] + 1 : 0;
     $sort_stmt->close();
 
-    // 【修改】擴充寫入 Latitude 與 Longitude
-    $stmt = $conn->prepare("INSERT INTO `Itinerary_Item` (`Itinerary_ID`, `Day_Number`, `Item_Type`, `Title`, `Start_Time`, `End_Time`, `Sort_Order`, `Latitude`, `Longitude`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+    // 擴充寫入 Place_ID
+    $stmt = $conn->prepare("INSERT INTO `Itinerary_Item` (`Itinerary_ID`, `Day_Number`, `Item_Type`, `Place_ID`, `Title`, `Start_Time`, `End_Time`, `Sort_Order`, `Latitude`, `Longitude`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
     
-    // 【修改】綁定參數數量從 iissssi 變更為 iissssidd
-    $stmt->bind_param("iissssidd", $itinerary_id, $day_number, $item_type, $title, $start_time, $end_time, $new_sort_order, $lat, $lng);
+    // 參數對應：i(ID) i(Day) s(Type) i(PlaceID) s(Title) s(Start) s(End) i(Sort) d(Lat) d(Lng)
+    $stmt->bind_param("iisisssidd", $itinerary_id, $day_number, $item_type, $place_id, $title, $start_time, $end_time, $new_sort_order, $lat, $lng);
     
     if ($stmt->execute()) {
         echo json_encode(["status" => "success", "message" => "新增成功"]);

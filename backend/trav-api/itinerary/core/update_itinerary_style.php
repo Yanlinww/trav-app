@@ -16,9 +16,9 @@ if (empty($data->Itinerary_ID) || empty($data->Style) || !in_array($data->Style,
     exit();
 }
 
-$conn->query("CREATE TABLE IF NOT EXISTS `Itinerary_Style` (`Itinerary_ID` INT NOT NULL PRIMARY KEY, `Style` VARCHAR(50) NOT NULL DEFAULT '自助旅行') ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-$stmt = $conn->prepare('INSERT INTO `Itinerary_Style` (`Itinerary_ID`, `Style`) VALUES (?, ?) ON DUPLICATE KEY UPDATE `Style` = VALUES(`Style`)');
-$stmt->bind_param('is', $data->Itinerary_ID, $data->Style);
+// 直接更新主檔 Itinerary 表的 Style 欄位
+$stmt = $conn->prepare('UPDATE `Itinerary` SET `Style` = ? WHERE `Itinerary_ID` = ?');
+$stmt->bind_param('si', $data->Style, $data->Itinerary_ID);
 
 if ($stmt->execute()) {
     echo json_encode(['status' => 'success', 'style' => $data->Style], JSON_UNESCAPED_UNICODE);
