@@ -1,10 +1,16 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { AvatarImage } from '../components/AvatarImage';
 import { useRouter } from 'next/navigation';
-import { User, Shield, Compass, Share2, Camera, Loader2, CheckCircle2 } from 'lucide-react';
+import { User, Shield, Compass, Share2, Camera, Loader2, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { GoogleOAuthProvider, useGoogleLogin } from '@react-oauth/google';
+
+type SettingsTab = 'profile' | 'security' | 'preferences' | 'social';
+type PendingNavigation =
+  | { type: 'route'; href: string }
+  | { type: 'tab'; tab: SettingsTab };
 
 // =======================================================
 // Google 綁定組件
@@ -127,10 +133,17 @@ export default function SettingsPage() {
 
   // ================= 個人檔案相關 =================
   const [editName, setEditName] = useState('');
-  const [editAvatar, setEditAvatar] = useState<string | null>(null); // 用於前端預覽圖片
-  const [avatarFile, setAvatarFile] = useState<File | null>(null);   // 🌟 新增：用來存放要上傳的實體檔案
+  const [editAvatar, setEditAvatar] = useState<string | null>(null); 
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);   
+  
+  // 🌟 修正 1：補上 savedName 和 savedAvatar 的 State
+  const [savedName, setSavedName] = useState('');
+  const [savedAvatar, setSavedAvatar] = useState<string | null>(null);
+
   const [isSaving, setIsSaving] = useState(false);
   const [showSuccessHint, setShowSuccessHint] = useState(false);
+  const [pendingNavigation, setPendingNavigation] = useState<PendingNavigation | null>(null);
+  const allowPageExitRef = useRef(false);
 
   const [oldPassword, setOldPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -140,12 +153,49 @@ export default function SettingsPage() {
   useEffect(() => {
     if (!loading && !user) router.push('/auth/login');
     else if (user) {
-      setEditName(user.nickname || 'TRAVELER');
-      setEditAvatar((user as any).avatar || null);
+      const currentName = user.nickname || 'TRAVELER';
+      const currentAvatar = (user as any).avatar || null;
+      setEditName(currentName);
+      setEditAvatar(currentAvatar);
+      setSavedName(currentName);
+      setSavedAvatar(currentAvatar);
     }
   }, [user, loading, router]);
 
-  // 🌟 修改：取得實體檔案，並產生預覽網址
+  const hasUnsavedProfileChanges = editName !== savedName || editAvatar !== savedAvatar;
+
+  useEffect(() => {
+    if (!hasUnsavedProfileChanges) return;
+
+    const warnBeforeLeaving = (event: BeforeUnloadEvent) => {
+      if (allowPageExitRef.current) return;
+      event.preventDefault();
+      event.returnValue = '';
+    };
+
+    const guardLinkNavigation = (event: MouseEvent) => {
+      if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      const anchor = target.closest('a[href]') as HTMLAnchorElement | null;
+      if (!anchor || anchor.target === '_blank' || anchor.hasAttribute('download')) return;
+
+      const destination = new URL(anchor.href, window.location.href);
+      if (destination.href === window.location.href) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      setPendingNavigation({ type: 'route', href: destination.href });
+    };
+
+    window.addEventListener('beforeunload', warnBeforeLeaving);
+    document.addEventListener('click', guardLinkNavigation, true);
+    return () => {
+      window.removeEventListener('beforeunload', warnBeforeLeaving);
+      document.removeEventListener('click', guardLinkNavigation, true);
+    };
+  }, [hasUnsavedProfileChanges]);
+
   const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -154,9 +204,9 @@ export default function SettingsPage() {
     }
   };
 
-  // 🌟 修改：改用 FormData 傳送實體檔案
-  const handleSaveProfile = async (e: React.FormEvent) => {
-    e.preventDefault();
+  // 🌟 修正 2：防呆處理 e.preventDefault()，並在成功時更新 savedName
+  const handleSaveProfile = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
     if (!editName.trim()) return alert("請輸入暱稱");
     if (!user) return;
     setIsSaving(true);
@@ -169,7 +219,6 @@ export default function SettingsPage() {
         formData.append('Avatar', avatarFile);
       }
 
-      // 注意：使用 FormData 時，fetch 不要自己設定 Content-Type，瀏覽器會自動帶上 boundary
       const res = await fetch("http://localhost:8080/profile/update_profile.php", {
         method: "POST",
         body: formData, 
@@ -183,14 +232,42 @@ export default function SettingsPage() {
           return;
         }
 
-        // 如果後端有回傳新的大頭貼網址，就用新的；否則保留舊的
         const finalAvatarUrl = data.avatarUrl || editAvatar;
         login({ ...user, nickname: editName, avatar: finalAvatarUrl } as any, token);
         
+        // 更新儲存狀態，消除「未儲存」的警告
+        setSavedName(editName);
+        setSavedAvatar(finalAvatarUrl);
+        setAvatarFile(null);
+
         setShowSuccessHint(true);
         setTimeout(() => setShowSuccessHint(false), 3000);
       } else alert("更新失敗：" + data.message);
     } catch (error) { alert("連線發生錯誤"); } finally { setIsSaving(false); }
+  };
+
+  // 🌟 修正 3：補上對話框需要的處理函數
+  const executeNavigation = (nav: PendingNavigation) => {
+    allowPageExitRef.current = true;
+    if (nav.type === 'route') {
+      window.location.href = nav.href;
+    } else {
+      setActiveTab(nav.tab);
+    }
+    setPendingNavigation(null);
+    setTimeout(() => { allowPageExitRef.current = false; }, 100);
+  };
+
+  const handleDiscardChanges = () => {
+    setEditName(savedName);
+    setEditAvatar(savedAvatar);
+    setAvatarFile(null);
+    if (pendingNavigation) executeNavigation(pendingNavigation);
+  };
+
+  const handleSaveAndContinue = async () => {
+    await handleSaveProfile();
+    if (pendingNavigation) executeNavigation(pendingNavigation);
   };
 
   const handleUpdatePassword = async (e: React.FormEvent) => {
@@ -239,7 +316,7 @@ export default function SettingsPage() {
                   <div className="flex flex-col items-center sm:items-start gap-4 border-b border-neutral-100 pb-8">
                     <span className="text-[10px] font-mono font-bold text-neutral-400 tracking-widest uppercase">TRAVELER AVATAR</span>
                     <div className="w-24 h-24 bg-neutral-50 rounded-full border border-dashed border-neutral-200 flex items-center justify-center relative overflow-hidden group shadow-inner">
-                      {editAvatar ? <img src={editAvatar} alt="Preview" className="w-full h-full object-cover grayscale-[15%]" /> : <span className="text-3xl font-light text-neutral-300">{(user.nickname || 'T').charAt(0)}</span>}
+                      <AvatarImage src={editAvatar} name={editName || user.nickname} fallbackClassName="text-3xl" />
                       <div className="absolute inset-0 bg-neutral-900/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center cursor-pointer"><Camera className="w-5 h-5 text-white" /></div>
                       <input type="file" accept="image/*" className="absolute inset-0 opacity-0 cursor-pointer" onChange={handleAvatarChange} />
                     </div>
@@ -292,6 +369,28 @@ export default function SettingsPage() {
             </main>
           </div>
         </div>
+        {pendingNavigation && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/35 px-5 backdrop-blur-[2px]" role="dialog" aria-modal="true" aria-labelledby="unsaved-dialog-title">
+            <div className="w-full max-w-md overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+              <div className="flex items-start gap-4 px-6 pb-5 pt-6 sm:px-7">
+                <div className="flex size-11 shrink-0 items-center justify-center rounded-full bg-[#F04D79]/10 text-[#F04D79]">
+                  <AlertTriangle className="size-5" />
+                </div>
+                <div>
+                  <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.22em] text-slate-400">Unsaved changes</p>
+                  <h2 id="unsaved-dialog-title" className="text-xl font-bold tracking-wide text-slate-900">尚有未儲存的變更</h2>
+                  <p className="mt-2 text-sm leading-6 text-slate-500">你的大頭貼或暱稱已修改。要先儲存，再前往其他畫面嗎？</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3 border-t border-slate-100 bg-slate-50/80 px-6 py-4 sm:px-7">
+                <button type="button" onClick={handleDiscardChanges} disabled={isSaving} className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold tracking-wide text-slate-600 transition hover:border-slate-300 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50">不儲存</button>
+                <button type="button" onClick={handleSaveAndContinue} disabled={isSaving} className="flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-3 text-sm font-bold tracking-wide text-white shadow-lg shadow-slate-900/15 transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60">
+                  {isSaving ? <><Loader2 className="size-4 animate-spin" />儲存中</> : '儲存'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </GoogleOAuthProvider>
   );

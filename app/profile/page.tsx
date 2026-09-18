@@ -2,12 +2,14 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { AvatarImage } from '../components/AvatarImage';
 import { useRouter } from 'next/navigation';
 import { 
   Camera, MapPin, Bookmark,
   Link2, X, Loader2, Plus, Eye
 } from 'lucide-react';
 import { FaFacebook, FaInstagram, FaTwitter, FaYoutube, FaTiktok } from 'react-icons/fa';
+import FollowListModal from '../components/FollowListModal';
 
 export default function ProfilePage() {
   const { user } = useAuth();
@@ -37,6 +39,7 @@ export default function ProfilePage() {
     instagram: '', twitter: '', xiaohongshu: '', tiktok: '', youtube: '', facebook: ''
   });
   const [followStats, setFollowStats] = useState<{ followersCount: number; followingCount: number } | null>(null);
+  const [followListType, setFollowListType] = useState<'followers' | 'following' | null>(null);
 
   const displayName = user?.nickname || 'TRAVELER';
   const avatarUrl = (user as any)?.avatar;
@@ -260,7 +263,7 @@ export default function ProfilePage() {
         <div className="bg-white rounded-2xl shadow-xl p-8 md:p-10 flex flex-col md:flex-row items-center md:items-start justify-between gap-8 relative border border-neutral-100">
           <div className="flex flex-col md:flex-row items-center gap-6 text-center md:text-left">
             <div className="w-28 h-28 bg-neutral-100 rounded-full border-4 border-white flex items-center justify-center flex-shrink-0 shadow-md overflow-hidden">
-              {avatarUrl ? <img src={avatarUrl} alt="Avatar" className="w-full h-full object-cover" /> : <span className="text-4xl font-light text-neutral-300">{displayName.charAt(0)}</span>}
+              <AvatarImage src={avatarUrl} name={displayName} fallbackClassName="text-4xl" />
             </div>
             <div>
               <h1 className="text-2xl font-bold text-neutral-900 mb-2">{displayName}</h1>
@@ -271,9 +274,9 @@ export default function ProfilePage() {
           </div>
           <div className="flex flex-col items-center md:items-end gap-5 mt-2 md:mt-0">
             <div className="flex items-center gap-6 text-neutral-800">
-              <div className="text-center flex items-baseline gap-1.5"><span className="text-2xl font-bold">{followStats?.followersCount ?? '—'}</span> <span className="text-sm text-neutral-500 font-medium">粉絲</span></div>
+              <button type="button" onClick={() => setFollowListType('followers')} className="text-center flex items-baseline gap-1.5 rounded-lg px-1 transition hover:text-[#50718a] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#86a5ba]" aria-label="查看粉絲名單"><span className="text-2xl font-bold">{followStats?.followersCount ?? '—'}</span> <span className="text-sm text-neutral-500 font-medium">粉絲</span></button>
               <div className="w-px h-6 bg-neutral-200"></div>
-              <div className="text-center flex items-baseline gap-1.5"><span className="text-2xl font-bold">{followStats?.followingCount ?? '—'}</span> <span className="text-sm text-neutral-500 font-medium">追蹤中</span></div>
+              <button type="button" onClick={() => setFollowListType('following')} className="text-center flex items-baseline gap-1.5 rounded-lg px-1 transition hover:text-[#50718a] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#86a5ba]" aria-label="查看追蹤中名單"><span className="text-2xl font-bold">{followStats?.followingCount ?? '—'}</span> <span className="text-sm text-neutral-500 font-medium">追蹤中</span></button>
               <div className="w-px h-6 bg-neutral-200"></div>
               <div className="text-center flex items-baseline gap-1.5"><span className="text-2xl font-bold">0</span> <span className="text-sm text-neutral-500 font-medium">影音</span></div>
             </div>
@@ -471,6 +474,15 @@ export default function ProfilePage() {
             </div>
           </div>
         </div>
+      )}
+      {followListType && currentAccount && (
+        <FollowListModal
+          account={currentAccount}
+          listType={followListType}
+          isOwnList
+          onClose={() => setFollowListType(null)}
+          onOwnFollowingChanged={() => setFollowStats((stats) => stats ? { ...stats, followingCount: Math.max(0, stats.followingCount - 1) } : stats)}
+        />
       )}
     </div>
   );

@@ -9,6 +9,7 @@ import {
   Compass,
   Heart,
   ImagePlus,
+  Loader2,
   MapPin,
   MessageCircle,
   RefreshCw,
@@ -124,6 +125,8 @@ export default function CommunityPage() {
   const [commentDrafts, setCommentDrafts] = useState<Record<number, string>>({});
   const [replyTargets, setReplyTargets] = useState<Record<number, CommunityComment | undefined>>({});
   const [openComments, setOpenComments] = useState<Record<number, boolean>>({});
+  const [loadedComments, setLoadedComments] = useState<Record<number, boolean>>({});
+  const [loadingComments, setLoadingComments] = useState<Record<number, boolean>>({});
 
   const [loadingPosts, setLoadingPosts] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -157,6 +160,8 @@ export default function CommunityPage() {
       });
       const data = await readApiResponse<CommunityPost[]>(response);
       setPosts(data.data ?? []);
+      setLoadedComments({});
+      setOpenComments({});
     } catch (apiError) {
       setError(apiError instanceof Error ? apiError.message : "載入動態失敗");
     } finally {
@@ -172,15 +177,45 @@ export default function CommunityPage() {
   }, [loadTopics]);
 
   useEffect(() => {
+    // 只有搜尋輸入才 debounce；初次進入與切換分類不再固定多等 250ms。
     const timer = window.setTimeout(() => {
       void loadPosts();
-    }, 250);
+    }, search.trim() ? 250 : 0);
     return () => window.clearTimeout(timer);
-  }, [loadPosts]);
+  }, [loadPosts, search]);
 
   function selectTab(tab: TabType) {
     setActiveTab(tab);
     setPostType(tab === "all" ? "footprint" : tab);
+  }
+
+  async function loadComments(postId: number) {
+    if (loadingComments[postId]) return;
+
+    setLoadingComments((current) => ({ ...current, [postId]: true }));
+    try {
+      const response = await fetch(`${COMMUNITY_API}/get_comments.php?postId=${postId}`, { cache: "no-store" });
+      const data = await readApiResponse<CommunityComment[]>(response);
+      setPosts((current) => current.map((post) => post.id === postId ? { ...post, comments: data.data ?? [] } : post));
+      setLoadedComments((current) => ({ ...current, [postId]: true }));
+    } catch (apiError) {
+      setError(apiError instanceof Error ? apiError.message : "載入留言失敗");
+    } finally {
+      setLoadingComments((current) => ({ ...current, [postId]: false }));
+    }
+  }
+
+  function toggleComments(postId: number) {
+    setOpenComments((current) => {
+      const willOpen = !current[postId];
+      if (willOpen && !loadedComments[postId]) void loadComments(postId);
+      return { ...current, [postId]: willOpen };
+    });
+  }
+
+  function openCommentsForPost(postId: number) {
+    setOpenComments((current) => ({ ...current, [postId]: true }));
+    if (!loadedComments[postId]) void loadComments(postId);
   }
 
   function handleImage(event: ChangeEvent<HTMLInputElement>) {
@@ -312,22 +347,13 @@ export default function CommunityPage() {
       const data = await readApiResponse<CommunityComment>(response);
 
       if (data.data) {
-        setPosts((current) =>
-          current.map((item) =>
-            item.id === post.id
-              ? {
-                  ...item,
-                  comments: [...item.comments, data.data as CommunityComment],
-                  commentCount: item.commentCount + 1,
-                }
-              : item,
-          ),
-        );
+        setPosts((current) => current.map((item) => item.id === post.id ? { ...item, commentCount: item.commentCount + 1 } : item));
+        await loadComments(post.id);
       }
 
       setCommentDrafts((current) => ({ ...current, [post.id]: "" }));
       setReplyTargets((current) => ({ ...current, [post.id]: undefined }));
-      setOpenComments((current) => ({ ...current, [post.id]: true }));
+      openCommentsForPost(post.id);
     } catch (apiError) {
       setError(apiError instanceof Error ? apiError.message : "留言發布失敗");
     }
@@ -579,7 +605,7 @@ export default function CommunityPage() {
                       <Heart className={`size-4 ${post.liked ? "fill-current" : ""}`} /> {post.likes}
                     </button>
                     <button
-                      onClick={() => setOpenComments((current) => ({ ...current, [post.id]: !current[post.id] }))}
+                      onClick={() => toggleComments(post.id)}
                       className="flex items-center gap-2 px-3 py-2 text-xs text-neutral-500 hover:text-neutral-900"
                     >
                       <MessageCircle className="size-4" /> {post.commentCount}
@@ -595,9 +621,11 @@ export default function CommunityPage() {
                 </div>
 
                 {/* 🌟 留言區塊 🌟 */}
-                {(openComments[post.id] || post.comments.length > 0) && (
+                {openComments[post.id] && (
                   <div className="border-t border-neutral-100 bg-neutral-50 px-5 py-4 md:px-6">
-                    {openComments[post.id] && (
+                    {loadingComments[post.id] ? (
+                      <div className="mb-4 flex items-center gap-2 text-xs text-neutral-400"><Loader2 className="size-4 animate-spin" /> 載入留言中...</div>
+                    ) : (
                       <div className="mb-4 space-y-3">
                         {post.comments.map((comment) => (
                           <div key={comment.id} className={`flex gap-2 text-xs leading-5 ${comment.parentId ? "ml-6 border-l border-neutral-200 pl-3" : ""}`}>
@@ -662,7 +690,7 @@ export default function CommunityPage() {
                       <input
                         value={commentDrafts[post.id] || ""}
                         onChange={(event) => setCommentDrafts((current) => ({ ...current, [post.id]: event.target.value }))}
-                        onFocus={() => setOpenComments((current) => ({ ...current, [post.id]: true }))}
+                        onFocus={() => openCommentsForPost(post.id)}
                         placeholder={currentAccount ? "新增留言..." : "請先登入即可留言"}
                         disabled={!currentAccount}
                         className="min-w-0 flex-1 border border-neutral-200 bg-white px-3 py-2.5 text-xs outline-none focus:border-neutral-500 disabled:cursor-not-allowed disabled:opacity-50"

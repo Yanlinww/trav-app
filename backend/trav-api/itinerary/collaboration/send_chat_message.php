@@ -23,6 +23,9 @@ $account = trim((string)($data->Account ?? ''));
 if (empty($data->Itinerary_ID) || $account === '' || $message === '') {
   api_error('缺少行程 ID、帳號或訊息內容', 400);
 }
+if (mb_strlen($message, 'UTF-8') > 120) {
+  api_error('訊息最多可輸入 120 字', 400);
+}
 require_itinerary_access($conn, (int)$data->Itinerary_ID, $account);
 
 $stmt = $conn->prepare('INSERT INTO Itinerary_Chat_Message (Itinerary_ID, Account, Message) VALUES (?, ?, ?)');
