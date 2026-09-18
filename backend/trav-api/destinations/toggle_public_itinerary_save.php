@@ -24,7 +24,8 @@ try {
     if (!$itinerary->get_result()->fetch_row()) throw new RuntimeException('找不到此公開行程。');
     $itinerary->close();
 
-    $insert = $conn->prepare('INSERT IGNORE INTO Public_Itinerary_Save (Itinerary_ID, Account) VALUES (?, ?)');
+    // 改為寫入 Public_Itinerary_Interaction 總表，並標記 Action_Type 為 'save'
+    $insert = $conn->prepare("INSERT IGNORE INTO Public_Itinerary_Interaction (Itinerary_ID, Account, Action_Type) VALUES (?, ?, 'save')");
     if (!$insert) throw new RuntimeException('無法更新收藏。');
     $insert->bind_param('is', $itineraryId, $account);
     if (!$insert->execute()) throw new RuntimeException('無法更新收藏。');
@@ -32,7 +33,8 @@ try {
     $insert->close();
 
     if (!$isSaved) {
-        $remove = $conn->prepare('DELETE FROM Public_Itinerary_Save WHERE Itinerary_ID = ? AND Account = ?');
+        // 若已經收藏過，則進行取消收藏 (刪除該筆 save 紀錄)
+        $remove = $conn->prepare("DELETE FROM Public_Itinerary_Interaction WHERE Itinerary_ID = ? AND Account = ? AND Action_Type = 'save'");
         if (!$remove) throw new RuntimeException('無法取消收藏。');
         $remove->bind_param('is', $itineraryId, $account);
         if (!$remove->execute()) throw new RuntimeException('無法取消收藏。');
@@ -48,3 +50,4 @@ try {
     $conn->close();
     api_error($error->getMessage(), 500);
 }
+?>

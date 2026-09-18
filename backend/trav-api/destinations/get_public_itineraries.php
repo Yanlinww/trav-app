@@ -56,12 +56,16 @@ $sql = "
        FROM Public_Itinerary_Tag pt
       WHERE pt.Itinerary_ID = i.Itinerary_ID) AS Tags,
     EXISTS(
-      SELECT 1 FROM Public_Itinerary_Like current_like
-       WHERE current_like.Itinerary_ID = i.Itinerary_ID AND current_like.Account = ?
+      SELECT 1 FROM Public_Itinerary_Interaction current_like
+       WHERE current_like.Itinerary_ID = i.Itinerary_ID 
+         AND current_like.Account = ? 
+         AND current_like.Action_Type = 'like'
     ) AS Is_Liked,
     EXISTS(
-      SELECT 1 FROM Public_Itinerary_Save current_save
-       WHERE current_save.Itinerary_ID = i.Itinerary_ID AND current_save.Account = ?
+      SELECT 1 FROM Public_Itinerary_Interaction current_save
+       WHERE current_save.Itinerary_ID = i.Itinerary_ID 
+         AND current_save.Account = ? 
+         AND current_save.Action_Type = 'save'
     ) AS Is_Saved
   FROM Itinerary i
   LEFT JOIN Member m ON m.Account = i.Account
@@ -86,11 +90,14 @@ $sql = "
 
 $types = 'ssssssssssssiiii';
 $params = [$account, $account, $ownerAccount, $ownerAccount, $search, $searchLike, $searchLike, $searchLike, $transport, $transport, $location, $location, $durationMin, $durationMin, $durationMax, $durationMax];
+
 if ($savedOnly) {
-    $sql .= " AND EXISTS (SELECT 1 FROM Public_Itinerary_Save saved_filter WHERE saved_filter.Itinerary_ID = i.Itinerary_ID AND saved_filter.Account = ?)";
+    // 這裡也改成查詢新的 Interaction 總表，並指定 Action_Type = 'save'
+    $sql .= " AND EXISTS (SELECT 1 FROM Public_Itinerary_Interaction saved_filter WHERE saved_filter.Itinerary_ID = i.Itinerary_ID AND saved_filter.Account = ? AND saved_filter.Action_Type = 'save')";
     $types .= 's';
     $params[] = $account;
 }
+
 foreach ($tags as $tag) {
     $sql .= " AND EXISTS (SELECT 1 FROM Public_Itinerary_Tag tag_filter WHERE tag_filter.Itinerary_ID = i.Itinerary_ID AND tag_filter.Tag = ?)";
     $types .= 's';
