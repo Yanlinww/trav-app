@@ -1,23 +1,23 @@
 <?php
-header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Methods: POST, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type');
-header('Content-Type: application/json; charset=utf-8');
+/**
+ * 上傳行程封面：接收圖片 → 檢查擁有者 → 儲存檔案 → 更新封面網址。
+ * 呼叫：POST /itinerary/uploads/upload_cover_image.php，不使用 action。
+ * 輸入為 FormData：Itinerary_ID、Account、cover_image（檔案），不是 JSON。
+ * 回傳：status、message、new_image_url；圖片實體存放於 API 根目錄 uploads/covers/。
+ */
+require_once __DIR__ . '/../../db_connect.php';
+require_once __DIR__ . '/../api_helpers.php';
 
-if ($_SERVER['REQUEST_METHOD'] == 'OPTIONS') {
-    http_response_code(200);
-    exit();
-}
-
-require_once '../../db_connect.php';
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') api_error('只允許 POST 請求', 405);
 
 // 檢查是否收到檔案與必要參數 (注意：FormData 傳遞的文字會放在 $_POST，檔案在 $_FILES)
 if (isset($_FILES['cover_image']) && !empty($_POST['Itinerary_ID']) && !empty($_POST['Account'])) {
-    
+
     $itinerary_id = $_POST['Itinerary_ID'];
     $account = $_POST['Account'];
     $file = $_FILES['cover_image'];
 
+    // PHP 上傳狀態與 10 MiB 大小限制先檢查，通過後才處理檔案。
     if ($file['error'] !== UPLOAD_ERR_OK) {
         echo json_encode(["status" => "error", "message" => "圖片上傳未完成，請再試一次。"]);
         exit();
@@ -37,13 +37,13 @@ if (isset($_FILES['cover_image']) && !empty($_POST['Itinerary_ID']) && !empty($_
     }
     $check_stmt->close();
 
-    // 2. 建立上傳目錄 (若不存在則自動建立)
+    // 2. 實體圖片存於 trav-api/uploads/covers/；這不是存放 PHP 的 itinerary/uploads/。
     $upload_dir = dirname(__DIR__, 2) . '/uploads/covers/';
     if (!is_dir($upload_dir)) {
         mkdir($upload_dir, 0777, true);
     }
 
-    // 3. 處理檔案名稱 (使用時間戳記避免檔名重複)
+    // 3. 檢查副檔名與圖片內容，再用行程 ID＋秒級時間戳記組合檔名。
     $file_extension = pathinfo($file['name'], PATHINFO_EXTENSION);
     // 允許的副檔名防呆
     $allowed_ext = ['jpg', 'jpeg', 'png', 'webp'];
@@ -51,6 +51,7 @@ if (isset($_FILES['cover_image']) && !empty($_POST['Itinerary_ID']) && !empty($_
         echo json_encode(["status" => "error", "message" => "僅允許上傳 JPG, PNG 或 WEBP 格式。"]);
         exit();
     }
+    // 除了副檔名，也確認暫存檔能被辨識為圖片。
     if (@getimagesize($file['tmp_name']) === false) {
         echo json_encode(["status" => "error", "message" => "無法辨識圖片檔案，請重新選擇圖片。"]);
         exit();
@@ -61,17 +62,17 @@ if (isset($_FILES['cover_image']) && !empty($_POST['Itinerary_ID']) && !empty($_
 
     // 4. 將檔案從暫存區移動到目標資料夾
     if (move_uploaded_file($file['tmp_name'], $target_path)) {
-        
+
         // 5. 組合對外網址 (依據你的 Docker 伺服器 Port 8080)
         $image_url = "http://localhost:8080/uploads/covers/" . $new_filename;
 
-        // 6. 更新資料庫
+        // 6. Itinerary.Cover_Image 只存圖片網址；實體圖片已寫入上面的目錄。
         $update_stmt = $conn->prepare("UPDATE `Itinerary` SET `Cover_Image` = ? WHERE `Itinerary_ID` = ?");
         $update_stmt->bind_param("si", $image_url, $itinerary_id);
-        
+
         if ($update_stmt->execute()) {
             echo json_encode([
-                "status" => "success", 
+                "status" => "success",
                 "message" => "圖片更新成功",
                 "new_image_url" => $image_url
             ]);
@@ -88,4 +89,3 @@ if (isset($_FILES['cover_image']) && !empty($_POST['Itinerary_ID']) && !empty($_
 }
 
 $conn->close();
-?>

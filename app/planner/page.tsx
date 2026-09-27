@@ -81,7 +81,7 @@ export default function PlannerDashboard() {
   const fetchItineraries = async () => {
     if (!user) return;
     try {
-      const res = await fetch("http://localhost:8080/itinerary/core/get_itineraries.php", {
+      const res = await fetch("http://localhost:8080/itinerary/core.php?action=list", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ Account: user.id || (user as any).Account, Viewer_Account: user.id || (user as any).Account }),
@@ -111,7 +111,7 @@ export default function PlannerDashboard() {
   const handleGetInviteCode = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     try {
-      const res = await fetch("http://localhost:8080/itinerary/core/get_or_create_invite_code.php", {
+      const res = await fetch("http://localhost:8080/itinerary/core.php?action=invite", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ Itinerary_ID: id })
       });
@@ -164,7 +164,7 @@ export default function PlannerDashboard() {
     
     setIsSubmitting(true);
     try {
-      const res = await fetch("http://localhost:8080/itinerary/core/join_itinerary.php", {
+      const res = await fetch("http://localhost:8080/itinerary/core.php?action=join", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ Invite_Code: finalCode, Account: user?.id || (user as any)?.Account })
       });
@@ -188,7 +188,7 @@ export default function PlannerDashboard() {
     e.stopPropagation();
     if (confirm("確定要刪除這個行程嗎？此動作無法復原。")) {
       try {
-        const res = await fetch("http://localhost:8080/itinerary/core/delete_itinerary.php", {
+        const res = await fetch("http://localhost:8080/itinerary/core.php?action=delete", {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ Account: user?.id || (user as any)?.Account, Itinerary_ID: id }),
         });
@@ -206,7 +206,7 @@ export default function PlannerDashboard() {
     setItineraries(itineraries.map(it => it.id === id ? { ...it, isPinned: targetPinStatus } : it));
     setActiveDropdown(null);
     try {
-      const res = await fetch("http://localhost:8080/itinerary/core/pin_itinerary.php", {
+      const res = await fetch("http://localhost:8080/itinerary/core.php?action=pin", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ Account: user?.id || (user as any)?.Account, Itinerary_ID: id, Is_Pinned: targetPinStatus }),
       });
@@ -226,7 +226,7 @@ export default function PlannerDashboard() {
     setIsSubmitting(true);
     const coords = CITY_COORDINATES[destination];
     try {
-      const res = await fetch("http://localhost:8080/itinerary/core/create_itinerary.php", {
+      const res = await fetch("http://localhost:8080/itinerary/core.php?action=create", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
            Account: user?.id || (user as any)?.Account, 

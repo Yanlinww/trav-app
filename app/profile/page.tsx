@@ -66,7 +66,7 @@ export default function ProfilePage() {
     if (!user) return;
     setIsLoadingItineraries(true);
     try {
-      const res = await fetch("http://localhost:8080/itinerary/core/get_itineraries.php", {
+      const res = await fetch("http://localhost:8080/itinerary/core.php?action=list", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ Account: user.id || (user as any).Account }),
       });
@@ -171,7 +171,7 @@ export default function ProfilePage() {
     
     setIsSubmittingJoin(true);
     try {
-      const res = await fetch("http://localhost:8080/itinerary/core/join_itinerary.php", {
+      const res = await fetch("http://localhost:8080/itinerary/core.php?action=join", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ Invite_Code: finalCode, Account: user?.id || (user as any)?.Account })
       });

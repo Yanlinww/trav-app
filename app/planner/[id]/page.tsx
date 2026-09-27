@@ -95,11 +95,11 @@ function TravelersPanel({ itineraryId, currentUserId }: { itineraryId: string; c
     setSyncError(false);
     try {
       const [membersRes, presenceRes] = await Promise.all([
-        fetch('http://localhost:8080/itinerary/collaboration/get_itinerary_members.php', {
+        fetch('http://localhost:8080/itinerary/collaboration.php?action=members', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ Itinerary_ID: itineraryId, Account: currentUserId }),
         }),
-        fetch('http://localhost:8080/itinerary/collaboration/get_chat_presence.php', {
+        fetch('http://localhost:8080/itinerary/collaboration.php?action=presence', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ Itinerary_ID: itineraryId, Account: currentUserId }),
         }),
@@ -187,7 +187,7 @@ function InviteTravelersButton({ itineraryId }: { itineraryId: string }) {
     if (inviteCode || isLoading) return;
     setIsLoading(true);
     try {
-      const response = await fetch('http://localhost:8080/itinerary/core/get_or_create_invite_code.php', {
+      const response = await fetch('http://localhost:8080/itinerary/core.php?action=invite', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ Itinerary_ID: itineraryId }),
@@ -325,11 +325,11 @@ function ChatPanel({ itineraryId, currentUserId, isActive, onUnreadChange }: { i
   const refreshChat = useCallback(async () => {
     try {
       const [messageRes, presenceRes] = await Promise.all([
-        fetch('http://localhost:8080/itinerary/collaboration/get_chat_messages.php', {
+        fetch('http://localhost:8080/itinerary/collaboration.php?action=messages', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ Itinerary_ID: itineraryId, Account: currentUserId }),
         }),
-        fetch('http://localhost:8080/itinerary/collaboration/get_chat_presence.php', {
+        fetch('http://localhost:8080/itinerary/collaboration.php?action=presence', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ Itinerary_ID: itineraryId, Account: currentUserId }),
         }),
@@ -365,7 +365,7 @@ function ChatPanel({ itineraryId, currentUserId, isActive, onUnreadChange }: { i
   useEffect(() => {
     const loadMembers = async () => {
       try {
-        const res = await fetch('http://localhost:8080/itinerary/collaboration/get_itinerary_members.php', {
+        const res = await fetch('http://localhost:8080/itinerary/collaboration.php?action=members', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ Itinerary_ID: itineraryId, Account: currentUserId }),
         });
@@ -386,7 +386,7 @@ function ChatPanel({ itineraryId, currentUserId, isActive, onUnreadChange }: { i
 
   useEffect(() => {
     if (!currentUserId) return;
-    const heartbeat = () => fetch('http://localhost:8080/itinerary/collaboration/update_chat_presence.php', {
+    const heartbeat = () => fetch('http://localhost:8080/itinerary/collaboration.php?action=update_presence', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ Itinerary_ID: itineraryId, Account: currentUserId }),
     }).catch(() => {});
@@ -411,7 +411,7 @@ function ChatPanel({ itineraryId, currentUserId, isActive, onUnreadChange }: { i
     setIsSending(true);
     setSendError('');
     try {
-      const res = await fetch('http://localhost:8080/itinerary/collaboration/send_chat_message.php', {
+      const res = await fetch('http://localhost:8080/itinerary/collaboration.php?action=send', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ Itinerary_ID: itineraryId, Account: currentUserId, Message: message }),
       });
@@ -549,7 +549,7 @@ function BudgetPanel({ itineraryId, currentUserId, itineraryItems, onTotalChange
     isRefreshingExpensesRef.current = true;
     setBudgetSyncStatus('idle');
     try {
-      const expRes = await fetch("http://localhost:8080/itinerary/expenses/get_expenses.php", {
+      const expRes = await fetch("http://localhost:8080/itinerary/expenses.php?action=list", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ Itinerary_ID: itineraryId, Account: currentUserId })
       });
@@ -561,7 +561,7 @@ function BudgetPanel({ itineraryId, currentUserId, itineraryItems, onTotalChange
         console.error("帳單 API 回傳錯誤格式:", expText);
       }
 
-      const memRes = await fetch("http://localhost:8080/itinerary/collaboration/get_itinerary_members.php", {
+      const memRes = await fetch("http://localhost:8080/itinerary/collaboration.php?action=members", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ Itinerary_ID: itineraryId, Account: currentUserId })
       });
@@ -609,7 +609,7 @@ function BudgetPanel({ itineraryId, currentUserId, itineraryItems, onTotalChange
 
     setIsFetchingCode(true);
     try {
-      const res = await fetch("http://localhost:8080/itinerary/core/get_or_create_invite_code.php", {
+      const res = await fetch("http://localhost:8080/itinerary/core.php?action=invite", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ Itinerary_ID: itineraryId })
       });
@@ -702,7 +702,7 @@ function BudgetPanel({ itineraryId, currentUserId, itineraryItems, onTotalChange
               Type: expenseMode === 'collector' ? 'collector' : expenseMode === 'group' ? 'group' : 'personal'
             };
 
-      const res = await fetch("http://localhost:8080/itinerary/expenses/create_expense.php", {
+      const res = await fetch("http://localhost:8080/itinerary/expenses.php?action=create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(expenseData)
@@ -726,7 +726,7 @@ function BudgetPanel({ itineraryId, currentUserId, itineraryItems, onTotalChange
 
   const handleToggleShare = async (shareId: string, isSettled: boolean) => {
     try {
-      const res = await fetch("http://localhost:8080/itinerary/expenses/update_expense_share.php", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ Share_ID: shareId, Account: currentUserId, Is_Settled: !isSettled }) });
+      const res = await fetch("http://localhost:8080/itinerary/expenses.php?action=update_share", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ Share_ID: shareId, Account: currentUserId, Is_Settled: !isSettled }) });
       const data = await res.json();
       if (data.status === 'success') fetchData(); else alert(data.message || "更新付款狀態失敗");
     } catch (error) {
@@ -750,7 +750,7 @@ function BudgetPanel({ itineraryId, currentUserId, itineraryItems, onTotalChange
             Amount: Math.round((Number(share.amount || 0) * nextAmount / previousAmount) * 100) / 100
           }))
         : [];
-      const res = await fetch("http://localhost:8080/itinerary/expenses/update_expense.php", {
+      const res = await fetch("http://localhost:8080/itinerary/expenses.php?action=update", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -782,7 +782,7 @@ function BudgetPanel({ itineraryId, currentUserId, itineraryItems, onTotalChange
     }
 
     try {
-      const res = await fetch("http://localhost:8080/itinerary/expenses/delete_expense.php", {
+      const res = await fetch("http://localhost:8080/itinerary/expenses.php?action=delete", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ Expense_ID: expenseId, Account: currentUserId })
@@ -1166,7 +1166,7 @@ function LuggagePanel({ itineraryId, currentUserId, onCountChange }: { itinerary
   const refreshLuggage = useCallback(async () => {
     if (syncStatusRef.current === 'saving') return;
     try {
-      const res = await fetch("http://localhost:8080/itinerary/luggage/get_luggage.php", {
+      const res = await fetch("http://localhost:8080/itinerary/luggage.php?action=get", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ Itinerary_ID: itineraryId, Account: currentUserId }),
@@ -1193,7 +1193,7 @@ function LuggagePanel({ itineraryId, currentUserId, onCountChange }: { itinerary
   useEffect(() => {
     if (!isLoaded) return; setSyncStatus('saving');
     const timer = setTimeout(() => {
-      fetch("http://localhost:8080/itinerary/luggage/update_luggage.php", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ Itinerary_ID: itineraryId, Account: currentUserId, LuggageData: JSON.stringify(categories) }) })
+      fetch("http://localhost:8080/itinerary/luggage.php?action=update", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ Itinerary_ID: itineraryId, Account: currentUserId, LuggageData: JSON.stringify(categories) }) })
       .then(res => res.json()).then(data => { if (data.status === 'success') setSyncStatus('saved'); else setSyncStatus('error'); }).catch(() => setSyncStatus('error'));
     }, 1000);
     return () => clearTimeout(timer);
@@ -1757,7 +1757,7 @@ export default function ItineraryEditor() {
     const placeIds = places.map((place) => String(place?.id || '')).filter(Boolean);
     if (!placeIds.length || !currentAccount) return;
     try {
-      const response = await fetch('http://localhost:8080/itinerary/places/get_place_tags.php', {
+      const response = await fetch('http://localhost:8080/itinerary/places.php?action=get', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ Itinerary_ID: params.id, Account: currentAccount, PlaceIds: placeIds }),
@@ -1773,7 +1773,7 @@ export default function ItineraryEditor() {
     if (!place?.id || !currentAccount) return;
     setPlaceTagsSaving(true);
     try {
-      const response = await fetch('http://localhost:8080/itinerary/places/update_place_tags.php', {
+      const response = await fetch('http://localhost:8080/itinerary/places.php?action=update', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1972,7 +1972,7 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
         setNewItemTitle(data.displayName?.text || '');
 
         if (editingLocationItemId) {
-          const updateResponse = await fetch('http://localhost:8080/itinerary/items/update_item_location.php', {
+          const updateResponse = await fetch('http://localhost:8080/itinerary/items.php?action=update_location', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -2074,7 +2074,7 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
 
   const fetchItems = useCallback(async (id: string) => {
     try {
-      const res = await fetch("http://localhost:8080/itinerary/items/get_itinerary_items.php", {
+      const res = await fetch("http://localhost:8080/itinerary/items.php?action=list", {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ Itinerary_ID: id }),
       });
       const data = await res.json();
@@ -2105,7 +2105,7 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
     if (!user) { router.push("/auth/login"); return; }
     const fetchDetail = async () => {
       try {
-        const res = await fetch("http://localhost:8080/itinerary/core/get_itinerary_detail.php", {
+        const res = await fetch("http://localhost:8080/itinerary/core.php?action=detail", {
           method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ Itinerary_ID: params.id, Account: user.id || (user as any).Account }),
         });
         const contentType = res.headers.get("content-type");
@@ -2116,7 +2116,7 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
           setCoverImage(data.data.coverImage || FALLBACK_COVER_IMAGE);
           setCoverImageVersion(Date.now());
           setHasRetriedCoverImage(false);
-          fetch("http://localhost:8080/itinerary/core/get_itinerary_style.php", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ Itinerary_ID: params.id }) })
+          fetch("http://localhost:8080/itinerary/core.php?action=get_style", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ Itinerary_ID: params.id }) })
             .then((styleRes) => styleRes.json()).then((styleData) => { if (styleData.status === 'success') setTravelStyle(styleData.style); }).catch(() => {});
         } else { alert(data.message); router.push("/planner"); }
       } catch (error) { alert("資料讀取失敗"); } finally { setIsLoading(false); }
@@ -2137,7 +2137,7 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
     try {
       const optimizedFile = await optimizeCoverImage(file);
       const formData = new FormData(); formData.append("cover_image", optimizedFile); formData.append("Itinerary_ID", params.id as string); formData.append("Account", user?.id || (user as any)?.Account);
-      const res = await fetch("http://localhost:8080/itinerary/core/update_cover_image.php", { method: "POST", body: formData });
+      const res = await fetch("http://localhost:8080/itinerary/uploads/upload_cover_image.php", { method: "POST", body: formData });
       const data = await res.json(); if (data.status === 'success') { setCoverImage(data.new_image_url); setCoverImageVersion(Date.now()); setHasRetriedCoverImage(false); } else { alert(data.message); setCoverImage(previousCoverImage); }
     } catch (error) { alert(error instanceof Error ? error.message : "圖片上傳失敗"); setCoverImage(previousCoverImage); } 
     finally { URL.revokeObjectURL(previewUrl); setIsUploading(false); if (fileInputRef.current) fileInputRef.current.value = ""; }
@@ -2147,7 +2147,7 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
     setTravelStyle(style);
     setIsEditingStyle(false);
     try {
-      const res = await fetch("http://localhost:8080/itinerary/core/update_itinerary_style.php", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ Itinerary_ID: params.id, Style: style }) });
+      const res = await fetch("http://localhost:8080/itinerary/core.php?action=update_style", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ Itinerary_ID: params.id, Style: style }) });
       const data = await res.json();
       if (data.status !== 'success') alert(data.message || "儲存行程風格失敗");
     } catch (error) {
@@ -2159,7 +2159,7 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
     if (!editInfoTitle.trim() || !editInfoStart || !editInfoEnd) { alert("請完整填寫標題與日期"); return; }
     if (new Date(editInfoStart) > new Date(editInfoEnd)) { alert("結束日期不能早於開始日期"); return; }
     try {
-      const res = await fetch("http://localhost:8080/itinerary/core/update_itinerary_info.php", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ Itinerary_ID: params.id, Title: editInfoTitle, StartDate: editInfoStart, EndDate: editInfoEnd }) });
+      const res = await fetch("http://localhost:8080/itinerary/core.php?action=update", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ Itinerary_ID: params.id, Title: editInfoTitle, StartDate: editInfoStart, EndDate: editInfoEnd }) });
       const data = await res.json(); if (data.status === 'success') { setItineraryData({ ...itineraryData, title: editInfoTitle, startDate: editInfoStart, endDate: editInfoEnd }); setIsEditingInfo(false); } else alert(data.message);
     } catch(error) { alert("更新失敗"); }
   };
@@ -2248,7 +2248,7 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
     }
     if (!newItemTitle.trim()) return alert("請輸入行程標題"); setIsSubmittingItem(true);
     try {
-      const res = await fetch("http://localhost:8080/itinerary/items/create_itinerary_item.php", { 
+      const res = await fetch("http://localhost:8080/itinerary/items.php?action=create", {
         method: "POST", headers: { "Content-Type": "application/json" }, 
         body: JSON.stringify({ 
           Itinerary_ID: params.id, 
@@ -2278,7 +2278,7 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
   const handleUpdateTitle = async (itemId: string) => {
     if (!editingTitle.trim()) return setEditingItemId(null);
     try {
-      const res = await fetch("http://localhost:8080/itinerary/items/update_item_title.php", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ Item_ID: itemId, Title: editingTitle }) });
+      const res = await fetch("http://localhost:8080/itinerary/items.php?action=update_title", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ Item_ID: itemId, Title: editingTitle }) });
       const data = await res.json(); if (data.status === 'success') fetchItems(params.id as string); else alert(data.message);
     } catch(error) { alert("更新失敗"); } finally { setEditingItemId(null); }
   };
@@ -2303,7 +2303,7 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
     }
     setSavingTimeId(itemId);
     try {
-      const res = await fetch("http://localhost:8080/itinerary/items/update_item_time.php", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ Item_ID: itemId, StartTime: editStartTime, EndTime: editEndTime }) });
+      const res = await fetch("http://localhost:8080/itinerary/items.php?action=update_time", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ Item_ID: itemId, StartTime: editStartTime, EndTime: editEndTime }) });
       const data = await res.json(); if (data.status === 'success') fetchItems(params.id as string); else alert(data.message);
     } catch(error) { alert("更新失敗"); } finally { setEditingTimeId(null); }
     setSavingTimeId(null);
@@ -2321,14 +2321,14 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
     });
     setItineraryItems(items => items.filter(item => item.id !== itemId));
     try {
-      const res = await fetch("http://localhost:8080/itinerary/items/delete_itinerary_item.php", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ Item_ID: itemId }) });
+      const res = await fetch("http://localhost:8080/itinerary/items.php?action=delete", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ Item_ID: itemId }) });
       const data = await res.json(); if (data.status !== 'success') { alert(data.message); fetchItems(params.id as string); }
     } catch(error) { alert("刪除失敗"); fetchItems(params.id as string); }
   };
 
   const handleDuplicateItem = async (item: any) => {
     try {
-      const res = await fetch("http://localhost:8080/itinerary/items/create_itinerary_item.php", {
+      const res = await fetch("http://localhost:8080/itinerary/items.php?action=create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -2365,10 +2365,10 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
           return { ...item, startTime: timeSlots[dayIndex].startTime, endTime: timeSlots[dayIndex].endTime };
         });
         const sortUpdates = currentDayItems.map((item, index) => ({ id: item.id, sortOrder: index }));
-        fetch("http://localhost:8080/itinerary/items/update_sort_order.php", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ updates: sortUpdates }) }).catch(err => console.error(err));
+        fetch("http://localhost:8080/itinerary/items.php?action=sort", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ updates: sortUpdates }) }).catch(err => console.error(err));
         const timeUpdates = currentDayItems.map((item, index) => ({ item, slot: timeSlots[index] }))
           .filter(({ item, slot }) => item.startTime !== slot.startTime || item.endTime !== slot.endTime);
-        Promise.all(timeUpdates.map(({ item, slot }) => fetch("http://localhost:8080/itinerary/items/update_item_time.php", {
+        Promise.all(timeUpdates.map(({ item, slot }) => fetch("http://localhost:8080/itinerary/items.php?action=update_time", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ Item_ID: item.id, StartTime: slot.startTime, EndTime: slot.endTime }),
@@ -2384,7 +2384,7 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
     if (!editingDetailsItem) return;
     setIsSavingDetails(true);
     try {
-      await fetch('http://localhost:8080/itinerary/items/update_item_details.php', {
+      await fetch('http://localhost:8080/itinerary/items.php?action=update_details', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -2400,7 +2400,7 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
         const formData = new FormData();
         formData.append('Item_ID', String(editingDetailsItem.id));
         formData.append('screenshot', detailsFile);
-        await fetch('http://localhost:8080/itinerary/items/upload_item_screenshot.php', {
+        await fetch('http://localhost:8080/itinerary/uploads/upload_item_screenshot.php', {
           method: 'POST',
           body: formData
         });
