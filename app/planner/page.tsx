@@ -1,5 +1,12 @@
 'use client';
 
+/**
+ * 模組匯入說明：
+ * - React 核心 Hook：用於狀態管理 (useState)、副作用處理 (useEffect)、DOM 引用 (useRef)
+ * - Next.js 路由：useRouter 用於頁面跳轉
+ * - 驗證 Context：useAuth 取得使用者登入狀態與資訊
+ * - Lucide React 圖示庫：提供 UI 所需的向量圖示
+ */
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../context/AuthContext";
@@ -8,6 +15,18 @@ import {
   Globe, Lock
 } from "lucide-react";
 
+/**
+ * @interface Itinerary
+ * @description 定義單一行程資料結構
+ * @property {string} id - 行程的唯一識別碼
+ * @property {string} title - 行程標題
+ * @property {string} startDate - 開始日期 (格式通常為 YYYY-MM-DD)
+ * @property {string} endDate - 結束日期 (格式通常為 YYYY-MM-DD)
+ * @property {string} coverImage - 封面圖片 URL
+ * @property {string} isPinned - 是否被釘選至頂部
+ * @property {boolean} isPublic - 是否公開行程 (true: 公開, false: 私密)
+ * @property {string} Account - 行程建立者的帳號識別碼 (用於判斷權限 Owner/Member)
+ */
 interface Itinerary {
   id: string;
   title: string;
@@ -20,21 +39,37 @@ interface Itinerary {
 }
 
 export default function PlannerDashboard() {
+  // 取得使用者驗證狀態與路由控制器
   const { user, loading } = useAuth();
   const router = useRouter();
 
-  // 狀態管理
+  // ---------------------------------------------------------------------------
+  // 狀態管理 (State Management)
+  // ---------------------------------------------------------------------------
+  
+  /** @type {boolean} 新增行程彈窗開關狀態 */
   const [isModalOpen, setIsModalOpen] = useState(false);
+  
+  /** @type {string | null} 當前展開下拉選單的行程 ID，null 代表無選單展開 */
   const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
+  
+  /** @type {boolean} 資料載入中狀態 (頁面初始化抓取) */
   const [isFetching, setIsFetching] = useState(true);
+  
+  /** @type {boolean} 表單提交中狀態 (建立/加入行程) */
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // 表單輸入狀態
   const [title, setTitle] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [transport, setTransport] = useState("public"); 
   const [destination, setDestination] = useState("taipei");
 
+  /**
+   * @constant CITY_COORDINATES
+   * @description 台灣各縣市及海外主要城市之經緯度對照表，用於建立行程時帶入目的地座標
+   */
   const CITY_COORDINATES: Record<string, { lat: number, lng: number }> = {
     "keelung": { lat: 25.1276, lng: 121.7392 },
     "taipei": { lat: 25.0478, lng: 121.5170 },
@@ -62,14 +97,27 @@ export default function PlannerDashboard() {
     "osaka": { lat: 34.6937, lng: 135.5023 },
   };
 
+  /** @type {Itinerary[]} 使用者擁有的所有行程清單 */
   const [itineraries, setItineraries] = useState<Itinerary[]>([]);
+  
+  /** @type {boolean} 輸入邀請碼加入行程的 Modal 開關 */
   const [isJoinModalOpen, setIsJoinModalOpen] = useState(false); 
+  
+  /** @type {string[]} 儲存 6 位數邀請碼的陣列，每個元素代表一碼 */
   const [inviteCodeArray, setInviteCodeArray] = useState<string[]>(Array(6).fill(""));
+  
+  /** @type {React.MutableRefObject<(HTMLInputElement | null)[]>} 儲存 6 個邀請碼 Input 的 DOM 引用，用於自動聚焦切換 */
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
+  
+  /** @type {Object} 生成邀請碼後的對話框狀態 */
   const [generatedCodeInfo, setGeneratedCodeInfo] = useState<{ isOpen: boolean; code: string; copied: boolean }>({
     isOpen: false, code: "", copied: false
   });
 
+  /**
+   * @constant transportOptions
+   * @description 交通工具選項列表（用於 UI 顯示與圖示對應）
+   */
   const transportOptions = [
     { id: 'public', label: '大眾運輸', icon: Train },
     { id: 'car', label: '汽車', icon: Car },
@@ -77,7 +125,15 @@ export default function PlannerDashboard() {
     { id: 'other', label: '其他', icon: Compass },
   ];
 
-  // 取得行程
+  // ---------------------------------------------------------------------------
+  // API 與資料操作函式 (API Handling & Business Logic)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * @function fetchItineraries
+   * @async
+   * @description 向後端 API 取得該使用者相關的所有行程列表
+   */
   const fetchItineraries = async () => {
     if (!user) return;
     try {
@@ -97,6 +153,11 @@ export default function PlannerDashboard() {
     }
   };
 
+  /**
+   * 驗證與初始化 Effect：
+   * 1. 若驗證結束後使用者未登入，重定向至登入頁面
+   * 2. 若使用者已登入，開始抓取行程列表
+   */
   useEffect(() => {
     if (!loading && !user) {
       router.push("/auth/login");
@@ -105,9 +166,19 @@ export default function PlannerDashboard() {
     }
   }, [user, loading, router]);
 
+  /**
+   * @constant sortedItineraries
+   * @description 排序後的行程列表（已釘選的行程會排在最前面）
+   */
   const sortedItineraries = [...itineraries].sort((a, b) => (a.isPinned === b.isPinned ? 0 : a.isPinned ? -1 : 1));
 
-  // 取得邀請碼
+  /**
+   * @function handleGetInviteCode
+   * @async
+   * @description 取得特定行程的邀請碼，並自動複製至剪貼簿
+   * @param {string} id - 行程 ID
+   * @param {React.MouseEvent} e - 滑鼠點擊事件（用於阻止冒泡）
+   */
   const handleGetInviteCode = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     try {
@@ -127,6 +198,11 @@ export default function PlannerDashboard() {
     setActiveDropdown(null);
   };
 
+  /**
+   * @function handlePaste
+   * @description 處理邀請碼輸入框的貼上事件，支援貼上完整的 6 位數代碼並自動分拆填入
+   * @param {React.ClipboardEvent<HTMLInputElement>} e - 貼上事件
+   */
   const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
     e.preventDefault();
     const pastedText = e.clipboardData.getData('text/plain');
@@ -142,6 +218,12 @@ export default function PlannerDashboard() {
     }
   };
 
+  /**
+   * @function handleCodeChange
+   * @description 處理邀請碼單一輸入框的字元變更與自動跳格聚焦
+   * @param {number} index - 當前輸入框的索引 (0~5)
+   * @param {string} value - 輸入值
+   */
   const handleCodeChange = (index: number, value: string) => {
     const char = value.slice(-1).toUpperCase().replace(/[^A-Z0-9]/g, '');
     const newArray = [...inviteCodeArray];
@@ -152,12 +234,23 @@ export default function PlannerDashboard() {
     }
   };
 
+  /**
+   * @function handleKeyDown
+   * @description 處理倒退鍵 (Backspace) 事件，當字元為空時自動聚焦至前一個輸入框
+   * @param {number} index - 當前輸入框的索引 (0~5)
+   * @param {React.KeyboardEvent<HTMLInputElement>} e - 按鍵事件
+   */
   const handleKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Backspace' && !inviteCodeArray[index] && index > 0) {
       inputRefs.current[index - 1]?.focus();
     }
   };
 
+  /**
+   * @function handleJoinItinerary
+   * @async
+   * @description 送出 6 位邀請碼以加入他人共享的行程
+   */
   const handleJoinItinerary = async () => {
     const finalCode = inviteCodeArray.join('');
     if (finalCode.length < 6) return;
@@ -178,12 +271,25 @@ export default function PlannerDashboard() {
     } catch (error) { alert("加入行程時發生錯誤"); } finally { setIsSubmitting(false); }
   };
 
+  /**
+   * @function openPublicSettings
+   * @description 導向至景點/公開設定頁面以調整行程公開資訊
+   * @param {string} id - 行程 ID
+   * @param {React.MouseEvent} e - 滑鼠點擊事件
+   */
   const openPublicSettings = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     setActiveDropdown(null);
     router.push(`/destinations?publish=${encodeURIComponent(id)}`);
   };
 
+  /**
+   * @function handleDelete
+   * @async
+   * @description 刪除指定行程
+   * @param {string} id - 行程 ID
+   * @param {React.MouseEvent} e - 滑鼠點擊事件
+   */
   const handleDelete = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     if (confirm("確定要刪除這個行程嗎？此動作無法復原。")) {
@@ -200,9 +306,18 @@ export default function PlannerDashboard() {
     }
   };
 
+  /**
+   * @function handlePin
+   * @async
+   * @description 切換行程的釘選狀態（採用 Optimistic UI 更新策略）
+   * @param {string} id - 行程 ID
+   * @param {boolean} isCurrentlyPinned - 當前是否已釘選
+   * @param {React.MouseEvent} e - 滑鼠點擊事件
+   */
   const handlePin = async (id: string, isCurrentlyPinned: boolean, e: React.MouseEvent) => {
     e.stopPropagation();
     const targetPinStatus = !isCurrentlyPinned;
+    // 樂觀更新：先更新畫面狀態
     setItineraries(itineraries.map(it => it.id === id ? { ...it, isPinned: targetPinStatus } : it));
     setActiveDropdown(null);
     try {
@@ -212,15 +327,23 @@ export default function PlannerDashboard() {
       });
       const data = await res.json();
       if (data.status !== 'success') {
+        // 若伺服器回應失敗，回滾狀態
         setItineraries(itineraries.map(it => it.id === id ? { ...it, isPinned: isCurrentlyPinned } : it));
         alert(data.message);
       }
     } catch (error) {
+      // 發生例外時，回滾狀態
       setItineraries(itineraries.map(it => it.id === id ? { ...it, isPinned: isCurrentlyPinned } : it));
       alert("釘選狀態更新失敗");
     }
   };
 
+  /**
+   * @function handleCreateItinerary
+   * @async
+   * @description 表單送出：建立全新的行程
+   * @param {React.FormEvent} e - 表單送出事件
+   */
   const handleCreateItinerary = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
@@ -229,47 +352,55 @@ export default function PlannerDashboard() {
       const res = await fetch("http://localhost:8080/itinerary/core.php?action=create", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
-           Account: user?.id || (user as any)?.Account, 
-           Title: title, 
-           StartDate: startDate, 
-           EndDate: endDate, 
-           Transport: transport, 
-           Dest_Lat: coords.lat, 
-           Dest_Lng: coords.lng 
-         }),
+          Account: user?.id || (user as any)?.Account, 
+          Title: title, 
+          StartDate: startDate, 
+          EndDate: endDate, 
+          Transport: transport, 
+          Dest_Lat: coords.lat, 
+          Dest_Lng: coords.lng 
+        }),
       });
       const data = await res.json();
       if (data.status === 'success') {
-         await fetchItineraries();
-         setIsModalOpen(false);
-         setTitle("");
-         setStartDate("");
-         setEndDate("");
-         setTransport("public");
-         setDestination("taipei");
-       } 
-       else { alert("建立失敗: " + data.message); }
+        await fetchItineraries();
+        setIsModalOpen(false);
+        setTitle("");
+        setStartDate("");
+        setEndDate("");
+        setTransport("public");
+        setDestination("taipei");
+      } 
+    else { alert("建立失敗: " + data.message); }
     } catch (error) { alert("發生錯誤"); } finally { setIsSubmitting(false); }
   };
 
+  // 渲染全螢幕加載狀態
   if (loading || isFetching) return <div className="min-h-screen flex items-center justify-center bg-[#FAFAFA]"><Loader2 className="animate-spin size-8 text-slate-300" /></div>;
 
+  // ---------------------------------------------------------------------------
+  // JSX 視圖渲染 (UI Render)
+  // ---------------------------------------------------------------------------
   return (
     <div className="min-h-screen bg-[#FAFAFA] relative">
+      {/* 點擊空白處關閉選單之透明遮罩 */}
       {activeDropdown && <div className="fixed inset-0 z-10" onClick={() => setActiveDropdown(null)} />}
+      
       <div className="max-w-7xl mx-auto px-6 py-12">
+        {/* 頂部標題與操作按鈕區 */}
         <div className="mb-8 md:mb-12 md:flex md:items-center md:justify-between">
           <h1 className="text-[28px] font-bold leading-tight text-slate-900 tracking-wide md:text-3xl">我的行程</h1>
           <div className="mt-4 grid grid-cols-2 gap-3 md:mt-0 md:flex">
-             <button onClick={() => setIsJoinModalOpen(true)} className="flex h-12 min-w-0 items-center justify-center gap-2 whitespace-nowrap rounded-lg border border-slate-200 bg-white px-3 text-xs font-medium transition-all hover:border-[#F04D79] sm:text-sm md:px-5">
+            <button onClick={() => setIsJoinModalOpen(true)} className="flex h-12 min-w-0 items-center justify-center gap-2 whitespace-nowrap rounded-lg border border-slate-200 bg-white px-3 text-xs font-medium transition-all hover:border-[#F04D79] sm:text-sm md:px-5">
               <UserPlus className="size-4" /> <span>收藏他人行程</span>
-             </button>
+            </button>
             <button onClick={() => setIsModalOpen(true)} className="flex h-12 min-w-0 items-center justify-center gap-2 whitespace-nowrap rounded-lg bg-slate-900 px-3 text-xs font-medium text-white transition-all hover:bg-amber-600 sm:text-sm md:px-5">
               <Plus className="size-4" /> <span>建立新行程</span>
-             </button>
+            </button>
           </div>
         </div>
 
+        {/* 行程列表區域：無資料狀態 vs 卡片網格 */}
         {itineraries.length === 0 ? (
           <div className="text-center py-28 bg-white border border-slate-100 rounded-2xl shadow-sm">
             <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-6"><MapPin className="text-slate-300" size={28} /></div>
@@ -278,8 +409,9 @@ export default function PlannerDashboard() {
           </div>
         ) : (
           <div className="grid grid-cols-2 gap-3 md:grid-cols-3 md:gap-6 lg:grid-cols-4">
-           {sortedItineraries.map((itinerary) => (
+          {sortedItineraries.map((itinerary) => (
               <div key={itinerary.id} onClick={() => router.push(`/planner/${itinerary.id}`)} className="bg-white border border-slate-100 rounded-xl group cursor-pointer hover:shadow-xl relative">
+                {/* 行程封面圖與更多功能按鈕 */}
                 <div className="relative aspect-[4/3] overflow-hidden bg-slate-100 rounded-t-xl">
                   <img src={itinerary.coverImage} className="w-full h-full object-cover grayscale-[40%] group-hover:grayscale-0 transition-all" />
                   {itinerary.isPinned && <div className="absolute top-3 left-3 bg-slate-900/90 text-white p-1.5 rounded-full"><Pin className="size-3.5" /></div>}
@@ -293,6 +425,7 @@ export default function PlannerDashboard() {
                   </button>
                 </div>
                 
+                {/* 卡片下拉操作選單 */}
                 {activeDropdown === itinerary.id && (
                   <div onClick={(e) => e.stopPropagation()} className="absolute right-3 top-14 w-36 bg-white border border-gray-100 shadow-xl rounded-lg py-1.5 z-50">
                     <button onClick={(e) => handleGetInviteCode(itinerary.id, e)} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-100"><Share2 className="size-4" /> 邀請共編</button>
@@ -307,6 +440,7 @@ export default function PlannerDashboard() {
                   </div>
                 )}
                 
+                {/* 行程資訊內容區 */}
                 <div className="p-5">
                   <h3 className="text-lg font-medium text-slate-900 mb-1.5 truncate">{itinerary.title}</h3>
                   <div className="mt-3 flex items-end justify-between gap-2">
@@ -315,7 +449,7 @@ export default function PlannerDashboard() {
                       <span className="whitespace-nowrap">{itinerary.endDate}</span>
                     </p>
                     
-                    {/* 🌟 狀態標示區塊 🌟 */}
+                    {/* 🌟 狀態標示區塊 (公開性與擁有者身分) 🌟 */}
                     <div className="flex shrink-0 items-center gap-1.5 pb-0.5">
                       <span title={itinerary.isPublic ? '公開行程' : '私密行程'}>
                         {itinerary.isPublic ? <Globe size={12} className="text-emerald-500" /> : <Lock size={12} className="text-slate-300" />}
@@ -330,12 +464,14 @@ export default function PlannerDashboard() {
         )}
       </div>
 
-      {/* 以下 Modal 保留不變 */}
+      {/* ----------------------------------------------------------------------- */
+      /* 彈窗 1：建立新行程 Modal                                                */
+      /* ----------------------------------------------------------------------- */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-[60]">
           <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95">
-             <div className="p-6 border-b border-slate-100 flex justify-between items-center"><h2 className="text-sm font-bold tracking-widest uppercase">Start Planning</h2><button onClick={() => setIsModalOpen(false)}><X size={20} /></button></div>
-             <form onSubmit={handleCreateItinerary} className="p-8 space-y-6">
+            <div className="p-6 border-b border-slate-100 flex justify-between items-center"><h2 className="text-sm font-bold tracking-widest uppercase">Start Planning</h2><button onClick={() => setIsModalOpen(false)}><X size={20} /></button></div>
+            <form onSubmit={handleCreateItinerary} className="p-8 space-y-6">
                 <input type="text" required value={title} onChange={(e) => setTitle(e.target.value)} placeholder="為你的旅程取個名字" className="w-full p-4 bg-slate-50 border rounded-xl" />
                 <select value={destination} onChange={(e) => setDestination(e.target.value)} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl text-slate-700 outline-none focus:border-[#F04D79]">
                   <optgroup label="北部">
@@ -380,11 +516,14 @@ export default function PlannerDashboard() {
                   <input type="date" required value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-full p-4 bg-slate-50 border rounded-xl" />
                 </div>
                 <button type="submit" disabled={isSubmitting} className="w-full py-4 bg-slate-900 text-white rounded-xl">{isSubmitting ? "建立中..." : "開始規劃"}</button>
-             </form>
+            </form>
           </div>
         </div>
       )}
 
+      {/* ----------------------------------------------------------------------- */
+      /* 彈窗 2：顯示並複製邀請碼 Modal                                          */
+      /* ----------------------------------------------------------------------- */}
       {generatedCodeInfo.isOpen && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
           <div className="bg-white w-full max-w-sm rounded-3xl shadow-xl p-8 text-center animate-in zoom-in-95 duration-200">
@@ -412,6 +551,9 @@ export default function PlannerDashboard() {
         </div>
       )}
 
+      {/* ----------------------------------------------------------------------- */
+      /* 彈窗 3：輸入邀請碼加入行程 Modal                                        */
+      /* ----------------------------------------------------------------------- */}
       {isJoinModalOpen && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
           <div className="bg-white w-full max-w-md rounded-[32px] shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200 p-8">
@@ -419,6 +561,7 @@ export default function PlannerDashboard() {
               <h2 className="text-2xl font-bold text-slate-800 mb-3 text-left">輸入邀請碼</h2>
               <p className="text-sm text-slate-500 font-medium">請輸入 6 碼英數字邀請碼，即可將該行程加入你的清單。</p>
             </div>
+            {/* 6 位數獨立格子 Input 區域 */}
             <div className="flex justify-center gap-3 mb-10">
               {inviteCodeArray.map((char, index) => (
                 <input

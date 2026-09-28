@@ -1,7 +1,10 @@
 "use client";
 
+// 載入 React 狀態鉤子與導頁組件
 import { useState } from "react";
 import { Link } from "./components/Link";
+
+// 載入 UI 圖示元件 (Lucide Icons)
 import {
     Search,
     MapPin,
@@ -12,19 +15,30 @@ import {
     Compass,
     Sparkles,
     Filter,
-    MessageSquare, // ⬇️ 新增 AI 助手需要的圖標
+    MessageSquare,
     X,
 } from "lucide-react";
+
+// 匯入目的地範例資料集
 import { destinations } from "./data/destinations";
 
 export default function Home() {
-    // 狀態管理：用於熱門標籤與地圖/列表模式切換
+    /* ==========================================
+     * 1. 狀態管理 (State Management)
+     * ========================================== */
+    // selectedTag: 當前使用者選取的獨旅標籤 (若為 null 則代表未篩選，顯示預設推薦)
     const [selectedTag, setSelectedTag] = useState<string | null>(null);
+
+    // isMapMode: 景點探索區塊的顯示模式切換 (false: 列表模式, true: 地圖模式)
     const [isMapMode, setIsMapMode] = useState<boolean>(false);
-    
-    // ⬇️ 新增狀態：控制 AI 視窗開啟/關閉
+
+    // isAiOpen: 右下角 AI 獨旅禮賓顧問對話視窗的開啟/關閉狀態
     const [isAiOpen, setIsAiOpen] = useState<boolean>(false);
 
+    /* ==========================================
+     * 2. 常數與靜態資料 (Constants & Mock Data)
+     * ========================================== */
+    // 獨旅專屬快速篩選標籤
     const soloTags = [
         "安全首選",
         "交通便利",
@@ -32,25 +46,38 @@ export default function Home() {
         "慢活探索",
         "自然療癒",
     ];
+
+    // 熱門搜尋關鍵字快捷鍵
     const hotKeywords = ["京都", "冰島藍湖", "清邁", "巴塞隆納"];
+
+    // 即時情報跑馬燈資訊
     const dynamicNews = [
         "🔥 本週熱門：獨旅女性推薦安全目的地 Top 10 已更新",
         "✨ 季節限定：日本東北秘境紅葉單人行程開放預約",
         "💡 獨旅貼士：歐洲火車通行證最新優惠與防偷指南",
     ];
 
+    /* ==========================================
+     * 3. 資料處理邏輯 (Data Processing)
+     * ========================================== */
+    // 根據選取的標籤進行目的地過濾；若未選取標籤，預設僅展示前 6 筆精選資料
     const filteredDestinations = selectedTag
         ? destinations.filter((dest) => dest.tags?.includes(selectedTag))
         : destinations.slice(0, 6);
 
     return (
         <div className="flex flex-col bg-white text-neutral-900 relative">
-            {/* Hero Section & 全域搜尋與篩選 */}
+            {/* ==========================================
+             * 區塊 1: Hero Section & 全域搜尋與標籤篩選
+             * ========================================== */}
             <section className="relative min-h-[90vh] flex items-center justify-center bg-[#F8F8F8] pt-20 pb-16">
                 <div className="relative z-10 container mx-auto px-6 text-center">
+                    {/* 副標題 / 品牌定位 */}
                     <span className="text-xs tracking-[0.3em] uppercase text-neutral-500 mb-6 block font-medium">
                         Luxury Solo Travel Experience
                     </span>
+
+                    {/* 主標題與簡介 */}
                     <h1 className="mb-8 max-w-5xl mx-auto text-6xl md:text-8xl font-extralight tracking-tight text-neutral-900">
                         探索世界之美
                     </h1>
@@ -58,9 +85,10 @@ export default function Home() {
                         精選全球頂級與獨旅友善目的地，為您規劃一場洗滌心靈的專屬旅程。
                     </p>
 
-                    {/* 全域搜尋框 */}
+                    {/* 搜尋輸入框卡片 */}
                     <div className="max-w-4xl mx-auto bg-white shadow-[0_10px_50px_rgba(0,0,0,0.04)] border border-neutral-100 p-2 rounded-sm">
                         <div className="flex flex-col md:flex-row gap-2">
+                            {/* 關鍵字搜尋 */}
                             <div className="flex-1 relative flex items-center px-4">
                                 <Search className="size-4 text-neutral-400 mr-2 flex-shrink-0" />
                                 <input
@@ -68,7 +96,11 @@ export default function Home() {
                                     className="w-full h-14 text-sm tracking-wide bg-transparent focus:outline-none placeholder:text-neutral-300"
                                 />
                             </div>
+
+                            {/* 分隔線 (桌機版顯示) */}
                             <div className="w-px bg-neutral-100 hidden md:block my-3"></div>
+
+                            {/* 目的地地區搜尋 */}
                             <div className="flex-1 relative flex items-center px-4">
                                 <MapPin className="size-4 text-neutral-400 mr-2 flex-shrink-0" />
                                 <input
@@ -76,6 +108,8 @@ export default function Home() {
                                     className="w-full h-14 text-sm tracking-wide bg-transparent focus:outline-none placeholder:text-neutral-300"
                                 />
                             </div>
+
+                            {/* 搜尋按鈕 */}
                             <Link to="/destinations">
                                 <button className="h-14 w-full md:w-auto px-12 bg-neutral-900 text-white text-sm tracking-widest uppercase hover:bg-neutral-800 transition-all duration-300 rounded-sm">
                                     搜尋
@@ -84,8 +118,9 @@ export default function Home() {
                         </div>
                     </div>
 
-                    {/* 獨旅專屬標籤篩選 & 熱門關鍵字 */}
+                    {/* 獨旅專屬標籤篩選 & 熱門關鍵字區塊 */}
                     <div className="max-w-4xl mx-auto mt-6 text-left px-2 space-y-4">
+                        {/* 標籤按鈕列：可點擊切換篩選 */}
                         <div className="flex flex-wrap items-center gap-2 text-xs">
                             <span className="text-neutral-400 flex items-center gap-1 mr-2 tracking-wider">
                                 <Filter className="size-3" /> 專屬標籤：
@@ -109,6 +144,7 @@ export default function Home() {
                             ))}
                         </div>
 
+                        {/* 熱門關鍵字列表 */}
                         <div className="flex flex-wrap items-center gap-3 text-xs">
                             <span className="text-neutral-400 tracking-wider">
                                 熱門搜尋：
@@ -126,12 +162,16 @@ export default function Home() {
                 </div>
             </section>
 
-            {/* 即時情報快訊 Bar */}
+            {/* ==========================================
+             * 區塊 2: 即時情報快訊跑馬燈 (Live News Bar)
+             * ========================================== */}
             <div className="bg-neutral-900 text-white py-3 overflow-hidden border-b border-neutral-800">
                 <div className="container mx-auto px-6 flex items-center gap-4 text-xs tracking-wider">
+                    {/* Live 標籤 */}
                     <span className="bg-white text-neutral-900 px-2 py-0.5 uppercase font-medium text-[10px] tracking-widest flex items-center gap-1 flex-shrink-0">
                         <Sparkles className="size-3 text-amber-500" /> Live
                     </span>
+                    {/* 滾動動畫資訊內容 */}
                     <div className="flex gap-12 animate-marquee whitespace-nowrap overflow-x-auto no-scrollbar">
                         {dynamicNews.map((news, i) => (
                             <span key={i} className="font-light opacity-90">
@@ -142,9 +182,12 @@ export default function Home() {
                 </div>
             </div>
 
-            {/* 推薦牆 X 精選行程 */}
+            {/* ==========================================
+             * 區塊 3: 推薦牆 X 精選目的地列表
+             * ========================================== */}
             <section className="py-32 bg-[#FBFBFB]">
                 <div className="container mx-auto px-6">
+                    {/* 區塊標題與更多按鈕 */}
                     <div className="flex flex-col md:flex-row md:items-end justify-between mb-16 gap-6">
                         <div className="space-y-4">
                             <div className="flex items-center gap-2 text-xs tracking-[0.2em] uppercase text-neutral-400 font-medium">
@@ -169,13 +212,14 @@ export default function Home() {
                         </Link>
                     </div>
 
-                    {/* 融合後的 Grid 卡片 */}
+                    {/* 目的地卡片網格 (Filtered Destination Grid) */}
                     {filteredDestinations.length === 0 ? (
+                        /* 無符合條件資料時顯示 */
                         <div className="text-center py-12 text-neutral-400 font-light text-sm">
-                            沒有找到符合 #{selectedTag}{" "}
-                            試試其他標籤吧！
+                            沒有找到符合 #{selectedTag} 的地點，試試其他標籤吧！
                         </div>
                     ) : (
+                        /* 目的地列表卡片 */
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-16">
                             {filteredDestinations.map((destination) => (
                                 <Link
@@ -184,17 +228,20 @@ export default function Home() {
                                 >
                                     <div className="group cursor-pointer flex flex-col h-full justify-between">
                                         <div>
+                                            {/* 目的地影像圖片與浮動標籤 */}
                                             <div className="relative h-[420px] overflow-hidden mb-6 bg-neutral-100 rounded-sm">
                                                 <img
                                                     src={destination.image}
                                                     alt={destination.name}
                                                     className="w-full h-full object-cover grayscale-[15%] group-hover:grayscale-0 group-hover:scale-105 transition-all duration-1000"
                                                 />
+                                                {/* 左上角類別標籤 */}
                                                 <div className="absolute top-6 left-6 bg-white/90 backdrop-blur-md px-3 py-1.5 shadow-sm border border-neutral-100">
                                                     <span className="text-[10px] tracking-[0.15em] uppercase font-semibold text-neutral-800">
                                                         {destination.category}
                                                     </span>
                                                 </div>
+                                                {/* 右上角安全指數 */}
                                                 <div className="absolute top-6 right-6 bg-neutral-900/80 backdrop-blur-md px-3 py-1.5 text-white flex items-center gap-1 rounded-sm text-xs font-light">
                                                     <Star className="size-3 text-amber-400 fill-amber-400" />
                                                     <span>
@@ -204,6 +251,7 @@ export default function Home() {
                                                 </div>
                                             </div>
 
+                                            {/* 景點名稱與簡述 */}
                                             <div className="space-y-3 px-1">
                                                 <div className="flex justify-between items-baseline">
                                                     <h3 className="text-2xl font-light tracking-wide text-neutral-900">
@@ -219,6 +267,7 @@ export default function Home() {
                                             </div>
                                         </div>
 
+                                        {/* 底部價格與進入詳情按鈕 */}
                                         <div className="flex items-center justify-between pt-6 mt-6 border-t border-neutral-100 px-1">
                                             <div className="flex flex-col">
                                                 <span className="text-[9px] text-neutral-400 tracking-widest uppercase mb-0.5">
@@ -240,9 +289,12 @@ export default function Home() {
                 </div>
             </section>
 
-            {/* 3. 景點地圖模式區塊 */}
+            {/* ==========================================
+             * 區塊 4: 周邊景點與地圖/列表模式切換區塊
+             * ========================================== */}
             <section className="py-32 bg-white border-t border-neutral-100">
                 <div className="container mx-auto px-6">
+                    {/* 標題與切換按鈕 */}
                     <div className="flex flex-col md:flex-row md:items-end justify-between mb-16 gap-6">
                         <div className="space-y-4">
                             <h2 className="text-4xl md:text-5xl font-extralight tracking-tight text-neutral-900">
@@ -254,6 +306,7 @@ export default function Home() {
                             </p>
                         </div>
 
+                        {/* 列表/地圖模式開關 */}
                         <div className="flex border border-neutral-200 p-1 rounded-sm bg-neutral-50 self-start md:self-auto">
                             <button
                                 onClick={() => setIsMapMode(false)}
@@ -270,11 +323,13 @@ export default function Home() {
                         </div>
                     </div>
 
+                    {/* 根據 isMapMode 狀態渲染 列表 或 地圖 UI */}
                     {!isMapMode ? (
+                        /* 模式 A：列表模式 (定位提示卡片) */
                         <div className="bg-neutral-50 border border-neutral-100 p-8 md:p-12 text-center rounded-sm">
                             <div className="max-w-md mx-auto space-y-6 py-12">
                                 <Compass className="size-10 mx-auto text-neutral-300" />
-                                <h3 className="text-lg font-light tracking-wide text-neutral-885">
+                                <h3 className="text-lg font-light tracking-wide text-neutral-800">
                                     探索您周邊的獨旅友善地標
                                 </h3>
                                 <p className="text-sm text-neutral-400 font-light leading-relaxed">
@@ -286,9 +341,12 @@ export default function Home() {
                             </div>
                         </div>
                     ) : (
+                        /* 模式 B：地圖模式 (模擬互動地圖 UI) */
                         <div className="relative h-[550px] bg-neutral-100 border border-neutral-200 rounded-sm overflow-hidden flex items-center justify-center">
+                            {/* 地圖網格背景效果 */}
                             <div className="absolute inset-0 opacity-40 bg-[radial-gradient(#e5e5e5_1px,transparent_1px)] [background-size:16px_16px] bg-white"></div>
 
+                            {/* 模擬地圖地標點 A */}
                             <div className="absolute top-1/4 left-1/3 group cursor-pointer">
                                 <div className="bg-neutral-900 text-white text-[10px] tracking-wider px-3 py-1.5 rounded-sm shadow-xl flex items-center gap-1.5 transition-transform group-hover:-translate-y-1">
                                     <MapPin className="size-3 text-amber-400 fill-amber-400" />{" "}
@@ -297,6 +355,7 @@ export default function Home() {
                                 <div className="w-2 h-2 bg-neutral-900 mx-auto rotate-45 -mt-1 shadow-lg"></div>
                             </div>
 
+                            {/* 模擬地圖地標點 B */}
                             <div className="absolute bottom-1/3 right-1/4 group cursor-pointer">
                                 <div className="bg-neutral-900 text-white text-[10px] tracking-wider px-3 py-1.5 rounded-sm shadow-xl flex items-center gap-1.5 transition-transform group-hover:-translate-y-1">
                                     <MapPin className="size-3 text-amber-400 fill-amber-400" />{" "}
@@ -305,6 +364,7 @@ export default function Home() {
                                 <div className="w-2 h-2 bg-neutral-900 mx-auto rotate-45 -mt-1 shadow-lg"></div>
                             </div>
 
+                            {/* 地圖左下角資訊面板 */}
                             <div className="relative z-10 bg-white/90 backdrop-blur-md p-6 max-w-xs border border-neutral-200 shadow-xl absolute bottom-6 left-6 space-y-3">
                                 <span className="text-[9px] tracking-[0.2em] uppercase font-bold text-neutral-400 block">
                                     Interactive Map
@@ -321,7 +381,9 @@ export default function Home() {
                 </div>
             </section>
 
-            {/* Categories (旅行方式) */}
+            {/* ==========================================
+             * 區塊 5: 旅行方式分類 (Categories)
+             * ========================================== */}
             <section className="py-32 bg-[#FBFBFB]">
                 <div className="container mx-auto px-6">
                     <div className="text-center mb-20 space-y-4">
@@ -333,6 +395,7 @@ export default function Home() {
                         </p>
                     </div>
 
+                    {/* 四大旅行類別 */}
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
                         {[
                             { name: "文化探索", count: 120 },
@@ -359,92 +422,59 @@ export default function Home() {
                 </div>
             </section>
 
-            {/* CTA Section */}
-            <section className="py-40 bg-neutral-900 text-white overflow-hidden relative">
-                <div className="container mx-auto px-6 text-center relative z-10">
-                    <h2 className="mb-8 text-5xl md:text-7xl font-extralight tracking-tighter italic">
-                        開始您的旅程
-                    </h2>
-                    <p className="text-lg mb-16 max-w-2xl mx-auto text-neutral-400 font-light tracking-[0.1em] leading-relaxed">
-                        世界上最美麗的風景，都值得您親身體驗。讓我們為您打造下一個難忘的回憶。
-                    </p>
-                    <div className="flex flex-col sm:flex-row gap-6 justify-center items-center">
-                        <Link to="/destinations">
-                            <button className="min-w-[200px] px-10 py-5 bg-white text-neutral-900 text-xs tracking-[0.3em] uppercase font-semibold hover:bg-neutral-100 transition-all">
-                                探索景點
-                            </button>
-                        </Link>
-                        <Link to="/planner">
-                            <button className="min-w-[200px] px-10 py-5 border border-neutral-700 text-white text-xs tracking-[0.3em] uppercase font-semibold hover:bg-white hover:text-neutral-900 hover:border-white transition-all">
-                                規劃行程
-                            </button>
-                        </Link>
-                    </div>
-                </div>
-            </section>
-
-            {/* ⬇️ ==================== 固定右下角 AI 助手區塊 ==================== */}
-            <div className="fixed bottom-8 right-8 z-50 flex flex-col items-end gap-4">
-                
-                {/* AI 彈出對話小視窗 */}
-                {isAiOpen && (
-                    <div className="w-80 md:w-96 h-[450px] bg-white/90 backdrop-blur-xl border border-neutral-200 shadow-[0_20px_50px_rgba(0,0,0,0.1)] rounded-sm flex flex-col overflow-hidden transition-all duration-300 animate-in fade-in slide-in-from-bottom-5">
-                        {/* 視窗頂部 */}
-                        <div className="bg-neutral-900 text-white px-5 py-4 flex items-center justify-between">
+            {/* ==========================================
+             * 區塊 6: AI 獨旅禮賓顧問 Floating Widget
+             * ========================================== */}
+            <div className="fixed bottom-8 right-8 z-50">
+                {!isAiOpen ? (
+                    <button
+                        onClick={() => setIsAiOpen(true)}
+                        className="bg-neutral-900 text-white p-4 rounded-full shadow-2xl hover:scale-105 transition-all duration-300 flex items-center gap-3 px-6 group"
+                    >
+                        <Sparkles className="size-5 text-amber-400 group-hover:rotate-12 transition-transform" />
+                        <span className="text-xs tracking-widest uppercase font-light">
+                            AI 獨旅顧問
+                        </span>
+                    </button>
+                ) : (
+                    <div className="bg-white border border-neutral-200 shadow-2xl w-80 md:w-96 rounded-sm overflow-hidden flex flex-col">
+                        {/* 彈窗 Header */}
+                        <div className="bg-neutral-900 text-white p-4 flex items-center justify-between">
                             <div className="flex items-center gap-2">
-                                <Sparkles className="size-4 text-amber-400 fill-amber-400" />
-                                <span className="text-xs tracking-[0.2em] uppercase font-light">Solo Concierge AI</span>
+                                <Sparkles className="size-4 text-amber-400" />
+                                <span className="text-xs tracking-widest uppercase font-medium">
+                                    Solo Concierge AI
+                                </span>
                             </div>
-                            <button 
-                                onClick={() => setIsAiOpen(false)} 
+                            <button
+                                onClick={() => setIsAiOpen(false)}
                                 className="text-neutral-400 hover:text-white transition-colors"
                             >
                                 <X className="size-4" />
                             </button>
                         </div>
-                        
-                        {/* 對話內容區 (示意) */}
-                        <div className="flex-1 p-5 overflow-y-auto text-sm font-light space-y-4">
-                            <div className="bg-neutral-50 p-3 rounded-sm text-neutral-600 leading-relaxed border border-neutral-100">
-                                您好！我是您的獨旅專屬顧問。正在尋找安全、適合獨自放鬆、或是交通方便的頂級奢華行程嗎？隨時告訴我您的想法。
+
+                        {/* 對話內容區塊 */}
+                        <div className="p-4 h-64 overflow-y-auto space-y-3 bg-neutral-50 text-xs">
+                            <div className="bg-white p-3 border border-neutral-100 shadow-sm text-neutral-600 leading-relaxed">
+                                您好！我是您的專屬獨旅禮賓顧問。請問您正在規劃獨自前往哪個國家，或是需要安全性評估？
                             </div>
                         </div>
 
-                        {/* 輸入欄位 */}
-                        <div className="p-3 border-t border-neutral-100 bg-white flex gap-2">
-                            <input 
-                                type="text" 
-                                placeholder="問問 AI...（例如：推薦適合女性獨旅的國家）" 
-                                className="w-full h-10 px-3 bg-neutral-50 text-xs border border-neutral-100 focus:outline-none focus:border-neutral-900 transition-colors placeholder:text-neutral-300 font-light"
+                        {/* 對話輸入框 */}
+                        <div className="p-3 bg-white border-t border-neutral-100 flex items-center gap-2">
+                            <input
+                                type="text"
+                                placeholder="詢問關於獨旅安全性、行程安排..."
+                                className="flex-1 text-xs bg-neutral-50 border border-neutral-200 px-3 py-2 focus:outline-none focus:border-neutral-900"
                             />
-                            <button className="h-10 px-4 bg-neutral-900 text-white text-[10px] tracking-widest uppercase hover:bg-neutral-800 transition-colors">
-                                發送
+                            <button className="bg-neutral-900 text-white p-2 hover:bg-neutral-800 transition-colors">
+                                <MessageSquare className="size-3.5" />
                             </button>
                         </div>
                     </div>
                 )}
-
-                {/* 圓形固定懸浮按鈕 */}
-                <button
-                    onClick={() => setIsAiOpen(!isAiOpen)}
-                    className="w-14 h-14 bg-neutral-900 text-white rounded-full shadow-lg flex items-center justify-center hover:bg-neutral-800 hover:scale-105 transition-all duration-300 border border-neutral-800 group relative"
-                    aria-label="AI Travel Assistant"
-                >
-                    {isAiOpen ? (
-                        <X className="size-5 transition-transform duration-300 rotate-90" />
-                    ) : (
-                        <>
-                            <MessageSquare className="size-5" />
-                            {/* 小提示紅點（表示有 Live 線上感） */}
-                            <span className="absolute top-0 right-0 flex h-2 w-2">
-                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
-                                <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
-                            </span>
-                        </>
-                    )}
-                </button>
             </div>
-            {/* ⬆️ ============================================================= */}
         </div>
     );
 }
