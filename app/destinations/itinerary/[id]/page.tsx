@@ -47,7 +47,7 @@ export default function PublicItineraryPage({ params }: { params: Promise<{ id: 
       setIsLoading(true);
       setError('');
       try {
-        const response = await fetch('http://localhost:8080/destinations/get_public_itinerary_preview.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ Itinerary_ID: id }) });
+        const response = await fetch('http://localhost:8080/destinations/public_itineraries.php?action=preview', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ Itinerary_ID: id }) });
         const data = await response.json();
         if (!response.ok || data.status !== 'success') throw new Error(data.message || '找不到這份公開行程。');
         if (isActive) setItinerary(data.data as PublicItinerary);
@@ -96,7 +96,7 @@ export default function PublicItineraryPage({ params }: { params: Promise<{ id: 
     setIsSubmittingReport(true);
     setReportError('');
     try {
-      const response = await fetch('http://localhost:8080/destinations/create_public_itinerary_report.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ Itinerary_ID: itinerary.id, Account: currentAccount, Reason: reason, Details: details.trim() }) });
+      const response = await fetch('http://localhost:8080/destinations/public_itineraries.php?action=report', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ Itinerary_ID: itinerary.id, Account: currentAccount, Reason: reason, Details: details.trim() }) });
       const data = await response.json();
       if (!response.ok || data.status !== 'success') throw new Error(data.message || '檢舉送出失敗');
       setIsReportOpen(false);

@@ -369,7 +369,7 @@ function community_fetch_posts_by_ids(mysqli $conn, array $postIds, string $view
             'commentCount' => (int) ($row['Comment_Count'] ?? 0),
             'liked' => (bool) ($row['User_Liked'] ?? 0),
             'saved' => (bool) ($row['User_Saved'] ?? 0),
-            // 首頁不預載留言；展開時由 get_comments.php 載入。
+            // 首頁不預載留言；展開時由 community.php?action=comments 載入。
             'comments' => [],
         ];
     }

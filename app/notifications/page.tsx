@@ -40,7 +40,7 @@ export default function NotificationsPage() {
     if (!currentAccount) return;
     const fetchNotifications = async () => {
       try {
-        const res = await fetch("http://localhost:8080/get_notifications.php", {
+        const res = await fetch("http://localhost:8080/notifications.php?action=get", {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ Account: currentAccount })
         });
@@ -62,7 +62,7 @@ export default function NotificationsPage() {
     if (unreadCount === 0 || !currentAccount) return;
     setIsMarkingRead(true);
     try {
-      const res = await fetch("http://localhost:8080/mark_notifications_read.php", {
+      const res = await fetch("http://localhost:8080/notifications.php?action=mark_read", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ Account: currentAccount })
       });

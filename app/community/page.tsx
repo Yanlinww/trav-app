@@ -137,7 +137,7 @@ export default function CommunityPage() {
 
   const loadTopics = useCallback(async () => {
     try {
-      const response = await fetch(`${COMMUNITY_API}/get_topics.php`, { cache: "no-store" });
+      const response = await fetch(`${COMMUNITY_API}/community.php?action=topics`, { cache: "no-store" });
       const data = await readApiResponse<Topic[]>(response);
       setTopics(data.data && data.data.length > 0 ? data.data : fallbackTopics);
     } catch {
@@ -155,7 +155,7 @@ export default function CommunityPage() {
     setError("");
 
     try {
-      const response = await fetch(`${COMMUNITY_API}/get_posts.php?${params.toString()}`, {
+      const response = await fetch(`${COMMUNITY_API}/community.php?action=posts&${params.toString()}`, {
         cache: "no-store",
       });
       const data = await readApiResponse<CommunityPost[]>(response);
@@ -194,7 +194,7 @@ export default function CommunityPage() {
 
     setLoadingComments((current) => ({ ...current, [postId]: true }));
     try {
-      const response = await fetch(`${COMMUNITY_API}/get_comments.php?postId=${postId}`, { cache: "no-store" });
+      const response = await fetch(`${COMMUNITY_API}/community.php?action=comments&postId=${postId}`, { cache: "no-store" });
       const data = await readApiResponse<CommunityComment[]>(response);
       setPosts((current) => current.map((post) => post.id === postId ? { ...post, comments: data.data ?? [] } : post));
       setLoadedComments((current) => ({ ...current, [postId]: true }));
@@ -264,7 +264,7 @@ export default function CommunityPage() {
     setError("");
 
     try {
-      const response = await fetch(`${COMMUNITY_API}/create_post.php`, {
+      const response = await fetch(`${COMMUNITY_API}/community.php?action=create`, {
         method: "POST",
         body: formData,
       });
@@ -294,7 +294,7 @@ export default function CommunityPage() {
     }
 
     try {
-      const response = await fetch(`${COMMUNITY_API}/toggle_reaction.php`, {
+      const response = await fetch(`${COMMUNITY_API}/community.php?action=reaction`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -333,7 +333,7 @@ export default function CommunityPage() {
     const replyTarget = replyTargets[post.id];
 
     try {
-      const response = await fetch(`${COMMUNITY_API}/add_comment.php`, {
+      const response = await fetch(`${COMMUNITY_API}/community.php?action=comment`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

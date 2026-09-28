@@ -74,7 +74,7 @@ export default function TagDestinationPage({ params }: { params: Promise<{ tag: 
     const controller = new AbortController();
     setIsLoading(true);
     setError('');
-    fetch('http://localhost:8080/destinations/get_public_itineraries.php', {
+    fetch('http://localhost:8080/destinations/public_itineraries.php?action=list', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ Tags: [tag], Sort: sortBy, Limit: 48 }),
@@ -98,7 +98,7 @@ export default function TagDestinationPage({ params }: { params: Promise<{ tag: 
     setIsPreviewLoading(true);
     setPreviewError('');
     try {
-      const response = await fetch('http://localhost:8080/destinations/get_public_itinerary_preview.php', {
+      const response = await fetch('http://localhost:8080/destinations/public_itineraries.php?action=preview', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ Itinerary_ID: itineraryId }),

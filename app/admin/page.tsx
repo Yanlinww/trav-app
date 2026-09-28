@@ -98,7 +98,7 @@ export default function AdminPage() {
     setIsLoading(true);
     setLoadError('');
     try {
-      const response = await fetch(`${API_BASE}/get_public_itinerary_reports.php`, {
+      const response = await fetch(`${API_BASE}/api.php?action=reports`, {
         method: 'POST', headers: getAdminHeaders(), body: JSON.stringify({}),
       });
       const data = await parseJson<{ status?: string; message?: string; data?: Report[] }>(response, '檢舉服務回傳格式錯誤，請稍後重新整理。');
@@ -114,7 +114,7 @@ export default function AdminPage() {
     setIsAuditLoading(true);
     setAuditError('');
     try {
-      const response = await fetch(`${API_BASE}/get_public_itinerary_moderation_log.php`, {
+      const response = await fetch(`${API_BASE}/api.php?action=moderation_log`, {
         method: 'POST', headers: getAdminHeaders(), body: JSON.stringify({}),
       });
       const data = await parseJson<{ status?: string; message?: string; data?: AdminAuditLog[] }>(response, '管理紀錄服務回傳格式錯誤，請稍後重新整理。');
@@ -129,7 +129,7 @@ export default function AdminPage() {
     if (!isAdmin) return;
     setIsStatsLoading(true);
     try {
-      const response = await fetch(`${API_BASE}/get_admin_dashboard_stats.php`, {
+      const response = await fetch(`${API_BASE}/api.php?action=dashboard_stats`, {
         method: 'POST', headers: getAdminHeaders(), body: JSON.stringify({}),
       });
       const data = await parseJson<{ status?: string; data?: AdminDashboardStats }>(response, '管理統計服務回傳格式錯誤。');
@@ -145,7 +145,7 @@ export default function AdminPage() {
     setIsUsersLoading(true);
     setUsersError('');
     try {
-      const response = await fetch(`${API_BASE}/get_admin_users.php`, {
+      const response = await fetch(`${API_BASE}/api.php?action=users`, {
         method: 'POST', headers: getAdminHeaders(), body: JSON.stringify({}),
       });
       const data = await parseJson<{ status?: string; message?: string; data?: AdminUser[] }>(response, '使用者管理服務回傳格式錯誤，請稍後重新整理。');
@@ -229,7 +229,7 @@ export default function AdminPage() {
     if (!note.trim()) { setActionError('請填寫處理備註。'); return; }
     setIsSubmitting(true); setActionError('');
     try {
-      const response = await fetch(`${API_BASE}/update_public_itinerary_report.php`, {
+      const response = await fetch(`${API_BASE}/api.php?action=update_report`, {
         method: 'POST',
         headers: getAdminHeaders(),
         body: JSON.stringify({ Report_ID: activeReport.id, Status: action, Admin_Note: note.trim() }),
@@ -251,7 +251,7 @@ export default function AdminPage() {
     if (!visibilityNote.trim()) { setVisibilityError('請填寫管理備註。'); return; }
     setIsUpdatingVisibility(true); setVisibilityError('');
     try {
-      const response = await fetch(`${API_BASE}/update_public_itinerary_visibility.php`, {
+      const response = await fetch(`${API_BASE}/api.php?action=update_visibility`, {
         method: 'POST',
         headers: getAdminHeaders(),
         body: JSON.stringify({ Itinerary_ID: visibilityTarget.itinerary.id, Report_ID: visibilityTarget.id, Action: visibilityAction, Moderation_Note: visibilityNote.trim() }),

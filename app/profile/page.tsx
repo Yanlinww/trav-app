@@ -50,7 +50,7 @@ export default function ProfilePage() {
     if (!user) return;
     setIsLoadingFiles(true);
     try {
-      const res = await fetch("http://localhost:8080/get_user_files.php", {
+      const res = await fetch("http://localhost:8080/files.php?action=get", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ Account: user.id || (user as any).Account, Tab_Type: 'photos' }),
       });
@@ -81,7 +81,7 @@ export default function ProfilePage() {
   const fetchSocialLinks = async () => {
     if (!user) return;
     try {
-      const res = await fetch("http://localhost:8080/get_social_links.php", {
+      const res = await fetch("http://localhost:8080/social.php?action=links", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ Account: user.id || (user as any).Account }),
       });
@@ -116,7 +116,7 @@ export default function ProfilePage() {
     const fetchFollowStats = async () => {
       try {
         const authToken = window.localStorage.getItem('auth_token');
-        const res = await fetch("http://localhost:8080/get_user_profile.php", {
+        const res = await fetch("http://localhost:8080/social.php?action=profile", {
           method: "POST", headers: { "Content-Type": "application/json", ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}) },
           body: JSON.stringify({ Account: currentAccount }),
         });
@@ -191,7 +191,7 @@ export default function ProfilePage() {
     if (!user) return;
     setIsSavingLinks(true);
     try {
-      const res = await fetch("http://localhost:8080/update_social_links.php", {
+      const res = await fetch("http://localhost:8080/social.php?action=update_links", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ Account: user.id || (user as any).Account, ...socialLinks }),
       });
@@ -222,7 +222,7 @@ export default function ProfilePage() {
     formData.append('type', 'photos'); 
 
     try {
-      const res = await fetch("http://localhost:8080/upload_photo.php", { method: "POST", body: formData });
+      const res = await fetch("http://localhost:8080/files.php?action=upload", { method: "POST", body: formData });
       const data = await res.json();
       if (data.status === 'success') fetchUserFiles(); 
       else alert(`❌ 上傳失敗：${data.message}`);

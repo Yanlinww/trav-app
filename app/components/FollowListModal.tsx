@@ -44,7 +44,7 @@ export default function FollowListModal({ account, listType, isOwnList = false, 
       setError('');
       try {
         const token = window.localStorage.getItem('auth_token');
-        const response = await fetch(`${API_BASE}/profile/get_follow_list.php`, {
+        const response = await fetch(`${API_BASE}/profile/profile.php?action=follow_list`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
           body: JSON.stringify({ Account: account, List_Type: activeListType }),
@@ -68,7 +68,7 @@ export default function FollowListModal({ account, listType, isOwnList = false, 
     setError('');
     try {
       const token = window.localStorage.getItem('auth_token');
-      const response = await fetch(`${API_BASE}/toggle_follow.php`, {
+      const response = await fetch(`${API_BASE}/social.php?action=toggle_follow`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         body: JSON.stringify({ Target_Account: member.account }),

@@ -47,7 +47,7 @@
 | [join_itinerary.php](F:/trav-app/backend/trav-api/itinerary/core.php:313) | 使用邀請碼加入 | `Invite_Code*`、`Account*` | `S + message` | 查邀請碼；擁有者不能加入自己的行程；使用 INSERT IGNORE，重複加入回 error |
 | [get_itinerary_style.php](F:/trav-app/backend/trav-api/itinerary/core.php:350) | 讀取旅行風格 | `Itinerary_ID*` | `S + style` | 未見行程權限檢查；缺 ID 為 400；找不到／未設定風格也回預設「自助旅行」 |
 | [update_itinerary_style.php](F:/trav-app/backend/trav-api/itinerary/core.php:376) | 設定旅行風格 | `Itinerary_ID*`、`Style*` | `S + style` | 未見行程權限檢查；Style 限自助旅行、親子旅行、情侶旅行、朋友出遊、商務出差、自訂；無效值 422，執行失敗 500 |
-| [update_cover_image.php](F:/trav-app/backend/trav-api/itinerary/uploads/upload_cover_image.php:1) | 上傳封面 | **FormData**：`Itinerary_ID*`、`Account*`、檔案 `cover_image*` | `S + message + new_image_url` | 查擁有者；檔案最大 10 MiB，副檔名 jpg/jpeg/png/webp，另以 getimagesize 檢查；寫入實體圖片與 Cover_Image |
+| [update_cover_image.php](F:/trav-app/backend/trav-api/itinerary/uploads/upload.php:14) | 上傳封面 | **FormData**：`Itinerary_ID*`、`Account*`、檔案 `cover_image*` | `S + message + new_image_url` | 查擁有者；檔案最大 10 MiB，副檔名 jpg/jpeg/png/webp，另以 getimagesize 檢查；寫入實體圖片與 Cover_Image |
 
 ### Core 回傳欄位與相容性
 
@@ -70,7 +70,7 @@
 | [update_item_details.php](F:/trav-app/backend/trav-api/itinerary/items.php:231) | 修改筆記／預約資料 | `Item_ID*`；`Content`、`Reservation_No`、`Link`、`Screenshot_URL` | `S + message` | 未見行程權限檢查；四個資訊欄位一起覆寫，缺少／null 欄位會寫成 null |
 | [delete_itinerary_item.php](F:/trav-app/backend/trav-api/itinerary/items.php:262) | 刪除細項 | `Item_ID*` | `S` | 未見行程權限檢查 |
 | [update_sort_order.php](F:/trav-app/backend/trav-api/itinerary/items.php:284) | 批次排序 | `updates*`：非空陣列，元素含 `id`、`sortOrder` | `S` | 未見行程權限檢查；id、sortOrder 轉整數，使用單一 CASE UPDATE；更新只涉及 Sort_Order |
-| [upload_item_screenshot.php](F:/trav-app/backend/trav-api/itinerary/uploads/upload_item_screenshot.php:1) | 上傳預約截圖 | **FormData**：`Item_ID*`、檔案 `screenshot*` | `S + screenshotUrl` | 未見行程權限檢查；最大 10 MiB，副檔名 jpg/jpeg/png/webp；更新 Screenshot_URL；不像封面有 getimagesize 檢查 |
+| [upload_item_screenshot.php](F:/trav-app/backend/trav-api/itinerary/uploads/upload.php:97) | 上傳預約截圖 | **FormData**：`Item_ID*`、檔案 `screenshot*` | `S + screenshotUrl` | 未見行程權限檢查；最大 10 MiB，副檔名 jpg/jpeg/png/webp；更新 Screenshot_URL；不像封面有 getimagesize 檢查 |
 
 ### Items 回傳欄位與相容性
 
@@ -206,7 +206,7 @@
 | [/itinerary/core/join_itinerary.php](F:/trav-app/backend/trav-api/itinerary/core.php:313) | 2 | [app/planner/page.tsx:167](F:/trav-app/app/planner/page.tsx:167)<br>[app/profile/page.tsx:174](F:/trav-app/app/profile/page.tsx:174) |
 | [/itinerary/core/pin_itinerary.php](F:/trav-app/backend/trav-api/itinerary/core.php:227) | 1 | [app/planner/page.tsx:209](F:/trav-app/app/planner/page.tsx:209) |
 | [/itinerary/core/toggle_itinerary_visibility.php](F:/trav-app/backend/trav-api/itinerary/core.php:251) | 0 | 未找到直接前端呼叫 |
-| [/itinerary/core/update_cover_image.php](F:/trav-app/backend/trav-api/itinerary/uploads/upload_cover_image.php:1) | 1 | [app/planner/[id]/page.tsx:2140](F:/trav-app/app/planner/[id]/page.tsx:2140) |
+| [/itinerary/core/update_cover_image.php](F:/trav-app/backend/trav-api/itinerary/uploads/upload.php:14) | 1 | [app/planner/[id]/page.tsx:2140](F:/trav-app/app/planner/[id]/page.tsx:2140) |
 | [/itinerary/core/update_itinerary_info.php](F:/trav-app/backend/trav-api/itinerary/core.php:158) | 1 | [app/planner/[id]/page.tsx:2162](F:/trav-app/app/planner/[id]/page.tsx:2162) |
 | [/itinerary/core/update_itinerary_style.php](F:/trav-app/backend/trav-api/itinerary/core.php:376) | 1 | [app/planner/[id]/page.tsx:2150](F:/trav-app/app/planner/[id]/page.tsx:2150) |
 | [/itinerary/expenses/create_expense.php](F:/trav-app/backend/trav-api/itinerary/expenses.php:82) | 1 | [app/planner/[id]/page.tsx:705](F:/trav-app/app/planner/[id]/page.tsx:705) |
@@ -222,33 +222,20 @@
 | [/itinerary/items/update_item_time.php](F:/trav-app/backend/trav-api/itinerary/items.php:158) | 2 | [app/planner/[id]/page.tsx:2306](F:/trav-app/app/planner/[id]/page.tsx:2306)<br>[app/planner/[id]/page.tsx:2371](F:/trav-app/app/planner/[id]/page.tsx:2371) |
 | [/itinerary/items/update_item_title.php](F:/trav-app/backend/trav-api/itinerary/items.php:136) | 1 | [app/planner/[id]/page.tsx:2281](F:/trav-app/app/planner/[id]/page.tsx:2281) |
 | [/itinerary/items/update_sort_order.php](F:/trav-app/backend/trav-api/itinerary/items.php:284) | 1 | [app/planner/[id]/page.tsx:2368](F:/trav-app/app/planner/[id]/page.tsx:2368) |
-| [/itinerary/items/upload_item_screenshot.php](F:/trav-app/backend/trav-api/itinerary/uploads/upload_item_screenshot.php:1) | 1 | [app/planner/[id]/page.tsx:2403](F:/trav-app/app/planner/[id]/page.tsx:2403) |
+| [/itinerary/items/upload_item_screenshot.php](F:/trav-app/backend/trav-api/itinerary/uploads/upload.php:97) | 1 | [app/planner/[id]/page.tsx:2403](F:/trav-app/app/planner/[id]/page.tsx:2403) |
 | [/itinerary/luggage/get_luggage.php](F:/trav-app/backend/trav-api/itinerary/luggage.php:41) | 1 | [app/planner/[id]/page.tsx:1169](F:/trav-app/app/planner/[id]/page.tsx:1169) |
 | [/itinerary/luggage/update_luggage.php](F:/trav-app/backend/trav-api/itinerary/luggage.php:58) | 1 | [app/planner/[id]/page.tsx:1196](F:/trav-app/app/planner/[id]/page.tsx:1196) |
 | [/itinerary/places/get_place_tags.php](F:/trav-app/backend/trav-api/itinerary/places.php:17) | 1 | [app/planner/[id]/page.tsx:1760](F:/trav-app/app/planner/[id]/page.tsx:1760) |
 | [/itinerary/places/update_place_tags.php](F:/trav-app/backend/trav-api/itinerary/places.php:53) | 1 | [app/planner/[id]/page.tsx:1776](F:/trav-app/app/planner/[id]/page.tsx:1776) |
 
-## 13. Helper 的外部引用
+## 13. Helper 的外部引用（目前檔案）
 
 | 外部 PHP（資料來源） | 引用行號 |
 | --- | ---: |
-| [backend/trav-api/admin/get_admin_dashboard_stats.php](F:/trav-app/backend/trav-api/admin/get_admin_dashboard_stats.php:10) | 10 |
-| [backend/trav-api/admin/get_admin_users.php](F:/trav-app/backend/trav-api/admin/get_admin_users.php:10) | 10 |
-| [backend/trav-api/admin/get_public_itinerary_moderation_log.php](F:/trav-app/backend/trav-api/admin/get_public_itinerary_moderation_log.php:10) | 10 |
-| [backend/trav-api/admin/get_public_itinerary_reports.php](F:/trav-app/backend/trav-api/admin/get_public_itinerary_reports.php:10) | 10 |
-| [backend/trav-api/admin/update_public_itinerary_report.php](F:/trav-app/backend/trav-api/admin/update_public_itinerary_report.php:10) | 10 |
-| [backend/trav-api/admin/update_public_itinerary_visibility.php](F:/trav-app/backend/trav-api/admin/update_public_itinerary_visibility.php:10) | 10 |
-| [backend/trav-api/destinations/copy_public_itinerary.php](F:/trav-app/backend/trav-api/destinations/copy_public_itinerary.php:10) | 10 |
-| [backend/trav-api/destinations/create_public_itinerary_report.php](F:/trav-app/backend/trav-api/destinations/create_public_itinerary_report.php:10) | 10 |
-| [backend/trav-api/destinations/get_public_itineraries.php](F:/trav-app/backend/trav-api/destinations/get_public_itineraries.php:9) | 9 |
-| [backend/trav-api/destinations/get_public_itinerary_preview.php](F:/trav-app/backend/trav-api/destinations/get_public_itinerary_preview.php:10) | 10 |
-| [backend/trav-api/destinations/get_publishable_itineraries.php](F:/trav-app/backend/trav-api/destinations/get_publishable_itineraries.php:10) | 10 |
-| [backend/trav-api/destinations/record_public_itinerary_view.php](F:/trav-app/backend/trav-api/destinations/record_public_itinerary_view.php:10) | 10 |
-| [backend/trav-api/destinations/save_public_itinerary.php](F:/trav-app/backend/trav-api/destinations/save_public_itinerary.php:10) | 10 |
-| [backend/trav-api/destinations/toggle_public_itinerary_like.php](F:/trav-app/backend/trav-api/destinations/toggle_public_itinerary_like.php:10) | 10 |
-| [backend/trav-api/destinations/toggle_public_itinerary_save.php](F:/trav-app/backend/trav-api/destinations/toggle_public_itinerary_save.php:10) | 10 |
-| [backend/trav-api/profile/get_follow_list.php](F:/trav-app/backend/trav-api/profile/get_follow_list.php:10) | 10 |
-| [backend/trav-api/toggle_follow.php](F:/trav-app/backend/trav-api/toggle_follow.php:11) | 11 |
+| [backend/trav-api/admin/api.php](F:/trav-app/backend/trav-api/admin/api.php:12) | 12 |
+| [backend/trav-api/destinations/public_itineraries.php](F:/trav-app/backend/trav-api/destinations/public_itineraries.php:9) | 9 |
+| [backend/trav-api/profile/profile.php](F:/trav-app/backend/trav-api/profile/profile.php:156) | 156（`follow_list` 功能） |
+| [backend/trav-api/social.php](F:/trav-app/backend/trav-api/social.php:12) | 12 |
 
 ## 14. Luggage 合併進度（2026-09-28）
 
@@ -275,7 +262,7 @@
 
 ## 15. 全部 itinerary 合併完成（2026-09-28）
 
-目前共有 **9 個 PHP 檔案**：6 個 JSON 模組入口、2 個圖片上傳入口、1 個共用 helper；提供原本的 35 種操作。原本 35 個單操作端點已移除，未保留舊網址轉接。其餘後端模組未合併。
+目前 itinerary 共有 **9 個 PHP 檔案**：6 個 JSON 模組入口、2 個圖片上傳入口、1 個共用 helper；提供原本的 35 種操作。原本 35 個單操作端點已移除，未保留舊網址轉接。這是 itinerary 階段的盤點；後續 community 與 destinations 的整合另見各自文件。
 
 ```text
 F:\trav-app\backend\trav-api\itinerary\
@@ -287,8 +274,7 @@ F:\trav-app\backend\trav-api\itinerary\
 ├── luggage.php
 ├── places.php
 └── uploads\
-    ├── upload_cover_image.php
-    └── upload_item_screenshot.php
+    └── upload.php
 ```
 
 ### 新舊操作對照（目前 API）
@@ -311,7 +297,7 @@ F:\trav-app\backend\trav-api\itinerary\
 | `/itinerary/core/join_itinerary.php` | `/itinerary/core.php?action=join` | [core.php:313](F:/trav-app/backend/trav-api/itinerary/core.php:313) |
 | `/itinerary/core/pin_itinerary.php` | `/itinerary/core.php?action=pin` | [core.php:227](F:/trav-app/backend/trav-api/itinerary/core.php:227) |
 | `/itinerary/core/toggle_itinerary_visibility.php` | `/itinerary/core.php?action=visibility` | [core.php:251](F:/trav-app/backend/trav-api/itinerary/core.php:251) |
-| `/itinerary/core/update_cover_image.php` | `/itinerary/uploads/upload_cover_image.php` | [uploads/upload_cover_image.php:1](F:/trav-app/backend/trav-api/itinerary/uploads/upload_cover_image.php:1) |
+| `/itinerary/core/update_cover_image.php` | `/itinerary/uploads/upload.php?action=cover` | [uploads/upload.php:14](F:/trav-app/backend/trav-api/itinerary/uploads/upload.php:14) |
 | `/itinerary/core/update_itinerary_info.php` | `/itinerary/core.php?action=update` | [core.php:158](F:/trav-app/backend/trav-api/itinerary/core.php:158) |
 | `/itinerary/core/update_itinerary_style.php` | `/itinerary/core.php?action=update_style` | [core.php:376](F:/trav-app/backend/trav-api/itinerary/core.php:376) |
 | `/itinerary/expenses/create_expense.php` | `/itinerary/expenses.php?action=create` | [expenses.php:82](F:/trav-app/backend/trav-api/itinerary/expenses.php:82) |
@@ -327,7 +313,7 @@ F:\trav-app\backend\trav-api\itinerary\
 | `/itinerary/items/update_item_time.php` | `/itinerary/items.php?action=update_time` | [items.php:158](F:/trav-app/backend/trav-api/itinerary/items.php:158) |
 | `/itinerary/items/update_item_title.php` | `/itinerary/items.php?action=update_title` | [items.php:136](F:/trav-app/backend/trav-api/itinerary/items.php:136) |
 | `/itinerary/items/update_sort_order.php` | `/itinerary/items.php?action=sort` | [items.php:284](F:/trav-app/backend/trav-api/itinerary/items.php:284) |
-| `/itinerary/items/upload_item_screenshot.php` | `/itinerary/uploads/upload_item_screenshot.php` | [uploads/upload_item_screenshot.php:1](F:/trav-app/backend/trav-api/itinerary/uploads/upload_item_screenshot.php:1) |
+| `/itinerary/items/upload_item_screenshot.php` | `/itinerary/uploads/upload.php?action=screenshot` | [uploads/upload.php:97](F:/trav-app/backend/trav-api/itinerary/uploads/upload.php:97) |
 | `/itinerary/luggage/get_luggage.php` | `/itinerary/luggage.php?action=get` | [luggage.php:41](F:/trav-app/backend/trav-api/itinerary/luggage.php:41) |
 | `/itinerary/luggage/update_luggage.php` | `/itinerary/luggage.php?action=update` | [luggage.php:58](F:/trav-app/backend/trav-api/itinerary/luggage.php:58) |
 | `/itinerary/places/get_place_tags.php` | `/itinerary/places.php?action=get` | [places.php:17](F:/trav-app/backend/trav-api/itinerary/places.php:17) |
@@ -343,7 +329,7 @@ F:\trav-app\backend\trav-api\itinerary\
 - 全部新入口明確拒絕非 POST（405）；OPTIONS 由既有 db_connect.php 回 200。無效／缺少 action、無效 JSON 或 JSON 根節點陣列回 400。其他操作層錯誤狀態碼維持既有邏輯；luggage 缺欄位的調整另見第 14 節。
 - 原建立細項的字面值 `\vert{}\vert{}` 修正為 PHP 邏輯 OR `||`，normalize_time_value 集中成 items 內唯一共用函式。
 - 封面上傳仍寫入 API 根目錄的 uploads/covers；截圖改用 dirname(__DIR__, 2) 指向 API 根目錄的 uploads/reservations，與回傳網址一致。未搬動或刪除已有圖片。
-- api_helpers.php 未搬移或修改，17 個外部 PHP 的引用保留。
+- api_helpers.php 未搬移或修改。當時 17 個外部 PHP 引用保留；後續 destinations 合併後，外部引用檔案數改為 9 個（見第 13 節）。
 
 ### 本輪驗證
 

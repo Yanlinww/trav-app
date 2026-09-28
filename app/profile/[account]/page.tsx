@@ -58,7 +58,7 @@ export default function PublicProfilePage() {
     const fetchProfile = async () => {
       try {
         const authToken = window.localStorage.getItem('auth_token');
-        const res = await fetch("http://localhost:8080/get_user_profile.php", {
+        const res = await fetch("http://localhost:8080/social.php?action=profile", {
           method: "POST", headers: { "Content-Type": "application/json", ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}) },
           body: JSON.stringify({ Account: targetAccount })
         });
@@ -81,7 +81,7 @@ export default function PublicProfilePage() {
     setIsTogglingFollow(true);
     try {
       const authToken = window.localStorage.getItem('auth_token');
-      const res = await fetch("http://localhost:8080/toggle_follow.php", {
+      const res = await fetch("http://localhost:8080/social.php?action=toggle_follow", {
         method: "POST", headers: { "Content-Type": "application/json", ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}) },
         body: JSON.stringify({ Target_Account: targetAccount })
       });
@@ -109,7 +109,7 @@ export default function PublicProfilePage() {
     const fetchFiles = async () => {
       setIsLoadingFiles(true);
       try {
-        const res = await fetch("http://localhost:8080/get_user_files.php", {
+        const res = await fetch("http://localhost:8080/files.php?action=get", {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ Account: targetAccount, Tab_Type: 'photos' }),
         });
@@ -127,7 +127,7 @@ export default function PublicProfilePage() {
     const fetchItins = async () => {
       setIsLoadingItineraries(true);
       try {
-        const res = await fetch("http://localhost:8080/destinations/get_public_itineraries.php", {
+        const res = await fetch("http://localhost:8080/destinations/public_itineraries.php?action=list", {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ 
             Account: currentAccount,
@@ -152,7 +152,7 @@ export default function PublicProfilePage() {
     if (!targetAccount) return;
     const fetchSocials = async () => {
       try {
-        const res = await fetch("http://localhost:8080/get_social_links.php", {
+        const res = await fetch("http://localhost:8080/social.php?action=links", {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ Account: targetAccount }),
         });

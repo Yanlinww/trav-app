@@ -2137,7 +2137,7 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
     try {
       const optimizedFile = await optimizeCoverImage(file);
       const formData = new FormData(); formData.append("cover_image", optimizedFile); formData.append("Itinerary_ID", params.id as string); formData.append("Account", user?.id || (user as any)?.Account);
-      const res = await fetch("http://localhost:8080/itinerary/uploads/upload_cover_image.php", { method: "POST", body: formData });
+      const res = await fetch("http://localhost:8080/itinerary/uploads/upload.php?action=cover", { method: "POST", body: formData });
       const data = await res.json(); if (data.status === 'success') { setCoverImage(data.new_image_url); setCoverImageVersion(Date.now()); setHasRetriedCoverImage(false); } else { alert(data.message); setCoverImage(previousCoverImage); }
     } catch (error) { alert(error instanceof Error ? error.message : "圖片上傳失敗"); setCoverImage(previousCoverImage); } 
     finally { URL.revokeObjectURL(previewUrl); setIsUploading(false); if (fileInputRef.current) fileInputRef.current.value = ""; }
@@ -2400,7 +2400,7 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
         const formData = new FormData();
         formData.append('Item_ID', String(editingDetailsItem.id));
         formData.append('screenshot', detailsFile);
-        await fetch('http://localhost:8080/itinerary/uploads/upload_item_screenshot.php', {
+        await fetch('http://localhost:8080/itinerary/uploads/upload.php?action=screenshot', {
           method: 'POST',
           body: formData
         });

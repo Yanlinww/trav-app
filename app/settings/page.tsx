@@ -26,7 +26,7 @@ function GoogleBindAction({ user, isGoogleBound, setIsGoogleBound }: GoogleBindA
     onSuccess: async (tokenResponse) => {
       setIsLoading(true);
       try {
-        const res = await fetch("http://localhost:8080/profile/bind_google.php", {
+        const res = await fetch("http://localhost:8080/profile/profile.php?action=bind_google", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -82,7 +82,7 @@ export default function SettingsPage() {
 
   useEffect(() => {
     if (user) {
-      fetch("http://localhost:8080/profile/get_social_bindings.php", {
+      fetch("http://localhost:8080/profile/profile.php?action=bindings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ Account: user.id || (user as any).Account }),
@@ -107,7 +107,7 @@ export default function SettingsPage() {
       if (code && state === 'facebook' && user && !isBindingFb) {
         setIsBindingFb(true);
         setActiveTab('social');
-        fetch("http://localhost:8080/profile/bind_facebook.php", {
+        fetch("http://localhost:8080/profile/profile.php?action=bind_facebook", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ Account: user.id || (user as any).Account, Code: code }),
@@ -219,7 +219,7 @@ export default function SettingsPage() {
         formData.append('Avatar', avatarFile);
       }
 
-      const res = await fetch("http://localhost:8080/profile/update_profile.php", {
+      const res = await fetch("http://localhost:8080/profile/profile.php?action=update", {
         method: "POST",
         body: formData, 
       });
@@ -276,7 +276,7 @@ export default function SettingsPage() {
     if (!user) return;
     setIsUpdatingPassword(true);
     try {
-      const res = await fetch("http://localhost:8080/profile/update_password.php", {
+      const res = await fetch("http://localhost:8080/profile/profile.php?action=password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ Account: user.id || (user as any).Account, OldPassword: oldPassword, NewPassword: newPassword }),

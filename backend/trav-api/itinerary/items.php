@@ -2,7 +2,7 @@
 /**
  * 行程細項：每天的景點／自訂項目、時間、座標、詳細資訊與拖曳排序。
  * 呼叫：POST /itinerary/items.php?action=功能名稱，參數放在 JSON 物件。
- * 主要資料表：Itinerary_Item、Place；圖片上傳另見 uploads/upload_item_screenshot.php。
+ * 主要資料表：Itinerary_Item、Place；圖片上傳另見 uploads/upload.php?action=screenshot。
  * 閱讀順序：先看底部 $handlers 找功能，再看對應函式中的輸入、SQL 與回應。
  */
 require_once __DIR__ . '/../db_connect.php';

@@ -44,7 +44,7 @@ export default function LoginPage() {
 
       if (code && state === 'facebook_login') {
         setIsLoading(true);
-        fetch("http://localhost:8080/social_login_facebook.php", {
+        fetch("http://localhost:8080/auth.php?action=facebook", {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ Code: code, RedirectUri: REDIRECT_URI }),
         })
@@ -78,7 +78,7 @@ export default function LoginPage() {
   const handleGoogleSuccess = async (tokenResponse: any) => {
     setIsLoading(true);
     try {
-      const res = await fetch("http://localhost:8080/social_login_google.php", {
+      const res = await fetch("http://localhost:8080/auth.php?action=google", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ AccessToken: tokenResponse.access_token }),
       });
@@ -99,7 +99,7 @@ export default function LoginPage() {
     if (!agreeTerms) { alert("請先閱讀並同意服務條款！"); return; }
     setIsLoading(true);
     try {
-      const res = await fetch("http://localhost:8080/login.php", {
+      const res = await fetch("http://localhost:8080/auth.php?action=login", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ Account: email, Password: password }),
       });
