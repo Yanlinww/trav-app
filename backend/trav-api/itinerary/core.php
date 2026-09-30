@@ -1,8 +1,8 @@
 <?php
 /**
- * 行程主檔：列表、建立、修改、刪除／退出、釘選、公開設定、邀請與旅行風格。
+ * 行程主檔：列表、建立、修改、刪除、釘選、公開設定與旅行風格。
  * 呼叫：POST /itinerary/core.php?action=功能名稱，參數放在 JSON 物件。
- * 主要資料表：Itinerary、Itinerary_Members；公開設定也會清除目的地快取。
+ * 主要資料表：Itinerary；公開設定也會清除目的地快取。
  * 閱讀順序：先看底部 $handlers 找功能，再看對應函式中的輸入、SQL 與回應。
  */
 require_once __DIR__ . '/../db_connect.php';
@@ -11,7 +11,7 @@ require_once __DIR__ . '/api_helpers.php';
 /**
  * 行程列表
  * action=list｜輸入：Account；Viewer_Account 可省略。
- * 查詢 Account 擁有或加入的行程；本人查看不限制公開狀態，其他查看者只看公開行程。
+ * 查詢 Account 擁有的行程；本人查看不限制公開狀態，其他查看者只看公開行程。
  * 回傳：status、data（行程卡片陣列）；日期轉成 YYYY/MM/DD。
  */
 function core_get_itineraries(mysqli $conn, object $data): void {
@@ -23,24 +23,17 @@ function core_get_itineraries(mysqli $conn, object $data): void {
         // 相同帳號代表本人查看，用於決定是否限制公開行程。
         $isOwner = ($account === $viewerAccount);
 
-        // 同時查詢擁有及加入的行程；OR 外的括號讓後續公開條件套用到兩者。
-        $sql = "
-        SELECT i.*
-        FROM Itinerary i
-        LEFT JOIN Itinerary_Members m ON i.Itinerary_ID = m.Itinerary_ID
-        WHERE (i.Account = ? OR m.Account = ?)
-        ";
+        $sql = "SELECT i.* FROM Itinerary i WHERE i.Account = ?";
 
         // 其他查看者只讀取公開行程。
         if (!$isOwner) {
             $sql .= " AND i.Is_Public = 1 ";
         }
 
-        // GROUP BY 避免成員 JOIN 造成重複行程；此 SQL 只依出發日期由早到晚排序。
-        $sql .= " GROUP BY i.Itinerary_ID ORDER BY i.Start_Date ASC";
+        $sql .= " ORDER BY i.Start_Date ASC";
 
         $stmt = $conn->prepare($sql);
-        $stmt->bind_param("ss", $account, $account);
+        $stmt->bind_param("s", $account);
         $stmt->execute();
         $result = $stmt->get_result();
 
@@ -72,7 +65,7 @@ function core_get_itineraries(mysqli $conn, object $data): void {
 /**
  * 行程主檔
  * action=detail｜輸入：Itinerary_ID、Account。
- * SQL 同時比對行程 ID 與擁有者／成員帳號，取得名稱、日期、封面和目的地座標。
+ * SQL 同時比對行程 ID 與擁有者帳號，取得名稱、日期、封面和目的地座標。
  * 回傳：status、data（單一行程物件）；日期保留 YYYY-MM-DD。
  */
 function core_get_itinerary_detail(mysqli $conn, object $data): void {
@@ -80,10 +73,9 @@ function core_get_itinerary_detail(mysqli $conn, object $data): void {
         $stmt = $conn->prepare("
             SELECT i.*
             FROM Itinerary i
-            LEFT JOIN Itinerary_Members m ON i.Itinerary_ID = m.Itinerary_ID
-            WHERE i.Itinerary_ID = ? AND (i.Account = ? OR m.Account = ?)
+            WHERE i.Itinerary_ID = ? AND i.Account = ?
         ");
-        $stmt->bind_param("iss", $data->Itinerary_ID, $data->Account, $data->Account);
+        $stmt->bind_param("is", $data->Itinerary_ID, $data->Account);
         $stmt->execute();
         $result = $stmt->get_result()->fetch_assoc();
 
@@ -172,14 +164,13 @@ function core_update_itinerary_info(mysqli $conn, object $data): void {
 }
 
 /**
- * 刪除行程／退出共用行程
+ * 刪除自己的行程
  * action=delete｜輸入：Itinerary_ID、Account。
- * Account 等於擁有者：先刪成員及費用，再刪行程主檔。
- * 其他帳號：只刪自己的 Itinerary_Members 關聯，代表退出。回傳 status、message。
+ * Account 等於擁有者時，先刪行李及費用，再刪行程主檔。
  */
 function core_delete_itinerary(mysqli $conn, object $data): void {
     if (!empty($data->Itinerary_ID) && !empty($data->Account)) {
-        // 步驟 1：先確認使用者是 Owner 還是 Member
+        // 先確認使用者是行程擁有者。
         $checkStmt = $conn->prepare("SELECT Account FROM Itinerary WHERE Itinerary_ID = ?");
         $checkStmt->bind_param("i", $data->Itinerary_ID);
         $checkStmt->execute();
@@ -187,9 +178,8 @@ function core_delete_itinerary(mysqli $conn, object $data): void {
         $checkStmt->close();
 
         if ($result && $result['Account'] === $data->Account) {
-            // 情況 A：使用者是 Owner -> 徹底刪除行程
             // (若資料庫未設定 ON DELETE CASCADE，需先手動刪除子表紀錄以免報錯)
-            $conn->query("DELETE FROM Itinerary_Members WHERE Itinerary_ID = " . intval($data->Itinerary_ID));
+            $conn->query("DELETE FROM Itinerary_Luggage WHERE Itinerary_ID = " . intval($data->Itinerary_ID));
             $conn->query("DELETE FROM Itinerary_Expense WHERE Itinerary_ID = " . intval($data->Itinerary_ID));
 
             $deleteStmt = $conn->prepare("DELETE FROM Itinerary WHERE Itinerary_ID = ?");
@@ -201,17 +191,7 @@ function core_delete_itinerary(mysqli $conn, object $data): void {
             }
             $deleteStmt->close();
         } else {
-            // 情況 B：使用者是 Member -> 退出行程 (僅刪除關聯表紀錄)
-            $leaveStmt = $conn->prepare("DELETE FROM Itinerary_Members WHERE Itinerary_ID = ? AND Account = ?");
-            $leaveStmt->bind_param("is", $data->Itinerary_ID, $data->Account);
-            $leaveStmt->execute();
-
-            if ($leaveStmt->affected_rows > 0) {
-                echo json_encode(["status" => "success", "message" => "已退出該共用行程"]);
-            } else {
-                echo json_encode(["status" => "error", "message" => "退出失敗或無此權限"]);
-            }
-            $leaveStmt->close();
+            echo json_encode(["status" => "error", "message" => "找不到行程或無權限存取"]);
         }
     } else {
         echo json_encode(["status" => "error", "message" => "缺少必要參數"]);
@@ -270,75 +250,6 @@ function core_toggle_itinerary_visibility(mysqli $conn, object $data): void {
     } else {
         echo json_encode(["status" => "error", "message" => "缺少必要參數"]);
     }
-}
-
-/**
- * 取得或建立邀請碼
- * action=invite｜輸入：Itinerary_ID。
- * 有 Invite_Code 就直接回傳；沒有就產生 6 碼英數並寫回行程主檔。
- * 回傳：status、code。這個讀取功能也可能寫入資料庫。
- */
-function core_get_or_create_invite_code(mysqli $conn, object $data): void {
-    if (!empty($data->Itinerary_ID)) {
-        // 檢查是否已有邀請碼
-        $stmt = $conn->prepare("SELECT `Invite_Code` FROM `Itinerary` WHERE `Itinerary_ID` = ?");
-        $stmt->bind_param("i", $data->Itinerary_ID);
-        $stmt->execute();
-        $result = $stmt->get_result()->fetch_assoc();
-        $stmt->close();
-
-        if (!empty($result['Invite_Code'])) {
-            echo json_encode(["status" => "success", "code" => $result['Invite_Code']]);
-        } else {
-            // 產生 6 碼英數邀請碼並寫回，供其他帳號使用 join 加入。
-            $newCode = substr(str_shuffle("0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"), 0, 6);
-            $updateStmt = $conn->prepare("UPDATE `Itinerary` SET `Invite_Code` = ? WHERE `Itinerary_ID` = ?");
-            $updateStmt->bind_param("si", $newCode, $data->Itinerary_ID);
-            if ($updateStmt->execute()) {
-                echo json_encode(["status" => "success", "code" => $newCode]);
-            } else {
-                echo json_encode(["status" => "error", "message" => "邀請碼生成失敗"]);
-            }
-            $updateStmt->close();
-        }
-    } else { echo json_encode(["status" => "error", "message" => "缺少行程ID"]); }
-}
-
-/**
- * 使用邀請碼加入行程
- * action=join｜輸入：Invite_Code、Account。
- * 先找邀請碼對應的行程，再寫入成員關聯；擁有者或重複加入會回 error。
- * 回傳：status、message。
- */
-function core_join_itinerary(mysqli $conn, object $data): void {
-    if (!empty($data->Invite_Code) && !empty($data->Account)) {
-        // 尋找對應的行程 ID
-        $stmt = $conn->prepare("SELECT `Itinerary_ID`, `Account` as OwnerAccount FROM `Itinerary` WHERE `Invite_Code` = ?");
-        $stmt->bind_param("s", $data->Invite_Code);
-        $stmt->execute();
-        $result = $stmt->get_result()->fetch_assoc();
-        $stmt->close();
-
-        if ($result) {
-            if ($result['OwnerAccount'] === $data->Account) {
-                echo json_encode(["status" => "error", "message" => "你已經是此行程的擁有者"]);
-                exit();
-            }
-            // 寫入關聯表 (使用 INSERT IGNORE 避免重複加入報錯)
-            $insertStmt = $conn->prepare("INSERT IGNORE INTO `Itinerary_Members` (`Itinerary_ID`, `Account`) VALUES (?, ?)");
-            $insertStmt->bind_param("is", $result['Itinerary_ID'], $data->Account);
-            $insertStmt->execute();
-
-            if ($insertStmt->affected_rows > 0) {
-                echo json_encode(["status" => "success", "message" => "成功加入行程"]);
-            } else {
-                echo json_encode(["status" => "error", "message" => "你已經加入過此行程"]);
-            }
-            $insertStmt->close();
-        } else {
-            echo json_encode(["status" => "error", "message" => "無效的邀請碼"]);
-        }
-    } else { echo json_encode(["status" => "error", "message" => "資料不完整"]); }
 }
 
 /**
@@ -403,11 +314,9 @@ $handlers = [
     'detail' => 'core_get_itinerary_detail', // 行程主檔
     'create' => 'core_create_itinerary', // 建立行程
     'update' => 'core_update_itinerary_info', // 修改行程名稱與日期
-    'delete' => 'core_delete_itinerary', // 刪除行程／退出共用行程
+    'delete' => 'core_delete_itinerary', // 刪除自己的行程
     'pin' => 'core_pin_itinerary', // 設定釘選
     'visibility' => 'core_toggle_itinerary_visibility', // 設定公開／私密
-    'invite' => 'core_get_or_create_invite_code', // 取得或建立邀請碼
-    'join' => 'core_join_itinerary', // 使用邀請碼加入行程
     'get_style' => 'core_get_itinerary_style', // 讀取旅行風格
     'update_style' => 'core_update_itinerary_style', // 儲存旅行風格
 ];

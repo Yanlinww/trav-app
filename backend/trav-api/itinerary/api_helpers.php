@@ -50,18 +50,17 @@ function read_json_body(): object {
 
 /**
  * 共用工具：檢查行程與帳號的關係
- * 輸入：資料庫連線、itineraryId、account；符合擁有者或成員就繼續。
+ * 輸入：資料庫連線、itineraryId、account；符合行程擁有者就繼續。
  * 資料不足回 400，查無符合關係回 403，SQL 準備失敗回 500。
  * 此處比對傳入 Account 的資料關係，不負責驗證登入身分。
  */
 function require_itinerary_access(mysqli $conn, int $itineraryId, string $account): void {
     if ($itineraryId <= 0 || trim($account) === '') api_error('缺少行程 ID 或帳號', 400);
     $stmt = $conn->prepare(
-        'SELECT 1 FROM Itinerary i LEFT JOIN Itinerary_Members m ON m.Itinerary_ID = i.Itinerary_ID AND m.Account = ?
-         WHERE i.Itinerary_ID = ? AND (i.Account = ? OR m.Account IS NOT NULL) LIMIT 1'
+        'SELECT 1 FROM Itinerary WHERE Itinerary_ID = ? AND Account = ? LIMIT 1'
     );
     if (!$stmt) api_error('權限檢查失敗', 500);
-    $stmt->bind_param('sis', $account, $itineraryId, $account);
+    $stmt->bind_param('is', $itineraryId, $account);
     if (!$stmt->execute() || !$stmt->get_result()->fetch_row()) {
         $stmt->close();
         api_error('無權限存取此行程', 403);
@@ -72,14 +71,13 @@ function require_itinerary_access(mysqli $conn, int $itineraryId, string $accoun
 /**
  * 共用工具：從子資料查回行程並檢查關係
  * 輸入：table、idColumn、resourceId、account；只允許下方白名單中的表與欄位。
- * 一般資料沿父層找到行程；分攤會先找到費用，再遞迴檢查費用所屬行程。
- * 回傳直接父層 ID：分攤回 Expense_ID，其他表回 Itinerary_ID。
+ * 子資料沿父層找到行程，並檢查傳入帳號是否為行程擁有者。
+ * 回傳所屬的 Itinerary_ID。
  */
 function require_resource_access(mysqli $conn, string $table, string $idColumn, int $resourceId, string $account): int {
     // 表名／欄位不能使用 ? 綁定，因此只接受寫死的白名單組合。
     $allowedTables = [
         'Itinerary_Expense' => ['Expense_ID', 'Itinerary_ID'],
-        'Itinerary_Expense_Share' => ['Share_ID', 'Expense_ID'],
         'Itinerary_Reservation' => ['Reservation_ID', 'Itinerary_ID'],
         'Itinerary_Note' => ['Note_ID', 'Itinerary_ID'],
     ];
@@ -96,11 +94,6 @@ function require_resource_access(mysqli $conn, string $table, string $idColumn, 
     }
     $stmt->close();
     $parentId = (int)$row[$parentColumn];
-    // 分攤的直接父層是費用，必須多查一層才能找到行程。
-    if ($table === 'Itinerary_Expense_Share') {
-        require_resource_access($conn, 'Itinerary_Expense', 'Expense_ID', $parentId, $account);
-    } else {
-        require_itinerary_access($conn, $parentId, $account);
-    }
+    require_itinerary_access($conn, $parentId, $account);
     return $parentId;
 }

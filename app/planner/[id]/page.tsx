@@ -4,12 +4,12 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useAuth } from "../../context/AuthContext";
 import { 
-  Map as MapIcon, Calendar, DollarSign, BaggageClaim, Ticket, 
+  Map as MapIcon, Calendar, BaggageClaim, Ticket,
   GripVertical, Plus, Train, Hotel, Coffee, Camera, Search,
   ChevronLeft, Wallet, Loader2, MapPin, Trash2, Check, Edit2,Copy,
-  LayoutGrid, MapPinned, Layers, Eye, EyeOff,
+  LayoutGrid,
   ChevronUp, ChevronDown, XCircle, Save,
-  Receipt, Utensils, TrainFront, Bed, ShoppingBag, MoreHorizontal, X, User, LocateFixed, MessageCircle, Send, Clock, ExternalLink, FileText, RefreshCw, Image as ImageIcon
+  Receipt, TrainFront, Bed, X, User, ExternalLink, FileText, Image as ImageIcon
 } from "lucide-react";
 import { GoogleMap, useJsApiLoader, Marker, InfoWindow, MarkerClustererF } from '@react-google-maps/api';
 import PlaceAutocomplete from '../../components/PlaceAutocomplete';
@@ -62,1083 +62,185 @@ async function optimizeCoverImage(file: File): Promise<File> {
   }
 }
 
-function TravelersPanel({ itineraryId, currentUserId }: { itineraryId: string; currentUserId: string }) {
-  const [members, setMembers] = useState<any[]>([]);
-  const [presence, setPresence] = useState<Record<string, number>>({});
-  const [syncError, setSyncError] = useState(false);
-  const [isRefreshingTravelers, setIsRefreshingTravelers] = useState(false);
-  const [onlineOnly, setOnlineOnly] = useState(false);
-  const [travelerSearch, setTravelerSearch] = useState('');
-  const travelerRefreshLockRef = useRef(false);
-  const travelerPreferencesHydratedRef = useRef(false);
+type PersonalExpense = {
+  id: number;
+  title: string;
+  amount: number | string;
+  currency: string;
+  category: string;
+  location: string | null;
+  date: string;
+};
 
-  useEffect(() => {
-    const saved = window.localStorage.getItem(`trav-app:traveler-preferences:${itineraryId}`);
-    if (saved) {
-      try {
-        const preferences = JSON.parse(saved);
-        if (typeof preferences.onlineOnly === 'boolean') setOnlineOnly(preferences.onlineOnly);
-        if (typeof preferences.search === 'string') setTravelerSearch(preferences.search);
-      } catch {}
-    }
-    travelerPreferencesHydratedRef.current = true;
-  }, [itineraryId]);
+function BudgetPanel({ itineraryId, currentUserId }: { itineraryId: string; currentUserId: string }) {
+  const categories = [
+    { value: 'food', label: '餐飲' },
+    { value: 'hotel', label: '住宿' },
+    { value: 'transport', label: '交通' },
+    { value: 'ticket', label: '門票' },
+    { value: 'shopping', label: '購物' },
+    { value: 'other', label: '其他' },
+  ];
+  const [expenses, setExpenses] = useState<PersonalExpense[]>([]);
+  const [search, setSearch] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [formOpen, setFormOpen] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [title, setTitle] = useState('');
+  const [amount, setAmount] = useState('');
+  const [currency, setCurrency] = useState('TWD');
+  const [category, setCategory] = useState('food');
+  const [location, setLocation] = useState('');
 
-  useEffect(() => {
-    if (!travelerPreferencesHydratedRef.current) return;
-    window.localStorage.setItem(`trav-app:traveler-preferences:${itineraryId}`, JSON.stringify({ onlineOnly, search: travelerSearch }));
-  }, [itineraryId, onlineOnly, travelerSearch]);
-
-  const refreshTravelers = useCallback(async () => {
-    if (travelerRefreshLockRef.current) return;
-    travelerRefreshLockRef.current = true;
-    setSyncError(false);
+  const loadExpenses = useCallback(async () => {
     try {
-      const [membersRes, presenceRes] = await Promise.all([
-        fetch('http://localhost:8080/itinerary/collaboration.php?action=members', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ Itinerary_ID: itineraryId, Account: currentUserId }),
-        }),
-        fetch('http://localhost:8080/itinerary/collaboration.php?action=presence', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ Itinerary_ID: itineraryId, Account: currentUserId }),
-        }),
-      ]);
-      const membersData = await membersRes.json();
-      const presenceData = await presenceRes.json();
-      if (membersData.status === 'success') setMembers(membersData.data || []);
-      if (presenceData.status === 'success') setPresence(presenceData.data || {});
-    } catch (error) {
-      console.error('Travelers sync error:', error);
-      setSyncError(true);
-    } finally {
-      travelerRefreshLockRef.current = false;
-    }
-  }, [itineraryId]);
-
-  useEffect(() => {
-    refreshTravelers();
-    const refreshTimer = window.setInterval(refreshTravelers, 5000);
-    return () => window.clearInterval(refreshTimer);
-  }, [refreshTravelers]);
-
-  const handleRefreshTravelers = async () => { if (isRefreshingTravelers) return; setIsRefreshingTravelers(true); try { await refreshTravelers(); } finally { setIsRefreshingTravelers(false); } };
-
-  const isOnline = (account: string) => Boolean(presence[account] && (Date.now() / 1000 - presence[account] < 45));
-  const onlineCount = members.filter((member) => isOnline(member.id)).length;
-  const sortedMembers = [...members].sort((a, b) => Number(isOnline(b.id)) - Number(isOnline(a.id)));
-  const visibleMembers = sortedMembers.filter((member) => {
-    const matchesOnline = !onlineOnly || isOnline(member.id);
-    const search = travelerSearch.trim().toLowerCase();
-    const matchesSearch = !search || `${member.name || ''} ${member.role || ''}`.toLowerCase().includes(search);
-    return matchesOnline && matchesSearch;
-  });
-
-  return (
-    <div className="min-h-full bg-[#FAFAFA] p-4">
-      {syncError && <div className="mb-3 rounded-xl bg-red-50 px-3 py-2 text-xs font-bold text-red-500">旅伴狀態同步失敗，請稍後再試</div>}
-      <div className="mb-4 rounded-2xl bg-white p-4 shadow-sm">
-        <div className="flex items-center justify-between">
-          <div>
-            <div className="text-xs font-bold tracking-wide text-slate-400">旅伴成員</div>
-            <div className="mt-1 text-2xl font-bold text-slate-800">{members.length} 人</div>
-          </div>
-          <div className="flex items-center gap-2"><button type="button" onClick={() => void handleRefreshTravelers()} disabled={isRefreshingTravelers} title="重新整理旅伴" aria-label="重新整理旅伴" className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-[#F04D79] disabled:cursor-wait disabled:opacity-50"><RefreshCw size={16} className={isRefreshingTravelers ? 'animate-spin' : ''} /></button><div className="rounded-xl bg-emerald-50 px-3 py-2 text-right">
-            <div className="text-[10px] font-bold text-emerald-600">目前在線</div>
-            <div className="font-mono text-lg font-bold text-emerald-600">{onlineCount}</div>
-          </div></div>
-        </div>
-      </div>
-      <InviteTravelersButton itineraryId={itineraryId} />
-      <div className="mb-3 flex items-center gap-2"><div className="flex min-w-0 flex-1 items-center rounded-xl border border-slate-200 bg-white focus-within:border-pink-300"><input value={travelerSearch} onChange={(event) => setTravelerSearch(event.target.value)} placeholder="搜尋旅伴…" className="min-w-0 flex-1 bg-transparent px-3 py-2 text-xs text-slate-600 outline-none" />{travelerSearch && <button type="button" onClick={() => setTravelerSearch('')} className="p-1.5 text-slate-400 hover:text-[#F04D79]" aria-label="清除旅伴搜尋"><X size={14} /></button>}</div><button type="button" onClick={() => setOnlineOnly((value) => !value)} className={`shrink-0 rounded-full px-3 py-2 text-xs font-bold transition ${onlineOnly ? 'bg-emerald-100 text-emerald-700' : 'bg-white text-slate-500 shadow-sm'}`}>{onlineOnly ? '全部' : '在線'}</button></div>
-      {(travelerSearch.trim() || onlineOnly) && <div className="mb-2 text-right text-[10px] font-bold text-slate-400">顯示 {visibleMembers.length} / {members.length} 位</div>}
-      <div className="space-y-2">
-        {visibleMembers.length === 0 ? (
-          <div className="py-12 text-center text-sm text-slate-400">{travelerSearch.trim() ? '找不到符合的旅伴' : onlineOnly ? '目前沒有在線中的旅伴' : '目前沒有旅伴資料'}</div>
-        ) : visibleMembers.map((member) => {
-          const online = isOnline(member.id);
-          return (
-            <div key={member.id} className="flex items-center gap-3 rounded-2xl bg-white p-3 shadow-sm">
-              <div className="relative flex size-11 shrink-0 items-center justify-center overflow-hidden rounded-full bg-pink-100 font-bold text-[#F04D79]">
-                {member.avatar ? <img src={member.avatar} alt={member.name} className="h-full w-full object-cover" /> : member.name?.charAt(0)}
-                <span className={`absolute bottom-0 right-0 size-3 rounded-full border-2 border-white ${online ? 'bg-emerald-500' : 'bg-slate-300'}`} />
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-sm font-bold text-slate-700">{member.name}</div>
-                <div className="mt-1 text-[11px] font-medium text-slate-400">{member.role === 'Owner' ? '行程建立者' : (member.role || '旅伴')} · {online ? '在線中' : '離線'}</div>
-              </div>
-              <span className={`size-2 rounded-full ${online ? 'bg-emerald-500' : 'bg-slate-300'}`} />
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function InviteTravelersButton({ itineraryId }: { itineraryId: string }) {
-  const [isOpen, setIsOpen] = useState(false);
-  const [inviteCode, setInviteCode] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const [copied, setCopied] = useState(false);
-
-  const openInvite = async () => {
-    setIsOpen(true);
-    if (inviteCode || isLoading) return;
-    setIsLoading(true);
-    try {
-      const response = await fetch('http://localhost:8080/itinerary/core.php?action=invite', {
+      setError('');
+      const response = await fetch('http://localhost:8080/itinerary/expenses.php?action=list', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ Itinerary_ID: itineraryId }),
+        body: JSON.stringify({ Itinerary_ID: itineraryId, Account: currentUserId }),
       });
-      const data = await response.json();
-      if (data.status === 'success') setInviteCode(data.code);
-      else alert(`無法取得邀請碼：${data.message || '請稍後再試'}`);
-    } catch {
-      alert('邀請碼取得失敗，請稍後再試。');
+      const result = await response.json();
+      if (!response.ok || result.status !== 'success') throw new Error(result.message || '無法讀取記帳資料');
+      setExpenses(Array.isArray(result.data) ? result.data : []);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : '無法讀取記帳資料');
     } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const copyCode = async () => {
-    if (!inviteCode) return;
-    await navigator.clipboard.writeText(inviteCode);
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 1800);
-  };
-
-  return (
-    <>
-      <button type="button" onClick={() => void openInvite()} className="mb-3 flex w-full items-center justify-between rounded-2xl border border-pink-100 bg-pink-50/70 px-4 py-3 text-left text-sm font-bold text-[#F04D79] hover:bg-pink-100">
-        <span>邀請旅伴加入行程</span><Plus size={18} />
-      </button>
-      {isOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm">
-          <div className="relative w-full max-w-sm rounded-3xl bg-white p-6 shadow-2xl">
-            <button type="button" onClick={() => setIsOpen(false)} className="absolute right-4 top-4 rounded-full bg-slate-50 p-1 text-slate-400 hover:text-slate-700" aria-label="關閉邀請視窗"><X size={20} /></button>
-            <div className="mb-6 mt-2 text-center"><div className="mx-auto mb-3 flex size-12 items-center justify-center rounded-full bg-pink-50"><Copy className="size-6 text-[#F04D79]" /></div><h3 className="text-xl font-bold text-slate-800">邀請旅伴加入</h3><p className="mt-1 text-sm text-slate-500">把邀請碼分享給旅伴即可加入</p></div>
-            <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4"><div className="mb-2 text-xs font-bold tracking-widest text-slate-500">INVITE CODE</div><div className="flex items-center justify-between gap-3">{isLoading ? <Loader2 className="size-5 animate-spin text-slate-400" /> : <span className="font-mono text-2xl font-bold tracking-[0.2em] text-slate-800">{inviteCode || '—'}</span>}<button type="button" onClick={() => void copyCode()} disabled={!inviteCode || isLoading} className="flex size-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 hover:border-[#F04D79] hover:text-[#F04D79] disabled:opacity-40" aria-label="複製邀請碼">{copied ? <Check size={18} /> : <Copy size={18} />}</button></div></div>
-          </div>
-        </div>
-      )}
-    </>
-  );
-}
-
-function TodayPanel({ dayNumber, items, onFocusItem }: { dayNumber: number; items: any[]; onFocusItem: (item: any) => void }) {
-  const [now, setNow] = useState(() => new Date());
-  const toMinutes = (value: string) => {
-    const match = String(value || '').match(/^(\d{1,2}):(\d{2})/);
-    return match ? Number(match[1]) * 60 + Number(match[2]) : null;
-  };
-  const orderedItems = [...items].sort((a, b) => Number(a.sortOrder ?? 0) - Number(b.sortOrder ?? 0));
-  const timedItems = orderedItems.filter((item) => toMinutes(item.startTime) !== null && toMinutes(item.endTime) !== null);
-  const nowMinutes = now.getHours() * 60 + now.getMinutes();
-  const timelineNow = nowMinutes < 6 * 60 ? nowMinutes + 24 * 60 : nowMinutes;
-  const getRange = (item: any) => {
-    const start = toMinutes(item.startTime) ?? 0;
-    const rawEnd = toMinutes(item.endTime) ?? start;
-    return { start, end: rawEnd < start ? rawEnd + 24 * 60 : rawEnd };
-  };
-  const currentItem = timedItems.find((item) => {
-    const range = getRange(item);
-    return (range.start <= timelineNow && range.end >= timelineNow) || (range.start <= nowMinutes && range.end >= nowMinutes);
-  });
-  const nextItem = currentItem || timedItems.find((item) => getRange(item).start >= timelineNow) || timedItems[0];
-  const finishedCount = timedItems.filter((item) => getRange(item).end < timelineNow).length;
-
-  useEffect(() => { const timer = window.setInterval(() => setNow(new Date()), 60_000); return () => window.clearInterval(timer); }, []);
-
-  return (
-    <div className="flex h-full min-h-0 flex-col bg-[#FAFAFA]">
-      <div className="border-b border-slate-100 bg-white px-4 py-4">
-        <div className="flex items-start justify-between">
-          <div>
-            <div className="text-xs font-bold tracking-wide text-slate-400">目前查看</div>
-            <div className="mt-1 text-xl font-bold text-slate-800">Day {dayNumber} 行程</div>
-            <div className="mt-1 text-[11px] font-mono font-bold text-slate-400">現在 {now.toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', hour12: false })}</div>
-          </div>
-          <div className="rounded-xl bg-pink-50 px-3 py-2 text-right">
-            <div className="text-[10px] font-bold text-[#F04D79]">時間進度</div>
-            <div className="font-mono text-lg font-bold text-[#F04D79]">{finishedCount}/{timedItems.length || 0}</div>
-          </div>
-        </div>
-        <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100">
-          <div className="h-full rounded-full bg-[#F04D79] transition-all" style={{ width: `${timedItems.length ? Math.min(100, finishedCount / timedItems.length * 100) : 0}%` }} />
-        </div>
-      </div>
-
-      {nextItem && (
-        <button onClick={() => onFocusItem(nextItem)} className="m-4 rounded-2xl bg-[#F04D79] p-4 text-left text-white shadow-md transition hover:bg-pink-600">
-          <div className="flex items-center gap-2 text-xs font-bold text-pink-100"><Clock size={14} /> {currentItem ? '進行中' : '下一站'}</div>
-          <div className="mt-2 truncate text-lg font-bold">{nextItem.title || nextItem.Title}</div>
-          <div className="mt-1 font-mono text-sm text-pink-100">{nextItem.startTime || '--:--'} - {nextItem.endTime || '--:--'}</div>
-        </button>
-      )}
-
-      <div className="flex-1 overflow-y-auto px-4 pb-6">
-        {orderedItems.length === 0 ? (
-          <div className="rounded-2xl bg-white px-4 py-12 text-center text-sm text-slate-400 shadow-sm">今天還沒有安排行程<div className="mt-2 text-xs text-slate-300">可從左側新增地點開始安排</div></div>
-        ) : (
-          <div className="relative space-y-2">
-            <div className="absolute bottom-4 left-[7px] top-4 border-l-2 border-dashed border-slate-200" />
-            {orderedItems.map((item) => {
-              const start = toMinutes(item.startTime);
-              const end = toMinutes(item.endTime);
-              const isFinished = end !== null && end < nowMinutes;
-              const isCurrent = start !== null && end !== null && start <= nowMinutes && end >= nowMinutes;
-              return (
-                <button key={item.id} onClick={() => onFocusItem(item)} className={`relative flex w-full items-center gap-3 rounded-xl p-3 text-left shadow-sm transition hover:border-pink-200 hover:shadow-md ${isCurrent ? 'bg-pink-50 ring-1 ring-pink-200' : isFinished ? 'bg-emerald-50/60' : 'bg-white'}`}>
-                  <span className={`z-10 size-4 shrink-0 rounded-full border-4 border-white shadow-sm ${isCurrent ? 'bg-amber-400' : isFinished ? 'bg-emerald-400' : 'bg-[#F04D79]'}`} />
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-bold text-slate-700">{item.title || item.Title}</span>
-                    <span className="mt-1 block font-mono text-[11px] font-bold text-slate-400">{item.startTime || '--:--'} - {item.endTime || '--:--'}</span>
-                  </span>
-                  <MapPin size={16} className="shrink-0 text-slate-300" />
-                </button>
-              );
-            })}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-const CHAT_MESSAGE_MAX_LENGTH = 120;
-const getChatMessageLength = (value: string) => Array.from(value).length;
-
-function ChatPanel({ itineraryId, currentUserId, isActive, onUnreadChange }: { itineraryId: string; currentUserId: string; isActive: boolean; onUnreadChange: (count: number) => void }) {
-  const [members, setMembers] = useState<any[]>([]);
-  const [messages, setMessages] = useState<any[]>([]);
-  const [presence, setPresence] = useState<Record<string, number>>({});
-  const [draft, setDraft] = useState('');
-  const [isSending, setIsSending] = useState(false);
-  const [sendError, setSendError] = useState('');
-  const messagesRef = useRef<any[]>([]);
-  const messagesContainerRef = useRef<HTMLDivElement | null>(null);
-  const shouldAutoScrollRef = useRef(true);
-  const lastSeenMessageIdRef = useRef<number | null>(null);
-
-  const refreshChat = useCallback(async () => {
-    try {
-      const [messageRes, presenceRes] = await Promise.all([
-        fetch('http://localhost:8080/itinerary/collaboration.php?action=messages', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ Itinerary_ID: itineraryId, Account: currentUserId }),
-        }),
-        fetch('http://localhost:8080/itinerary/collaboration.php?action=presence', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ Itinerary_ID: itineraryId, Account: currentUserId }),
-        }),
-      ]);
-      const messageData = await messageRes.json();
-      const presenceData = await presenceRes.json();
-      if (messageData.status === 'success') {
-        const nextMessages = messageData.data || [];
-        const newestMessageId = nextMessages.length ? Number(nextMessages[nextMessages.length - 1].id) : null;
-        if (lastSeenMessageIdRef.current === null) lastSeenMessageIdRef.current = newestMessageId;
-        const seenMessageId = lastSeenMessageIdRef.current;
-        if (isActive) {
-          lastSeenMessageIdRef.current = newestMessageId;
-          onUnreadChange(0);
-        } else if (seenMessageId !== null) {
-          onUnreadChange(nextMessages.filter((message: any) => Number(message.id) > seenMessageId && message.account !== currentUserId).length);
-        }
-        if (JSON.stringify(messagesRef.current) !== JSON.stringify(nextMessages)) {
-          messagesRef.current = nextMessages;
-          setMessages(nextMessages);
-        }
-      }
-      if (presenceData.status === 'success') setPresence(presenceData.data || {});
-    } catch (error) {
-      console.error('Chat sync error:', error);
-    }
-  }, [currentUserId, isActive, itineraryId, onUnreadChange]);
-
-  useEffect(() => {
-    if (isActive) onUnreadChange(0);
-  }, [isActive, onUnreadChange]);
-
-  useEffect(() => {
-    const loadMembers = async () => {
-      try {
-        const res = await fetch('http://localhost:8080/itinerary/collaboration.php?action=members', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ Itinerary_ID: itineraryId, Account: currentUserId }),
-        });
-        const data = await res.json();
-        if (data.status === 'success') setMembers(data.data || []);
-      } catch (error) {
-        console.error('Chat members error:', error);
-      }
-    };
-    loadMembers();
-  }, [itineraryId]);
-
-  useEffect(() => {
-    refreshChat();
-    const refreshTimer = window.setInterval(refreshChat, 3000);
-    return () => window.clearInterval(refreshTimer);
-  }, [refreshChat]);
-
-  useEffect(() => {
-    if (!currentUserId) return;
-    const heartbeat = () => fetch('http://localhost:8080/itinerary/collaboration.php?action=update_presence', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ Itinerary_ID: itineraryId, Account: currentUserId }),
-    }).catch(() => {});
-    heartbeat();
-    const heartbeatTimer = window.setInterval(heartbeat, 15000);
-    return () => window.clearInterval(heartbeatTimer);
-  }, [itineraryId, currentUserId]);
-
-  useEffect(() => {
-    if (!shouldAutoScrollRef.current) return;
-    messagesContainerRef.current?.scrollTo({ top: messagesContainerRef.current.scrollHeight, behavior: 'smooth' });
-  }, [messages.length]);
-
-  const sendMessage = async (event: React.FormEvent) => {
-    event.preventDefault();
-    const message = draft.trim();
-    if (!message || !currentUserId || isSending) return;
-    if (getChatMessageLength(message) > CHAT_MESSAGE_MAX_LENGTH) {
-      setSendError(`訊息最多可輸入 ${CHAT_MESSAGE_MAX_LENGTH} 字`);
-      return;
-    }
-    setIsSending(true);
-    setSendError('');
-    try {
-      const res = await fetch('http://localhost:8080/itinerary/collaboration.php?action=send', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ Itinerary_ID: itineraryId, Account: currentUserId, Message: message }),
-      });
-      const data = await res.json();
-      if (data.status !== 'success') throw new Error(data.message || '訊息發送失敗');
-      setDraft('');
-      await refreshChat();
-    } catch (error) {
-      console.error('Send chat message error:', error);
-      setSendError(error instanceof Error ? error.message : '訊息發送失敗，請稍後再試');
-    } finally {
-      setIsSending(false);
-    }
-  };
-
-  const isOnline = (account: string) => Boolean(presence[account] && (Date.now() / 1000 - presence[account] < 45));
-
-  return (
-    <div className="flex h-full min-h-0 flex-col bg-[#FAFAFA]">
-      <div className="border-b border-slate-100 bg-white px-4 py-3">
-        <div className="mb-2 flex items-center justify-between">
-          <span className="text-xs font-bold tracking-wide text-slate-500">旅伴在線狀態</span>
-          <span className="text-[11px] text-slate-400">{members.filter((member) => isOnline(member.id)).length} 人在線</span>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {members.map((member) => (
-            <div key={member.id} className="flex items-center gap-1.5 rounded-full bg-slate-50 px-2 py-1" title={isOnline(member.id) ? '在線' : '離線'}>
-              <span className={`size-2 rounded-full ${isOnline(member.id) ? 'bg-emerald-500' : 'bg-slate-300'}`} />
-              <span className="max-w-20 truncate text-[11px] font-bold text-slate-600">{member.name}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-      <div ref={messagesContainerRef} onScroll={(event) => { const element = event.currentTarget; shouldAutoScrollRef.current = element.scrollHeight - element.scrollTop - element.clientHeight < 72; }} className="flex-1 space-y-3 overflow-y-auto p-4">
-        {messages.length === 0 ? (
-          <div className="py-10 text-center text-sm text-slate-400">還沒有訊息，開始討論旅程吧！</div>
-        ) : messages.map((message) => {
-          const isMine = message.account === currentUserId;
-          return (
-            <div key={message.id} className={`flex gap-2 ${isMine ? 'flex-row-reverse' : ''}`}>
-              <div className="flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-pink-100 text-xs font-bold text-[#F04D79]">
-                {message.avatar ? <img src={message.avatar} alt={message.name} className="h-full w-full object-cover" /> : message.name?.charAt(0)}
-              </div>
-              <div className={`max-w-[78%] ${isMine ? 'items-end' : ''}`}>
-                <div className={`mb-1 text-[10px] font-bold text-slate-400 ${isMine ? 'text-right' : ''}`}>{message.name}</div>
-                <div className={`whitespace-pre-wrap break-all rounded-2xl px-3 py-2 text-sm leading-relaxed ${isMine ? 'rounded-tr-sm bg-[#F04D79] text-white' : 'rounded-tl-sm bg-white text-slate-700 shadow-sm'}`}>{message.message}</div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-      <form onSubmit={sendMessage} className="border-t border-slate-100 bg-white p-3">
-        {sendError && <div className="mb-2 rounded-lg bg-red-50 px-3 py-2 text-xs font-bold text-red-500">{sendError}</div>}
-        <div className="flex items-end gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-1.5 focus-within:border-pink-300">
-          <textarea value={draft} onChange={(event) => { setDraft(Array.from(event.target.value).slice(0, CHAT_MESSAGE_MAX_LENGTH).join('')); setSendError(''); }} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} rows={1} placeholder="輸入訊息..." className="max-h-24 min-h-9 flex-1 resize-none bg-transparent px-2 py-2 text-sm text-slate-700 outline-none" />
-          <button type="submit" disabled={!draft.trim() || isSending} className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-[#F04D79] text-white transition hover:bg-pink-600 disabled:cursor-not-allowed disabled:opacity-40"><Send size={16} /></button>
-        </div>
-        <div className={`mt-1 text-right text-[10px] font-medium ${getChatMessageLength(draft) >= CHAT_MESSAGE_MAX_LENGTH * 0.9 ? 'text-amber-500' : 'text-slate-400'}`}>{getChatMessageLength(draft)}/{CHAT_MESSAGE_MAX_LENGTH}</div>
-      </form>
-    </div>
-  );
-}
-
-function BudgetPanel({ itineraryId, currentUserId, itineraryItems, onTotalChange }: { itineraryId: string; currentUserId: string; itineraryItems: any[]; onTotalChange?: (total: number) => void }) {
-  const [activeTab, setActiveTab] = useState<'group' | 'personal' | 'pending'>('group');
-  const [expenses, setExpenses] = useState<any[]>([]); 
-  const [members, setMembers] = useState<any[]>([]); 
-  const [expenseSearch, setExpenseSearch] = useState('');
-  const [isLoadingExpenses, setIsLoadingExpenses] = useState(true);
-  const [budgetSyncStatus, setBudgetSyncStatus] = useState<'idle' | 'saved' | 'error'>('idle');
-  const [isManualRefreshingBudget, setIsManualRefreshingBudget] = useState(false);
-  const isRefreshingExpensesRef = useRef(false);
-  const budgetPreferencesHydratedRef = useRef(false);
-
-  useEffect(() => {
-    const saved = window.localStorage.getItem(`trav-app:budget-preferences:${itineraryId}`);
-    if (saved) {
-      try {
-        const preferences = JSON.parse(saved);
-        if (['group', 'personal', 'pending'].includes(preferences.activeTab)) setActiveTab(preferences.activeTab);
-        if (typeof preferences.expenseSearch === 'string') setExpenseSearch(preferences.expenseSearch);
-      } catch {}
-    }
-    budgetPreferencesHydratedRef.current = true;
-  }, [itineraryId]);
-
-  useEffect(() => {
-    if (!budgetPreferencesHydratedRef.current) return;
-    window.localStorage.setItem(`trav-app:budget-preferences:${itineraryId}`, JSON.stringify({ activeTab, expenseSearch }));
-  }, [activeTab, expenseSearch, itineraryId]);
-  
-  const [isAddOpen, setIsAddOpen] = useState(false);
-  const [addStep, setAddStep] = useState<1 | 2>(1); 
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  const [editingExpId, setEditingExpId] = useState<string | null>(null);
-  const [editExpTitle, setEditExpTitle] = useState("");
-  const [editExpAmount, setEditExpAmount] = useState("");
-  
-  const [category, setCategory] = useState("food");
-  const [title, setTitle] = useState("");
-  const [currency, setCurrency] = useState("TWD");
-  const [amount, setAmount] = useState("");
-  const [location, setLocation] = useState("");
-  const [payer, setPayer] = useState("User (自己)");
-  const [isSplit, setIsSplit] = useState(false);
-  const [splitUsers, setSplitUsers] = useState([{ name: "User (自己)", id: "u1" }]);
-  const [expenseMode, setExpenseMode] = useState<'personal' | 'group' | 'collector'>('personal');
-  const [splitMethod, setSplitMethod] = useState<'equal' | 'custom'>('equal');
-  const [customShares, setCustomShares] = useState<Record<string, string>>({});
-  
-  const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
-  const [inviteCode, setInviteCode] = useState("");
-  const [isFetchingCode, setIsFetchingCode] = useState(false);
-  const [copiedType, setCopiedType] = useState<'none' | 'code'>('none');
-
-  const [selectedMember, setSelectedMember] = useState<{
-    id: string;
-    name: string;
-    role: string;
-    avatar?: string; 
-  } | null>(null);
-
-  const categories = [
-    { id: 'food', icon: Utensils, label: '食', color: 'bg-[#BCA484]' },
-    { id: 'hotel', icon: Bed, label: '住宿', color: 'bg-[#9079D6]' },
-    { id: 'transport', icon: TrainFront, label: '交通', color: 'bg-[#69C773]' },
-    { id: 'ticket', icon: Ticket, label: '門票', color: 'bg-[#8BB1AA]' },
-    { id: 'shopping', icon: ShoppingBag, label: '購物', color: 'bg-[#4585C4]' },
-    { id: 'other', icon: Receipt, label: '其他', color: 'bg-[#909090]' }
-  ];
-
-  const fetchData = useCallback(async () => {
-    if (isRefreshingExpensesRef.current) return;
-    isRefreshingExpensesRef.current = true;
-    setBudgetSyncStatus('idle');
-    try {
-      const expRes = await fetch("http://localhost:8080/itinerary/expenses.php?action=list", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ Itinerary_ID: itineraryId, Account: currentUserId })
-      });
-      const expText = await expRes.text();
-      try {
-        const expData = JSON.parse(expText);
-        if (expData.status === 'success') setExpenses(expData.data);
-      } catch (e) {
-        console.error("帳單 API 回傳錯誤格式:", expText);
-      }
-
-      const memRes = await fetch("http://localhost:8080/itinerary/collaboration.php?action=members", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ Itinerary_ID: itineraryId, Account: currentUserId })
-      });
-      const memText = await memRes.text();
-      try {
-        const memData = JSON.parse(memText);
-        if (memData.status === 'success') setMembers(memData.data);
-      } catch (e) {
-        console.error("成員 API 回傳錯誤格式:", memText);
-      }
-
-    } catch (error) { 
-      console.error("網路請求失敗", error); 
-      setBudgetSyncStatus('error');
-    } finally { 
-      setIsLoadingExpenses(false); 
-      isRefreshingExpensesRef.current = false;
+      setLoading(false);
     }
   }, [itineraryId, currentUserId]);
 
-  useEffect(() => { fetchData(); }, [fetchData]);
+  useEffect(() => { void loadExpenses(); }, [loadExpenses]);
 
-  useEffect(() => {
-    const refreshTimer = window.setInterval(fetchData, 5000);
-    return () => window.clearInterval(refreshTimer);
-  }, [fetchData]);
-
-  const handleManualRefreshBudget = async () => { if (isManualRefreshingBudget) return; setIsManualRefreshingBudget(true); try { await fetchData(); } finally { setIsManualRefreshingBudget(false); } };
-
-  useEffect(() => {
-    onTotalChange?.(expenses.reduce((total, expense) => total + Number(expense.amount ?? expense.Amount ?? 0), 0));
-  }, [expenses, onTotalChange]);
-
-  useEffect(() => {
-    if (members && members.length > 0) {
-      const defaultUsers = members.map(m => ({ name: m.name, id: m.id }));
-      setSplitUsers(defaultUsers);
-      setPayer(defaultUsers[0].name); 
-    }
-  }, [members]);
-
-  const handleOpenInviteModal = async () => {
-    setIsInviteModalOpen(true);
-    if (inviteCode) return; 
-
-    setIsFetchingCode(true);
-    try {
-      const res = await fetch("http://localhost:8080/itinerary/core.php?action=invite", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ Itinerary_ID: itineraryId })
-      });
-      const data = await res.json();
-      if (data.status === 'success') {
-        setInviteCode(data.code);
-      } else {
-        alert("無法獲取邀請碼：" + data.message);
-      }
-    } catch (error) {
-      console.error("獲取邀請碼失敗", error);
-    } finally {
-      setIsFetchingCode(false);
-    }
+  const openNew = () => {
+    setEditingId(null);
+    setTitle('');
+    setAmount('');
+    setCurrency('TWD');
+    setCategory('food');
+    setLocation('');
+    setError('');
+    setFormOpen(true);
   };
 
-  const handleCopy = (type: 'code', text: string) => {
-    navigator.clipboard.writeText(text).then(() => {
-      setCopiedType(type);
-      setTimeout(() => setCopiedType('none'), 2000); 
-    }).catch(() => {
-      alert("瀏覽器不支援自動複製，請手動複製。");
-    });
+  const openEdit = (expense: PersonalExpense) => {
+    setEditingId(expense.id);
+    setTitle(expense.title);
+    setAmount(String(expense.amount));
+    setCurrency(expense.currency);
+    setCategory(expense.category);
+    setLocation(expense.location || '');
+    setError('');
+    setFormOpen(true);
   };
 
-  const handleCategorySelect = (catId: string) => { setCategory(catId); setAddStep(2); };
-
-  const closeAndResetForm = () => {
-    setIsAddOpen(false);
-    setTimeout(() => {
-      setAddStep(1); setAmount(""); setTitle(""); setLocation(""); setIsSplit(false); setExpenseMode('personal'); setSplitMethod('equal'); setCustomShares({}); setIsSubmitting(false);
-      
-      if (members.length > 0) {
-        setSplitUsers(members.map(m => ({ name: m.name, id: m.id })));
-        setPayer(members[0].name);
-      } else {
-        setSplitUsers([{ name: "User (自己)", id: "u1" }]);
-        setPayer("User (自己)");
-      }
-    }, 200); 
-  };
-
-  const handleAddFriend = () => {
-    const name = window.prompt("請輸入朋友名稱：");
-    if (name && name.trim()) setSplitUsers([...splitUsers, { name: name.trim(), id: `u_${Date.now()}` }]);
-  };
-
-  const toggleSplitUser = (user: { name: string; id: string }) => {
-    setSplitUsers((users) => users.some((selected) => selected.id === user.id) ? users.filter((selected) => selected.id !== user.id) : [...users, user]);
-  };
-
-  const handleSaveExpense = async () => {
-    if (!title.trim()) {
-      alert("請輸入標題");
+  const saveExpense = async () => {
+    const numericAmount = Number(amount);
+    if (!title.trim() || !Number.isFinite(numericAmount) || numericAmount <= 0) {
+      setError('請輸入名稱與大於 0 的金額');
       return;
     }
-    if (!amount || isNaN(Number(amount))) {
-      alert("請輸入有效的金額");
-      return;
-    }
-    
-    if (expenseMode !== 'personal' && splitUsers.length <= 1) {
-      alert("開啟分帳時，請至少新增一位參與分帳的朋友。若僅為個人花費，請關閉分帳開關。");
-      return;
-    }
-
-    if (expenseMode !== 'personal' && splitMethod === 'custom') {
-      const shareTotal = splitUsers.reduce((total, user) => total + Number(customShares[user.id] || 0), 0);
-      if (Math.abs(shareTotal - Number(amount)) > 0.01) {
-        alert(`自訂分帳金額需加總為 ${amount} ${currency}`);
-        return;
-      }
-    }
-
-    setIsSubmitting(true);
-
+    setSaving(true);
+    setError('');
     try {
-      const expenseData = {
-              Itinerary_ID: itineraryId,
-              Account: currentUserId,
-              Category: category,
-              Title: title,
-              Currency: currency,
-              Amount: Number(amount),
-              Location: location,
-              Payer: payer,
-              IsSplit: expenseMode !== 'personal',
-              SplitUsers: expenseMode !== 'personal' ? splitUsers.map(u => u.name) : [],
-              SplitShares: expenseMode !== 'personal' ? (splitMethod === 'equal' ? Object.fromEntries(splitUsers.map((u) => [u.name, Number(amount) / splitUsers.length])) : Object.fromEntries(splitUsers.map((u) => [u.name, Number(customShares[u.id] || 0)]))) : {},
-              Type: expenseMode === 'collector' ? 'collector' : expenseMode === 'group' ? 'group' : 'personal'
-            };
-
-      const res = await fetch("http://localhost:8080/itinerary/expenses.php?action=create", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(expenseData)
-      });
-
-      const data = await res.json();
-
-      if (data.status === 'success') {
-        closeAndResetForm();
-        fetchData();
-      } else {
-        alert("新增失敗：" + data.message);
-      }
-    } catch (error) {
-      console.error("儲存帳單異常", error);
-      alert("後端伺服器連線異常，請檢查 API 狀態");
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleToggleShare = async (shareId: string, isSettled: boolean) => {
-    try {
-      const res = await fetch("http://localhost:8080/itinerary/expenses.php?action=update_share", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ Share_ID: shareId, Account: currentUserId, Is_Settled: !isSettled }) });
-      const data = await res.json();
-      if (data.status === 'success') fetchData(); else alert(data.message || "更新付款狀態失敗");
-    } catch (error) {
-      alert("更新付款狀態失敗");
-    }
-  };
-
-  const handleUpdateExpense = async (expenseId: string) => {
-    if (!editExpTitle.trim() || !editExpAmount) {
-      alert("請輸入標題與金額");
-      return;
-    }
-
-    try {
-      const currentExpense = expenses.find((expense) => String(expense.id || expense.Expense_ID) === String(expenseId));
-      const previousAmount = Number(currentExpense?.amount ?? currentExpense?.Amount ?? 0);
-      const nextAmount = Number(editExpAmount);
-      const shareAmounts = previousAmount > 0
-        ? (currentExpense?.shares || []).map((share: any) => ({
-            Share_ID: share.id,
-            Amount: Math.round((Number(share.amount || 0) * nextAmount / previousAmount) * 100) / 100
-          }))
-        : [];
-      const res = await fetch("http://localhost:8080/itinerary/expenses.php?action=update", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+      const response = await fetch(`http://localhost:8080/itinerary/expenses.php?action=${editingId === null ? 'create' : 'update'}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          Expense_ID: expenseId,
+          Itinerary_ID: itineraryId,
           Account: currentUserId,
-          Title: editExpTitle,
-          Amount: nextAmount,
-          ShareAmounts: shareAmounts
-        })
+          Expense_ID: editingId,
+          Title: title.trim(),
+          Amount: numericAmount,
+          Currency: currency,
+          Category: category,
+          Location: location.trim(),
+        }),
       });
-      
-      const data = await res.json();
-      
-      if (data.status === 'success') {
-        setEditingExpId(null); 
-        fetchData();           
-      } else {
-        alert("更新失敗：" + data.message);
-      }
-    } catch (error) {
-      console.error("更新異常", error);
-      alert("後端伺服器連線異常");
+      const result = await response.json();
+      if (!response.ok || result.status !== 'success') throw new Error(result.message || '儲存失敗');
+      setFormOpen(false);
+      await loadExpenses();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : '儲存失敗');
+    } finally {
+      setSaving(false);
     }
   };
 
-  const handleDeleteExpense = async (expenseId: string) => {
-    if (!window.confirm("確定要刪除這筆帳單嗎？此動作無法復原。")) {
-      return;
-    }
-
+  const deleteExpense = async (expense: PersonalExpense) => {
+    if (!window.confirm(`確定刪除「${expense.title}」？`)) return;
     try {
-      const res = await fetch("http://localhost:8080/itinerary/expenses.php?action=delete", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ Expense_ID: expenseId, Account: currentUserId })
+      setError('');
+      const response = await fetch('http://localhost:8080/itinerary/expenses.php?action=delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ Expense_ID: expense.id, Account: currentUserId }),
       });
-      
-      const data = await res.json();
-      
-      if (data.status === 'success') {
-        fetchData(); 
-      } else {
-        alert("刪除失敗：" + data.message);
-      }
-    } catch (error) {
-      console.error("刪除異常", error);
-      alert("後端伺服器連線異常");
+      const result = await response.json();
+      if (!response.ok || result.status !== 'success') throw new Error(result.message || '刪除失敗');
+      await loadExpenses();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : '刪除失敗');
     }
   };
 
-  const currentCategoryObj = categories.find(c => c.id === category) || categories[0];
-  const currentTabExpenses = expenses.filter((exp) => {
-    const keyword = expenseSearch.trim().toLowerCase();
-    if (keyword && !`${exp.title ?? exp.Title ?? ''} ${exp.location ?? exp.Location ?? ''} ${exp.payer ?? exp.Payer ?? ''} ${exp.referenceNo ?? exp.Reference_No ?? ''}`.toLowerCase().includes(keyword)) return false;
-    if (activeTab === 'pending') return (exp.shares || []).some((share: any) => !share.isSettled);
-    const isGroupExp = exp.Type === 'group' || exp.Type === 'collector' || exp.type === 'group' || exp.type === 'collector' || exp.Is_Split == 1 || exp.IsSplit == 1 || exp.Is_Split === true;
-    return (isGroupExp ? 'group' : 'personal') === activeTab;
-  });
-  const totalExpenseAmount = expenses.reduce((total, expense) => total + Number(expense.amount ?? expense.Amount ?? 0), 0);
-  const pendingShareAmount = expenses.reduce((total, expense) => total + (expense.shares || []).filter((share: any) => !share.isSettled).reduce((shareTotal: number, share: any) => shareTotal + Number(share.amount || 0), 0), 0);
-  const expenseTabCounts = {
-    group: expenses.filter((exp) => exp.Type === 'group' || exp.type === 'group' || exp.Type === 'collector' || exp.type === 'collector' || exp.Is_Split == 1 || exp.IsSplit == 1 || exp.Is_Split === true).length,
-    personal: expenses.filter((exp) => !(exp.Type === 'group' || exp.type === 'group' || exp.Type === 'collector' || exp.type === 'collector' || exp.Is_Split == 1 || exp.IsSplit == 1 || exp.Is_Split === true)).length,
-    pending: expenses.filter((exp) => (exp.shares || []).some((share: any) => !share.isSettled)).length,
-  };
+  const shownExpenses = expenses.filter((expense) =>
+    `${expense.title} ${expense.location || ''}`.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase())
+  );
+  const totals = expenses.reduce<Record<string, number>>((result, expense) => {
+    result[expense.currency] = (result[expense.currency] || 0) + Number(expense.amount);
+    return result;
+  }, {});
 
   return (
-    <div className="h-full flex flex-col relative animate-in fade-in slide-in-from-right-4 duration-200 bg-[#FAFAFA]">
-      {budgetSyncStatus === 'error' && <div className="mx-4 mt-3 rounded-xl bg-red-50 px-3 py-2 text-xs font-bold text-red-500">記帳同步失敗，請稍後再試</div>}
-      
-      {/* 頂部資訊區 */}
-      <div className="flex justify-between items-end px-4 pt-2 pb-4 shrink-0">
-        <div>
-          <div className="text-xs font-bold text-slate-500 mb-2 tracking-wide">分帳群組</div>
-          
-          <div className="flex items-center">
-            {members.length > 0 ? (
-              <div className="flex -space-x-3 mr-3 relative z-0 hover:z-10">
-                  {members.map((member, index) => (
-                    <div 
-                      key={member.id} 
-                      onClick={() => setSelectedMember(member)} 
-                      className="size-10 rounded-full border-2 border-white bg-pink-100 text-[#F04D79] flex items-center justify-center text-sm font-bold shadow-sm relative hover:scale-110 hover:z-50 transition-all cursor-pointer uppercase overflow-hidden" 
-                      title={`${member.name} (${member.role})`}
-                      style={{ zIndex: members.length - index }}
-                    >
-                      {member.avatar ? (
-                        <img src={member.avatar} alt={member.name} className="w-full h-full object-cover" />
-                      ) : (
-                        member.name.charAt(0)
-                      )}
-                    </div>
-                  ))}
+    <div className="flex h-full min-h-0 flex-col bg-[#FAFAFA]">
+      <div className="space-y-3 border-b border-slate-100 bg-white p-4">
+        <div className="flex items-center justify-between">
+          <h3 className="text-base font-bold text-slate-800">個人記帳</h3>
+          <button type="button" onClick={openNew} className="flex items-center gap-1 rounded-lg bg-[#F04D79] px-3 py-2 text-xs font-bold text-white"><Plus size={15} />新增花費</button>
+        </div>
+        <div className="text-xs text-slate-500">共 {expenses.length} 筆{Object.entries(totals).map(([unit, total]) => <span key={unit} className="ml-2 font-bold text-slate-700">{unit} {total.toLocaleString()}</span>)}</div>
+        <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="搜尋花費或地點" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#F04D79]" />
+      </div>
+
+      {error && <p className="mx-4 mt-3 rounded-lg bg-red-50 p-3 text-xs text-red-600">{error}</p>}
+      <div className="flex-1 space-y-3 overflow-y-auto p-4">
+        {loading ? <div className="py-10 text-center text-sm text-slate-400">載入中...</div> : shownExpenses.length === 0 ? (
+          <div className="py-10 text-center text-sm text-slate-400">{search ? '找不到符合的花費' : '尚未新增個人花費'}</div>
+        ) : shownExpenses.map((expense) => (
+          <div key={expense.id} className="rounded-xl border border-slate-100 bg-white p-4 shadow-sm">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="truncate text-sm font-bold text-slate-800">{expense.title}</div>
+                <div className="mt-1 text-xs text-slate-400">{categories.find((item) => item.value === expense.category)?.label || expense.category}{expense.location ? ` · ${expense.location}` : ''}{expense.date ? ` · ${expense.date.slice(0, 10)}` : ''}</div>
               </div>
-            ) : (
-              <div className="size-10 rounded-full border-2 border-white bg-slate-100 animate-pulse mr-3"></div>
-            )}
-            
-            <button type="button" onClick={() => void handleManualRefreshBudget()} disabled={isManualRefreshingBudget} title="重新整理記帳" aria-label="重新整理記帳" className="mr-2 rounded-lg p-2 text-slate-400 hover:bg-slate-50 hover:text-[#F04D79] disabled:cursor-wait disabled:opacity-50"><RefreshCw size={16} className={isManualRefreshingBudget ? 'animate-spin' : ''} /></button>
-          </div>
-        </div>
-        
-        <div className="text-center px-4">
-          <div className="text-xs font-bold text-slate-500 mb-1 tracking-wide">帳單</div>
-          <div className="text-2xl font-mono text-slate-800">{expenses.length}</div>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 gap-2 px-4 pb-3 shrink-0">
-        <div className="rounded-xl border border-slate-100 bg-white px-3 py-2.5 shadow-sm">
-          <div className="text-[11px] font-bold tracking-wide text-slate-400">總花費（未換算）</div>
-          <div className="mt-1 text-lg font-mono font-bold text-slate-800">NT$ {totalExpenseAmount.toLocaleString()}</div>
-        </div>
-        <div className="rounded-xl border border-amber-100 bg-amber-50/60 px-3 py-2.5 shadow-sm">
-          <div className="text-[11px] font-bold tracking-wide text-amber-600">待結清</div>
-          <div className={`mt-1 text-lg font-mono font-bold ${pendingShareAmount > 0 ? 'text-amber-700' : 'text-emerald-600'}`}>
-            NT$ {pendingShareAmount.toLocaleString()}
-          </div>
-        </div>
-      </div>
-
-      <div className="flex px-4 border-b border-slate-200 shrink-0">
-        <button onClick={() => setActiveTab('group')} className={`flex-1 py-3 text-sm font-bold transition-colors ${activeTab === 'group' ? 'text-[#F04D79] border-b-2 border-[#F04D79]' : 'text-slate-400'}`}>群組花費 <span className="text-[10px]">({expenseTabCounts.group})</span></button>
-        <button onClick={() => setActiveTab('personal')} className={`flex-1 py-3 text-sm font-bold transition-colors ${activeTab === 'personal' ? 'text-[#F04D79] border-b-2 border-[#F04D79]' : 'text-slate-400'}`}>個人花費 <span className="text-[10px]">({expenseTabCounts.personal})</span></button>
-        <button onClick={() => setActiveTab('pending')} className={`flex-1 py-3 text-sm font-bold transition-colors ${activeTab === 'pending' ? 'text-[#F04D79] border-b-2 border-[#F04D79]' : 'text-slate-400'}`}>待收付款項 <span className="text-[10px]">({expenseTabCounts.pending})</span></button>
-      </div>
-
-      <div className="flex items-center gap-2 px-4 pt-3"><input value={expenseSearch} onChange={(event) => setExpenseSearch(event.target.value)} placeholder="搜尋標題、地點、付款人或編號…" className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600 outline-none focus:border-pink-300" />{expenseSearch && <button type="button" onClick={() => setExpenseSearch('')} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-[#F04D79]" aria-label="清除記帳搜尋"><X size={14} /></button>}<span className="shrink-0 text-[11px] font-bold text-slate-400">{expenseSearch ? `${currentTabExpenses.length}/${expenses.length}` : `${currentTabExpenses.length}`} 筆</span></div>
-
-      <div className="flex-1 overflow-y-auto p-4 pb-24">
-        {isLoadingExpenses ? (
-          <div className="flex justify-center py-10"><Loader2 className="animate-spin text-slate-300 size-8" /></div>
-        ) : currentTabExpenses.length === 0 ? (
-          <div className="text-center py-10 text-slate-400 text-sm font-medium tracking-wide">{expenseSearch ? '找不到符合的消費' : activeTab === 'pending' ? '目前沒有待收付款項' : activeTab === 'group' ? '目前尚無群組花費' : '目前尚無個人花費'}</div>
-        ) : (
-          <div className="space-y-3">
-            {currentTabExpenses.map((exp) => {
-              const catObj = categories.find(c => c.id === (exp.category || exp.Category)) || categories[0];
-              const expenseShares = exp.shares || [];
-              const settledShareCount = expenseShares.filter((share: any) => share.isSettled).length;
-              const expenseType = exp.Type || exp.type;
-              
-              return (
-                <div key={exp.id || exp.Expense_ID} className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex items-center gap-4 group hover:border-[#F04D79]/30 transition-all">
-                  <div className={`size-12 rounded-xl flex items-center justify-center text-white shrink-0 shadow-sm ${catObj.color}`}>
-                    <catObj.icon size={22} strokeWidth={1.5} />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    {editingExpId === (exp.id || exp.Expense_ID) ? (
-                      <div className="flex items-center gap-2">
-                        <input 
-                          type="text" value={editExpTitle} onChange={(e) => setEditExpTitle(e.target.value)} 
-                          className="flex-1 w-full text-sm font-bold text-slate-700 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 focus:outline-none focus:border-[#F04D79]" placeholder="標題" 
-                        />
-                        <input 
-                          type="number" value={editExpAmount} onChange={(e) => setEditExpAmount(e.target.value)} 
-                          className="w-20 text-sm font-bold text-slate-700 font-mono bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 focus:outline-none focus:border-[#F04D79]" placeholder="金額" 
-                        />
-                        <button onClick={() => handleUpdateExpense(exp.id || exp.Expense_ID)} className="p-1.5 bg-green-100 text-green-600 rounded-lg hover:bg-green-200 transition-colors"><Check size={16} /></button>
-                        <button onClick={() => setEditingExpId(null)} className="p-1.5 bg-slate-100 text-slate-500 rounded-lg hover:bg-slate-200 transition-colors"><X size={16} /></button>
-                      </div>
-                    ) : (
-                      <>
-                        <div className="flex justify-between items-start mb-1">
-                          <div className="flex min-w-0 items-center gap-2 pr-2">
-                            <h4 className="text-[15px] font-bold text-slate-800 truncate">{exp.title || exp.Title}</h4>
-                            {expenseType === 'collector' && <span className="shrink-0 rounded-full bg-violet-50 px-2 py-0.5 text-[10px] font-bold text-violet-600">代收</span>}
-                            {expenseType === 'group' && <span className="shrink-0 rounded-full bg-pink-50 px-2 py-0.5 text-[10px] font-bold text-[#F04D79]">共同</span>}
-                          </div>
-                          <div className="text-[15px] font-bold font-mono text-slate-800 shrink-0">
-                            <span className="text-[10px] text-slate-400 mr-1">{exp.currency || exp.Currency}</span>
-                            {exp.amount || exp.Amount}
-                          </div>
-                        </div>
-                        <div className="flex justify-between items-center text-[11px] font-bold text-slate-400">
-                          <span className="flex items-center gap-1.5 truncate">
-                            <User size={12} className="text-slate-300" /> {exp.payer || exp.Payer} 付款
-                          </span>
-                          <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button 
-                              onClick={() => { 
-                                setEditingExpId(exp.id || exp.Expense_ID); 
-                                setEditExpTitle(exp.title || exp.Title); 
-                                setEditExpAmount(exp.amount || exp.Amount); 
-                              }} 
-                              className="p-1.5 bg-slate-50 rounded-md hover:text-[#F04D79] transition-colors"
-                            ><Edit2 size={14} /></button>
-                            <button 
-                              onClick={() => handleDeleteExpense(exp.id || exp.Expense_ID)} 
-                              className="p-1.5 bg-slate-50 rounded-md hover:text-red-500 transition-colors"
-                            ><Trash2 size={14} /></button>
-                          </div>
-                        </div>
-                        {expenseShares.length > 0 && (
-                          <div className="mt-2 pt-2 border-t border-slate-100 space-y-1.5">
-                            <div className="mb-1 flex items-center justify-between text-[10px] font-bold text-slate-400">
-                              <span>分帳進度</span>
-                              <span>{settledShareCount}/{expenseShares.length} 已結清</span>
-                            </div>
-                            {expenseShares.map((share: any) => (
-                              <div key={share.id} className="flex items-center justify-between text-[11px]">
-                                <span className={share.isSettled ? 'text-slate-400 line-through' : 'text-slate-600'}>{share.participant} · {share.amount} {exp.currency || exp.Currency}</span>
-                                <button onClick={() => handleToggleShare(share.id, share.isSettled)} className={`rounded-full px-2 py-0.5 font-bold ${share.isSettled ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600 hover:bg-emerald-50 hover:text-emerald-600'}`}>{share.isSettled ? '已結清' : '標記已付款'}</button>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      <div className="absolute bottom-6 right-6 z-30">
-        <button onClick={() => setIsAddOpen(true)} className="size-14 bg-[#F04D79] text-white rounded-full flex items-center justify-center shadow-lg hover:bg-pink-600 hover:scale-105 transition-all">
-          <Plus size={28} />
-        </button>
-      </div>
-
-      {isInviteModalOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
-          <div className="bg-white w-full max-w-sm rounded-3xl shadow-2xl p-6 relative animate-in zoom-in-95 duration-200">
-            <button onClick={() => setIsInviteModalOpen(false)} className="absolute top-4 right-4 text-slate-400 hover:text-slate-700 bg-slate-50 rounded-full p-1">
-              <X size={20} />
-            </button>
-            <div className="text-center mb-6 mt-2">
-              <div className="size-12 bg-pink-50 rounded-full flex items-center justify-center mx-auto mb-3">
-                <Copy className="text-[#F04D79] size-6" />
-              </div>
-              <h3 className="text-xl font-bold text-slate-800">邀請旅伴加入</h3>
-              <p className="text-sm text-slate-500 mt-1">選擇適合的方式分享給朋友</p>
+              <div className="shrink-0 text-right"><div className="font-mono text-sm font-bold text-slate-800">{expense.currency} {Number(expense.amount).toLocaleString()}</div></div>
             </div>
-            <div className="space-y-4">
-              <div className="p-4 border border-slate-100 rounded-2xl bg-slate-50">
-                <div className="text-xs font-bold text-slate-500 mb-2 tracking-widest uppercase">Method 1: Invite Code</div>
-                <div className="flex items-center justify-between">
-                  {isFetchingCode ? (
-                    <Loader2 className="animate-spin text-slate-400 size-5" />
-                  ) : (
-                    <span className="text-2xl font-mono font-bold tracking-[0.2em] text-slate-800">
-                      {inviteCode}
-                    </span>
-                  )}
-                  <button 
-                    onClick={() => handleCopy('code', inviteCode)}
-                    disabled={isFetchingCode || !inviteCode}
-                    className={`flex items-center justify-center p-2 rounded-xl transition-all ${copiedType === 'code' ? 'bg-green-100 text-green-600' : 'bg-white border border-slate-200 text-slate-600 hover:border-[#F04D79] hover:text-[#F04D79]'}`}
-                  >
-                    {copiedType === 'code' ? <Check size={18} /> : <Copy size={18} />}
-                  </button>
-                </div>
-              </div>
+            <div className="mt-3 flex justify-end gap-3 text-xs font-bold">
+              <button type="button" onClick={() => openEdit(expense)} className="text-slate-500 hover:text-[#F04D79]">修改</button>
+              <button type="button" onClick={() => void deleteExpense(expense)} className="text-red-500 hover:text-red-600">刪除</button>
             </div>
           </div>
-        </div>
-      )}
+        ))}
+      </div>
 
-      {isAddOpen && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={closeAndResetForm}></div>
-          <div className={`bg-white rounded-2xl shadow-2xl relative z-30 overflow-hidden transition-all duration-300 flex flex-col max-h-[90vh] ${addStep === 1 ? 'w-full max-w-[340px] animate-in zoom-in-95 fade-in' : 'w-full max-w-[500px] animate-in slide-in-from-right-8 fade-in'}`}>
-            {addStep === 1 && (
-              <div className="p-6 pb-8 text-center overflow-y-auto">
-                <div className="flex justify-between items-center mb-6"><div className="w-6"></div><h3 className="text-[17px] font-bold text-slate-800 tracking-widest">請選擇分類</h3><button onClick={closeAndResetForm} className="text-slate-400 hover:text-slate-600"><X size={20}/></button></div>
-                <div className="grid grid-cols-3 gap-3">
-                  {categories.map((cat) => (
-                    <button key={cat.id} onClick={() => handleCategorySelect(cat.id)} className={`aspect-square rounded-2xl flex flex-col items-center justify-center gap-2 transition-all ${cat.color} text-white shadow-sm hover:scale-105 hover:shadow-md opacity-90 hover:opacity-100`}><cat.icon size={32} strokeWidth={1.5} /><span className="text-[13px] font-bold tracking-widest">{cat.label}</span></button>
-                  ))}
-                </div>
-              </div>
-            )}
-            {addStep === 2 && (
-              <div className="flex flex-col h-full overflow-hidden">
-                <div className="p-6 pb-2 border-b border-slate-50 flex justify-between items-center shrink-0">
-                  <h3 className="text-[17px] font-bold text-slate-800 tracking-widest">新增花費</h3><button onClick={closeAndResetForm} className="text-slate-400 hover:text-slate-600"><X size={20}/></button>
-                </div>
-                <div className="p-6 space-y-5 overflow-y-auto">
-                  <div className="flex gap-4">
-                    <div className="flex-1 space-y-1.5">
-                      <label className="text-sm font-bold text-slate-600"><span className="text-[#F04D79] mr-1">*</span>分類</label>
-                      <div className="relative border border-slate-300 rounded-md bg-white">
-                        <div className="absolute left-2.5 top-1/2 -translate-y-1/2 size-6 rounded-full text-white flex items-center justify-center transform scale-75 origin-center" style={{ backgroundColor: currentCategoryObj.color.replace('bg-[', '').replace(']', '') }}><currentCategoryObj.icon size={14} /></div>
-                        <select value={category} onChange={(e) => setCategory(e.target.value)} className="w-full appearance-none pl-10 pr-8 py-2.5 text-sm text-slate-700 bg-transparent focus:outline-none cursor-pointer">{categories.map(cat => <option key={cat.id} value={cat.id}>{cat.label}</option>)}</select>
-                        <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#F04D79] pointer-events-none" />
-                      </div>
-                    </div>
-                    <div className="flex-1 space-y-1.5"><label className="text-sm font-bold text-slate-600"><span className="text-[#F04D79] mr-1">*</span>標題</label><input type="text" placeholder="請輸入標題" value={title} onChange={(e) => setTitle(e.target.value)} autoFocus className="w-full border border-slate-300 rounded-md px-3 py-2.5 text-sm text-slate-700 focus:outline-none focus:border-[#F04D79]" /></div>
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-sm font-bold text-slate-600"><span className="text-[#F04D79] mr-1">*</span>金額</label>
-                    <div className="flex gap-3">
-                      <div className="w-[120px] relative border border-slate-300 rounded-md bg-white shrink-0">
-                        <select value={currency} onChange={(e) => setCurrency(e.target.value)} className="w-full appearance-none pl-3 pr-8 py-2.5 text-sm font-bold text-slate-700 bg-transparent focus:outline-none cursor-pointer"><option value="TWD">TWD</option><option value="JPY">JPY</option><option value="AED">AED</option></select>
-                        <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#F04D79] pointer-events-none" />
-                      </div>
-                      <input type="number" placeholder="請輸入金額" value={amount} onChange={(e) => setAmount(e.target.value)} className="flex-1 border border-slate-300 rounded-md px-3 py-2.5 text-sm text-slate-700 focus:outline-none focus:border-[#F04D79]" />
-                    </div>
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-sm font-bold text-slate-600">地點</label>
-                    <div className="relative border border-slate-300 rounded-md bg-white">
-                      <select value={location} onChange={(e) => { const value = e.target.value; setLocation(value); const selectedItem = itineraryItems.find((item) => item.id === value); if (selectedItem && !title.trim()) setTitle(selectedItem.title); }} className="w-full appearance-none pl-3 pr-8 py-2.5 text-sm text-slate-500 bg-transparent focus:outline-none cursor-pointer"><option value="" disabled hidden>請選擇地點</option>{itineraryItems.map((item) => <option key={item.id} value={item.id}>Day {item.dayNumber} · {item.title}</option>)}<option value="other">其他地點</option></select>
-                      <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#F04D79] pointer-events-none" />
-                    </div>
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-sm font-bold text-slate-600"><span className="text-[#F04D79] mr-1">*</span>付款人</label>
-                    <div className="relative border border-slate-300 rounded-md bg-white">
-                      <select value={payer} onChange={(e) => setPayer(e.target.value)} className="w-full appearance-none pl-3 pr-8 py-2.5 text-sm text-slate-700 bg-transparent focus:outline-none cursor-pointer">
-                        {splitUsers.map(u => <option key={u.id} value={u.name}>{u.name}</option>)}
-                      </select>
-                      <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#F04D79] pointer-events-none" />
-                    </div>
-                  </div>
-                  <div className="space-y-3">
-                    <div><h4 className="text-lg font-bold text-slate-800 mb-1">消費方式</h4><p className="text-[12px] text-slate-400">選擇這筆花費如何分配。</p></div>
-                    <div className="grid grid-cols-3 gap-2">
-                      {[['personal', '個人花費'], ['group', '共同消費'], ['collector', '代收付款']].map(([mode, label]) => (
-                        <button key={mode} onClick={() => { setExpenseMode(mode as 'personal' | 'group' | 'collector'); setIsSplit(mode !== 'personal'); }} className={`rounded-xl border px-2 py-2 text-xs font-bold transition-colors ${expenseMode === mode ? 'border-[#F04D79] bg-pink-50 text-[#F04D79]' : 'border-slate-200 text-slate-500 hover:border-pink-200'}`}>{label}</button>
-                      ))}
-                    </div>
-                  </div>
-                  {expenseMode !== 'personal' && (
-                    <div className="space-y-3 animate-in fade-in zoom-in-95 duration-200 mt-2">
-                      <div><label className="text-sm font-bold text-slate-600">參與分帳成員</label><div className="flex flex-wrap gap-2 mt-2">{(members.length ? members : splitUsers).map((u) => { const selected = splitUsers.some((item) => item.id === u.id); return <button key={u.id} onClick={() => toggleSplitUser({ name: u.name, id: u.id })} className={`rounded-full px-3 py-1.5 text-xs font-bold transition-colors ${selected ? 'bg-pink-100 text-[#F04D79] ring-1 ring-pink-200' : 'bg-slate-100 text-slate-400'}`}>{selected ? '✓ ' : ''}{u.name}</button>; })}</div></div>
-                      <button onClick={handleAddFriend} className="flex items-center gap-2 text-sm text-[#F04D79] font-bold hover:opacity-70 transition-opacity"><Plus size={18} /> 新增朋友</button>
-                      <div className="flex items-center justify-between"><label className="text-sm font-bold text-slate-600">分帳方式</label><select value={splitMethod} onChange={(e) => setSplitMethod(e.target.value as 'equal' | 'custom')} className="border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-slate-600"><option value="equal">平均分帳</option><option value="custom">自訂金額</option></select></div>
-                      <div className="space-y-2 rounded-xl bg-slate-50 p-3"><p className="text-xs font-bold text-slate-500">分帳預覽</p>{splitUsers.map((u) => { const share = splitMethod === 'equal' ? (Number(amount || 0) / Math.max(splitUsers.length, 1)) : Number(customShares[u.id] || 0); return <div key={u.id} className="flex items-center justify-between gap-2 text-sm"><span className="font-bold text-slate-700">{u.name}</span>{splitMethod === 'custom' ? <input type="number" value={customShares[u.id] || ''} onChange={(e) => setCustomShares({ ...customShares, [u.id]: e.target.value })} placeholder="0" className="w-24 rounded-lg border border-slate-200 px-2 py-1 text-right text-sm" /> : <span className="font-mono text-slate-600">{share.toFixed(0)} {currency}</span>}</div>; })}</div>
-                    </div>
-                  )}
-                  <hr className="border-slate-100" />
-                </div>
-                <div className="p-4 px-6 border-t border-slate-100 flex justify-end items-center gap-4 bg-white shrink-0">
-                  <button onClick={closeAndResetForm} disabled={isSubmitting} className="text-[15px] font-bold text-[#F04D79] hover:opacity-70 transition-opacity">取消</button>
-                  <button onClick={handleSaveExpense} disabled={isSubmitting} className="px-6 py-2.5 bg-[#F04D79] hover:bg-pink-600 text-white rounded-md text-[15px] font-bold tracking-widest shadow-sm transition-colors flex items-center gap-2">{isSubmitting ? <Loader2 size={16} className="animate-spin" /> : "完成"}</button>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {selectedMember && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
-          <div className="bg-white w-full max-w-sm rounded-3xl shadow-2xl p-6 relative animate-in zoom-in-95 duration-200 text-center">
-            <button 
-              onClick={() => setSelectedMember(null)}
-              className="absolute top-4 right-4 text-slate-400 hover:text-slate-700 bg-slate-50 rounded-full p-1 transition-colors"
-            >
-              <X size={20} />
-            </button>
-            <div className="size-24 bg-pink-100 rounded-full flex items-center justify-center mx-auto mb-4 border-4 border-white shadow-sm mt-4 overflow-hidden">
-               {selectedMember?.avatar ? (
-                 <img src={selectedMember.avatar} alt={selectedMember.name} className="w-full h-full object-cover" />
-               ) : (
-                 <span className="text-4xl font-bold text-[#F04D79] uppercase">
-                   {selectedMember?.name?.charAt(0)}
-                 </span>
-               )}
+      {formOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 p-4">
+          <form onSubmit={(event) => { event.preventDefault(); void saveExpense(); }} className="w-full max-w-md space-y-4 rounded-2xl bg-white p-6 shadow-xl">
+            <h3 className="text-lg font-bold text-slate-800">{editingId === null ? '新增個人花費' : '修改個人花費'}</h3>
+            <label className="block text-sm text-slate-600">名稱<input required value={title} onChange={(event) => setTitle(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 outline-none focus:border-[#F04D79]" /></label>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="block text-sm text-slate-600">金額<input required type="number" min="0.01" step="0.01" value={amount} onChange={(event) => setAmount(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 outline-none focus:border-[#F04D79]" /></label>
+              <label className="block text-sm text-slate-600">幣別<select value={currency} onChange={(event) => setCurrency(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"><option value="TWD">TWD</option><option value="JPY">JPY</option><option value="AED">AED</option></select></label>
             </div>
-            <h3 className="text-xl font-bold text-slate-800 tracking-wide">
-              {selectedMember?.name}
-            </h3>
-            <span className={`inline-block mt-2 px-3 py-1 rounded-full text-xs font-bold ${
-              selectedMember?.role === 'Owner' 
-                ? 'bg-amber-100 text-amber-700' 
-                : 'bg-slate-100 text-slate-500'
-            }`}>
-              {selectedMember?.role === 'Owner' ? '行程建立者 (Owner)' : '旅伴 (Member)'}
-            </span>
-            <div className="mt-6 p-4 bg-slate-50 rounded-2xl text-left space-y-3 border border-slate-100">
-               <div className="flex items-center gap-3">
-                 <div className="p-2 bg-white rounded-lg shadow-sm">
-                   <User className="size-4 text-[#F04D79]" />
-                 </div>
-                 <div>
-                   <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">帳號 ID</div>
-                   <div className="text-sm font-medium text-slate-700">
-                     {selectedMember?.id}
-                   </div>
-                 </div>
-               </div>
-            </div>
-          </div>
+            <label className="block text-sm text-slate-600">類別<select value={category} onChange={(event) => setCategory(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2">{categories.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
+            <label className="block text-sm text-slate-600">地點（選填）<input value={location} onChange={(event) => setLocation(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 outline-none focus:border-[#F04D79]" /></label>
+            {error && <p role="alert" className="rounded-lg bg-red-50 p-3 text-xs text-red-600">{error}</p>}
+            <div className="flex justify-end gap-3 pt-2 text-sm font-bold"><button type="button" onClick={() => setFormOpen(false)} disabled={saving} className="px-4 py-2 text-slate-500">取消</button><button type="submit" disabled={saving} className="rounded-lg bg-[#F04D79] px-4 py-2 text-white disabled:opacity-50">{saving ? '儲存中...' : '儲存'}</button></div>
+          </form>
         </div>
       )}
     </div>
@@ -1146,7 +248,7 @@ function BudgetPanel({ itineraryId, currentUserId, itineraryItems, onTotalChange
 }
 
 // ================= 行李清單獨立模組 =================
-function LuggagePanel({ itineraryId, currentUserId, onCountChange }: { itineraryId: string; currentUserId: string; onCountChange?: (counts: { checked: number; total: number }) => void }) {
+function LuggagePanel({ itineraryId, currentUserId }: { itineraryId: string; currentUserId: string }) {
   const [categories, setCategories] = useState<any[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
   const [syncStatus, setSyncStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
@@ -1198,13 +300,6 @@ function LuggagePanel({ itineraryId, currentUserId, onCountChange }: { itinerary
     }, 1000);
     return () => clearTimeout(timer);
   }, [categories, isLoaded, itineraryId, currentUserId]);
-
-  useEffect(() => {
-    if (isLoaded) {
-      const items = categories.flatMap((category) => category.items);
-      onCountChange?.({ checked: items.filter((item: any) => item.isChecked).length, total: items.length });
-    }
-  }, [categories, isLoaded, onCountChange]);
 
   const toggleCheck = (categoryId: string, itemId: string) => setCategories(cats => cats.map(cat => cat.id === categoryId ? { ...cat, items: cat.items.map((i: any) => i.id === itemId ? { ...i, isChecked: !i.isChecked } : i) } : cat));
   const toggleCategoryChecks = (categoryId: string) => setCategories(cats => cats.map(cat => cat.id === categoryId ? { ...cat, items: cat.items.map((i: any) => ({ ...i, isChecked: !cat.items.every((item: any) => item.isChecked) })) } : cat));
@@ -1294,64 +389,13 @@ const getTimeFlags = (items: any[], index: number) => {
   return { isOvernight, hasConflict: adjustedCurrentStart < adjustedPreviousEnd };
 };
 
-const calculateStraightLineDistanceKm = (items: any[]) => {
-  const points = [...items]
-    .filter((item) => Number.isFinite(Number(item.Latitude)) && Number.isFinite(Number(item.Longitude)))
-    .sort((a, b) => Number(a.dayNumber ?? 0) - Number(b.dayNumber ?? 0) || Number(a.sortOrder ?? 0) - Number(b.sortOrder ?? 0));
-  if (points.length < 2) return 0;
-
-  const toRadians = (value: number) => value * Math.PI / 180;
-  let distance = 0;
-  for (let index = 1; index < points.length; index += 1) {
-    const previousLat = toRadians(Number(points[index - 1].Latitude));
-    const currentLat = toRadians(Number(points[index].Latitude));
-    const deltaLat = currentLat - previousLat;
-    const deltaLng = toRadians(Number(points[index].Longitude) - Number(points[index - 1].Longitude));
-    const a = Math.sin(deltaLat / 2) ** 2 + Math.cos(previousLat) * Math.cos(currentLat) * Math.sin(deltaLng / 2) ** 2;
-    distance += 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  }
-  return distance;
-};
-
-type RouteMode = 'walking' | 'driving' | 'transit';
-
-const routeModeOptions: Array<{ value: RouteMode; label: string; speedKmh: number }> = [
-  { value: 'walking', label: '步行', speedKmh: 5 },
-  { value: 'driving', label: '開車', speedKmh: 30 },
-  { value: 'transit', label: '大眾運輸', speedKmh: 22 },
-];
-
-const calculateRouteSegments = (items: any[]) => {
-  const points = [...items]
-    .filter((item) => Number.isFinite(Number(item.Latitude)) && Number.isFinite(Number(item.Longitude)))
-    .sort((a, b) => Number(a.sortOrder ?? 0) - Number(b.sortOrder ?? 0));
-  if (points.length < 2) return [];
-
-  const toRadians = (value: number) => value * Math.PI / 180;
-  const getDistance = (from: any, to: any) => {
-    const lat1 = toRadians(Number(from.Latitude));
-    const lat2 = toRadians(Number(to.Latitude));
-    const deltaLat = lat2 - lat1;
-    const deltaLng = toRadians(Number(to.Longitude) - Number(from.Longitude));
-    const a = Math.sin(deltaLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(deltaLng / 2) ** 2;
-    return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  };
-
-  return points.slice(1).map((to, index) => ({
-    from: points[index],
-    to,
-    distanceKm: getDistance(points[index], to),
-  }));
-};
-
-type MarkerStatus = 'added' | 'completed' | 'mustVisit' | 'optional' | 'companionAdded';
+type MarkerStatus = 'added' | 'completed' | 'mustVisit' | 'optional';
 
 const markerStatusOptions: Array<{ value: MarkerStatus; label: string; color: string; fill: string }> = [
   { value: 'added', label: '已加入行程', color: '#F04D79', fill: '#F04D79' },
   { value: 'completed', label: '已完成', color: '#16A34A', fill: '#16A34A' },
   { value: 'mustVisit', label: '必去', color: '#DC2626', fill: '#DC2626' },
   { value: 'optional', label: '備選', color: '#64748B', fill: '#94A3B8' },
-  { value: 'companionAdded', label: '旅伴新增', color: '#7C3AED', fill: '#7C3AED' },
 ];
 
 const getMarkerStatusOption = (status: MarkerStatus) => (
@@ -1464,13 +508,8 @@ export default function ItineraryEditor() {
   const [isAddItemOpen, setIsAddItemOpen] = useState(false);
   const [addItemMode, setAddItemMode] = useState<'choose' | 'search' | 'custom'>('choose');
   
-  const [rightPanelTab, setRightPanelTab] = useState('overview');
+  const [rightPanelTab, setRightPanelTab] = useState<'budget' | 'luggage'>('budget');
   const [isMobilePanelOpen, setIsMobilePanelOpen] = useState(false);
-  const [isMobileMoreOpen, setIsMobileMoreOpen] = useState(false);
-  const [mobilePanelPreviousView, setMobilePanelPreviousView] = useState<'overview' | 'more'>('overview');
-  const [chatUnreadCount, setChatUnreadCount] = useState(0);
-  const [luggageCount, setLuggageCount] = useState<{ checked: number; total: number } | null>(null);
-  const [budgetTotal, setBudgetTotal] = useState<number | null>(null);
   const preferencesHydratedRef = useRef(false);
 
   // 🌟 新增：編輯詳細資訊(筆記/預約)用的 state
@@ -1492,7 +531,7 @@ export default function ItineraryEditor() {
 
   useEffect(() => {
     const savedTab = window.localStorage.getItem(`trav-app:right-panel:${params.id}`);
-    if (savedTab) setRightPanelTab(savedTab);
+    if (savedTab === 'budget' || savedTab === 'luggage') setRightPanelTab(savedTab);
     const savedDay = window.localStorage.getItem(`trav-app:active-day:${params.id}`);
     if (savedDay) setActiveDay(Math.max(1, Number(savedDay) || 1));
     preferencesHydratedRef.current = true;
@@ -1505,11 +544,6 @@ export default function ItineraryEditor() {
   }, [activeDay, params.id, rightPanelTab]);
 
   const [newItemTitle, setNewItemTitle] = useState("");
-  const availableTags = ["單人友善", "寵物友善", "餐廳", "咖啡廳"];
-  const mapFilterTagOptions = ["單人友善", "寵物友善", "餐廳", "咖啡廳"];
-  const [searchTags, setSearchTags] = useState<string[]>([]);
-  const [mapFilterTags, setMapFilterTags] = useState<string[]>([]);
-  const [lastSearchKeyword, setLastSearchKeyword] = useState("");
   const [newItemStartTime, setNewItemStartTime] = useState("");
   const [newItemEndTime, setNewItemEndTime] = useState("");
   const [newItemLat, setNewItemLat] = useState<number | null>(null);
@@ -1536,22 +570,12 @@ export default function ItineraryEditor() {
   const [searchMarkers, setSearchMarkers] = useState<any[]>([]);
   const [placeTags, setPlaceTags] = useState<Record<string, string[]>>({});
   const [placeTagsSaving, setPlaceTagsSaving] = useState(false);
-  const [routeMode, setRouteMode] = useState<RouteMode>('driving');
   const mapRef = useRef<google.maps.Map | null>(null);
   const [mapCenter, setMapCenter] = useState({ lat: 25.0478, lng: 121.5170 });
   const [mapZoom, setMapZoom] = useState(12);
   const routePolylineRef = useRef<google.maps.Polyline | null>(null);
-  const [isRouteVisible, setIsRouteVisible] = useState(true);
-  const [isLayerMenuOpen, setIsLayerMenuOpen] = useState(false);
-  const [mapLayers, setMapLayers] = useState({ itinerary: true, search: true, userLocation: true });
   const [mapReady, setMapReady] = useState(false);
-  const [isMapFocusMode, setIsMapFocusMode] = useState(true);
-  const [isMapToolbarOpen, setIsMapToolbarOpen] = useState(false);
-  const [isMapUtilityOpen, setIsMapUtilityOpen] = useState(false);
-  const [activeMapUtility, setActiveMapUtility] = useState<string | null>(null);
-  const [isLocating, setIsLocating] = useState(false);
   const [mapStatusMessage, setMapStatusMessage] = useState<string | null>(null);
-  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [itemsLoaded, setItemsLoaded] = useState(false);
   const lastAutoFitDayRef = useRef<number | null>(null);
   const [markerStatuses, setMarkerStatuses] = useState<Record<string, MarkerStatus>>({});
@@ -1640,10 +664,6 @@ export default function ItineraryEditor() {
     return tags;
   };
 
-  const filteredSearchMarkers = searchMarkers.filter((place) =>
-    mapFilterTags.every((tag) => getPlaceMapTags(place).has(tag))
-  );
-
   const focusMapOnItem = useCallback((item: any) => {
     const lat = Number(item.Latitude);
     const lng = Number(item.Longitude);
@@ -1665,32 +685,6 @@ export default function ItineraryEditor() {
       setSelectedMapItem(null);
     }
   }, [itineraryItems, selectedMapItem]);
-
-  const handleLocateUser = useCallback(() => {
-    if (!navigator.geolocation) {
-      setMapStatusMessage('此瀏覽器不支援目前位置功能。');
-      return;
-    }
-
-    setMapStatusMessage(null);
-    setIsLocating(true);
-    navigator.geolocation.getCurrentPosition(
-      ({ coords }) => {
-        const position = { lat: coords.latitude, lng: coords.longitude };
-        setUserLocation(position);
-        setMapCenter(position);
-        setMapZoom(15);
-        mapRef.current?.panTo(position);
-        mapRef.current?.setZoom(15);
-        setIsLocating(false);
-      },
-      () => {
-        setIsLocating(false);
-        setMapStatusMessage('無法取得目前位置，請允許瀏覽器使用定位權限後再試。');
-      },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
-    );
-  }, []);
 
   const resetMapView = useCallback(() => {
     const destination = {
@@ -1742,17 +736,6 @@ export default function ItineraryEditor() {
     });
   }, [fitCurrentDayPlaces]);
 
-  const clearMapSelection = useCallback(() => {
-    setSelectedPlace(null);
-    setSelectedMapItem(null);
-    setSearchMarkers([]);
-  }, []);
-
-  const clearSearchResults = useCallback(() => {
-    setSearchMarkers([]);
-    setSelectedPlace(null);
-  }, []);
-
   const loadPlaceTags = useCallback(async (places: any[]) => {
     const placeIds = places.map((place) => String(place?.id || '')).filter(Boolean);
     if (!placeIds.length || !currentAccount) return;
@@ -1803,7 +786,7 @@ export default function ItineraryEditor() {
     routePolylineRef.current?.setMap(null);
     routePolylineRef.current = null;
 
-    if (!mapReady || !window.google || !mapRef.current || !isRouteVisible) return;
+    if (!mapReady || !window.google || !mapRef.current) return;
 
     const routeItems = itineraryItems
       .filter((item) => item.dayNumber === activeDay)
@@ -1830,7 +813,7 @@ export default function ItineraryEditor() {
       routePolylineRef.current?.setMap(null);
       routePolylineRef.current = null;
     };
-  }, [activeDay, isLoaded, isRouteVisible, itineraryItems, mapReady]);
+  }, [activeDay, isLoaded, itineraryItems, mapReady]);
 
   useEffect(() => {
     if (itineraryData) {
@@ -1880,21 +863,17 @@ export default function ItineraryEditor() {
   }, [activeDay, itineraryData, itineraryItems, itemsLoaded, mapReady]);
 
 const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) => {
-    if (!keyword.trim() && searchTags.length === 0) return;
-    setLastSearchKeyword(keyword.trim());
+    if (!keyword.trim()) return;
     setNewItemLat(null);
     setNewItemLng(null);
     setIsAddItemOpen(false);
-
-    const tagString = searchTags.join(" ");
-    const finalQuery = `${keyword} ${tagString}`.trim(); 
 
     try {
       const res = await fetch('/api/textsearch', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
-          query: finalQuery,
+          query: keyword.trim(),
           lat: Number(searchCenter.lat) || Number(itineraryData?.destLat) || 25.0478,
           lng: Number(searchCenter.lng) || Number(itineraryData?.destLng) || 121.5170
         }),
@@ -1940,7 +919,7 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
         }
       } else {
         setSearchMarkers([]);
-        setMapStatusMessage('找不到符合條件的地點，請換個關鍵字或移除部分標籤。');
+        setMapStatusMessage('找不到符合條件的地點，請換個關鍵字。');
       }
     } catch (error) {
       console.error("Text search error:", error);
@@ -2011,21 +990,6 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
       setMapStatusMessage('地點詳細資料載入失敗，請稍後再試。');
     }
   };
-
-  const mapUtilityOptions = [
-    { id: 'gas', label: '加油站', query: '加油站', icon: MapPin },
-    { id: 'service-area', label: '服務區', query: '高速公路服務區', icon: MapPinned },
-    { id: 'parking', label: '停車場', query: '停車場', icon: MapPin },
-    { id: 'convenience', label: '便利商店', query: '便利商店', icon: ShoppingBag },
-    { id: 'food', label: '餐廳', query: '餐廳', icon: Utensils },
-  ];
-
-  const handleMapUtilitySearch = (option: (typeof mapUtilityOptions)[number]) => {
-    setMapLayers((layers) => ({ ...layers, search: true }));
-    setActiveMapUtility(option.id);
-    void handleKeywordSearch(option.query);
-  };
-
 
   const handleNewItemTitleChange = (value: string) => {
     setNewItemTitle(value);
@@ -2431,13 +1395,6 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
   }
 
   const currentDayItems = itineraryItems.filter((item) => item.dayNumber === activeDay);
-  const routeSegments = calculateRouteSegments(currentDayItems);
-  const selectedRouteMode = routeModeOptions.find((option) => option.value === routeMode) || routeModeOptions[1];
-  const routeDistanceKm = routeSegments.reduce((total, segment) => total + segment.distanceKm, 0);
-  const routeDurationMinutes = routeSegments.length > 0
-    ? Math.max(1, Math.round((routeDistanceKm / selectedRouteMode.speedKmh) * 60))
-    : 0;
-  const totalStraightLineDistanceKm = calculateStraightLineDistanceKm(itineraryItems);
 
   return (
     <div className={`itinerary-page fixed inset-0 ${isMobilePanelOpen ? 'z-[60]' : 'z-40'} flex flex-col bg-[#F4F2ED] font-sans text-slate-800`}>
@@ -2539,9 +1496,8 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
             })()}
           </div>
 
-          <div className="flex items-center justify-between px-6 py-2.5 bg-white border-b border-slate-100 text-[11px] font-bold tracking-wide">
+          <div className="px-6 py-2.5 bg-white border-b border-slate-100 text-[11px] font-bold tracking-wide">
             <span className="text-slate-500">Day {activeDay} 行程摘要</span>
-            <span className="text-slate-400">{currentDayItems.length} 個行程 · {currentDayItems.filter((item) => !item.startTime || !item.endTime).length} 項待完成</span>
           </div>
 
           <div className="flex-1 overflow-y-auto p-5 space-y-3.5 bg-slate-50/30">
@@ -2582,141 +1538,18 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
             <Loader2 className="animate-spin text-slate-300 size-8" />
           ) : (
             <>
-              {!isMapFocusMode && (
-              <div className="absolute top-4 left-4 z-[50] hidden w-80 flex-col gap-3 rounded-2xl border border-slate-200 bg-white/95 p-4 shadow-xl backdrop-blur-md md:flex">
-                <div className="text-sm font-bold text-slate-800 tracking-widest flex items-center justify-between gap-2">
-                  {searchMarkers.length > 0 && (
-                    <button type="button" onClick={clearSearchResults} className="order-2 flex items-center gap-1 text-[10px] font-medium tracking-normal text-slate-400 hover:text-[#F04D79] transition-colors">
-                      <X size={12} /> 清除結果
-                    </button>
-                  )}
-                  <Search size={16} className="text-[#F04D79]"/> 探索地點
-                </div>
-                
-                  <PlaceAutocomplete 
-                  value={newItemTitle} 
-                  onChange={setNewItemTitle} 
+              <div className="absolute left-4 top-4 z-[50] hidden w-80 rounded-2xl border border-slate-200 bg-white/95 p-3 shadow-xl backdrop-blur-md md:block">
+                <PlaceAutocomplete
+                  value={newItemTitle}
+                  onChange={setNewItemTitle}
                   locationBias={{
                     lat: Number(itineraryData?.destLat) || 25.0478,
                     lng: Number(itineraryData?.destLng) || 121.5170,
                   }}
                   onPlaceSelect={handlePlaceSelect}
-                  onKeywordSearch={handleKeywordSearch} 
+                  onKeywordSearch={handleKeywordSearch}
                 />
-
-                <div className="pt-1">
-                  <p className="text-[11px] font-bold text-slate-400 mb-2 tracking-widest uppercase">附加搜尋特徵（可複選，按 Enter 套用全部條件）</p>
-                  <div className="flex flex-wrap gap-2">
-                    {availableTags.map(tag => {
-                      const isSelected = searchTags.includes(tag);
-                      return (
-                        <button
-                          key={tag}
-                          type="button"
-                          onClick={() => {
-                            if (isSelected) {
-                              setSearchTags(searchTags.filter(t => t !== tag));
-                            } else {
-                              setSearchTags([...searchTags, tag]);
-                            }
-                          }}
-                          className={`px-3 py-1.5 text-xs rounded-md font-medium transition-all ${
-                            isSelected 
-                              ? "bg-[#F04D79] text-white shadow-sm" 
-                              : "bg-slate-50 text-slate-500 border border-slate-200 hover:border-[#F04D79]"
-                          }`}
-                        >
-                          # {tag}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
               </div>
-              )}
-
-              <div className={`${isMapToolbarOpen ? 'flex' : 'hidden'} absolute right-4 top-32 z-[50] flex-col items-center gap-2 rounded-3xl border border-slate-200/80 bg-white/95 p-1.5 shadow-xl backdrop-blur-md md:top-4 md:flex [&>button]:relative [&>button]:size-10 [&>button]:rounded-full [&>button]:after:pointer-events-none [&>button]:after:absolute [&>button]:after:right-[calc(100%+0.75rem)] [&>button]:after:top-1/2 [&>button]:after:z-[60] [&>button]:after:-translate-y-1/2 [&>button]:after:whitespace-nowrap [&>button]:after:rounded-lg [&>button]:after:bg-slate-800 [&>button]:after:px-3 [&>button]:after:py-1.5 [&>button]:after:text-xs [&>button]:after:font-bold [&>button]:after:text-white [&>button]:after:opacity-0 [&>button]:after:shadow-lg [&>button]:after:transition-opacity [&>button]:after:content-[attr(aria-label)] [&>button:hover]:after:opacity-100 [&>button:focus-visible]:after:opacity-100`}>
-                <button type="button" onClick={() => { setIsMapFocusMode((focused) => !focused); setIsLayerMenuOpen(false); }} aria-pressed={isMapFocusMode} className={`flex size-9 items-center justify-center rounded-xl transition-colors ${isMapFocusMode ? 'bg-pink-50 text-[#F04D79]' : 'text-slate-500 hover:bg-pink-50 hover:text-[#F04D79]'}`} title={isMapFocusMode ? '顯示地圖面板' : '專注地圖'} aria-label={isMapFocusMode ? '顯示地圖面板' : '專注地圖'}>
-                  {isMapFocusMode ? <Eye size={17} /> : <EyeOff size={17} />}
-                </button>
-                <button type="button" onClick={() => setIsLayerMenuOpen((open) => !open)} aria-expanded={isLayerMenuOpen} className={`flex size-9 items-center justify-center rounded-xl transition-colors ${isLayerMenuOpen ? 'bg-pink-50 text-[#F04D79]' : 'text-slate-500 hover:bg-pink-50 hover:text-[#F04D79]'}`} title="地圖圖層" aria-label="地圖圖層"><Layers size={17} /></button>
-                <button type="button" onClick={resetMapView} className="flex size-9 items-center justify-center rounded-xl text-slate-500 transition-colors hover:bg-pink-50 hover:text-[#F04D79]" title="重置地圖視角" aria-label="重置地圖視角"><RefreshCw size={17} /></button>
-                <button type="button" onClick={clearMapSelection} className="flex size-9 items-center justify-center rounded-xl text-slate-500 transition-colors hover:bg-pink-50 hover:text-[#F04D79]" title="清除地圖選取" aria-label="清除地圖選取"><XCircle size={17} /></button>
-                <button type="button" onClick={() => setIsRouteVisible((visible) => !visible)} aria-pressed={isRouteVisible} className={`flex size-9 items-center justify-center rounded-xl transition-colors ${isRouteVisible ? 'bg-pink-50 text-[#F04D79]' : 'text-slate-400 hover:bg-pink-50 hover:text-[#F04D79]'}`} title={isRouteVisible ? '隱藏目前 Day 路線' : '顯示目前 Day 路線'} aria-label={isRouteVisible ? '隱藏目前 Day 路線' : '顯示目前 Day 路線'}><MapIcon size={17} /></button>
-              <button
-                type="button"
-                onClick={handleLocateUser}
-                disabled={isLocating}
-                className="flex size-9 items-center justify-center rounded-xl text-slate-500 transition-colors hover:bg-pink-50 hover:text-[#F04D79] disabled:opacity-60"
-                title="定位目前位置"
-                aria-label="定位目前位置"
-              >
-                <LocateFixed size={18} className={isLocating ? 'animate-pulse text-[#F04D79]' : ''} />
-              </button>
-              <button type="button" onClick={() => { setIsMapUtilityOpen((open) => !open); setIsLayerMenuOpen(false); }} aria-expanded={isMapUtilityOpen} className={`flex size-9 items-center justify-center rounded-xl transition-colors ${isMapUtilityOpen ? 'bg-pink-50 text-[#F04D79]' : 'text-slate-500 hover:bg-pink-50 hover:text-[#F04D79]'}`} title={isMapUtilityOpen ? '收合沿途工具' : '開啟沿途工具'} aria-label={isMapUtilityOpen ? '收合沿途工具' : '開啟沿途工具'}><MapPin size={17} /></button>
-              </div>
-
-              <div className={`absolute right-4 ${isMapToolbarOpen ? 'top-[33rem]' : 'top-36'} z-[50] md:top-[23rem]`}>
-                {isMapUtilityOpen && (
-                  <div className="absolute right-0 top-0 w-56 rounded-2xl border border-slate-200/80 bg-white/95 p-3 shadow-xl backdrop-blur-md">
-                    <div className="mb-2 flex items-center justify-between">
-                      <div><p className="text-xs font-bold text-slate-700">沿途工具</p><p className="mt-0.5 text-[10px] text-slate-400">點擊後搜尋附近地點</p></div>
-                      <button type="button" onClick={() => setIsMapUtilityOpen(false)} className="rounded-md p-1 text-slate-400 hover:bg-slate-100" aria-label="收合沿途工具"><X size={14} /></button>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      {mapUtilityOptions.map((option) => {
-                        const Icon = option.icon;
-                        return <button key={option.id} type="button" onClick={() => handleMapUtilitySearch(option)} className={`flex items-center gap-1.5 rounded-xl border px-2.5 py-2 text-left text-[11px] font-bold transition ${activeMapUtility === option.id ? 'border-[#F04D79] bg-pink-50 text-[#F04D79]' : 'border-slate-100 text-slate-600 hover:border-[#F04D79]/40 hover:bg-pink-50'}`}><Icon size={14} />{option.label}</button>;
-                      })}
-                    </div>
-                    <button type="button" onClick={() => { const visible = !mapLayers.search; setMapLayers((layers) => ({ ...layers, search: visible })); if (!visible) { clearSearchResults(); setActiveMapUtility(null); } }} aria-pressed={mapLayers.search} className={`mt-3 flex w-full items-center justify-center gap-1.5 rounded-xl border px-2.5 py-2 text-[11px] font-bold transition ${mapLayers.search ? 'border-slate-200 text-slate-600 hover:border-[#F04D79]/40 hover:bg-pink-50' : 'border-[#F04D79] bg-pink-50 text-[#F04D79]'}`}>
-                      {mapLayers.search ? <Eye size={14} /> : <EyeOff size={14} />}
-                      {mapLayers.search ? '隱藏搜尋標記' : '顯示搜尋標記'}
-                    </button>
-                  </div>
-                )}
-              </div>
-
-              {isLayerMenuOpen && (
-                <div className={`${isMapToolbarOpen ? 'block' : 'hidden'} absolute right-4 top-[23rem] z-[50] w-52 rounded-2xl border border-slate-200/80 bg-white/95 p-3 shadow-xl backdrop-blur-md md:block`}>
-                  <div className="mb-2 flex items-center justify-between">
-                    <span className="text-xs font-bold tracking-wide text-slate-700">地圖圖層</span>
-                    <button type="button" onClick={() => setIsLayerMenuOpen(false)} className="rounded-md p-1 text-slate-400 hover:bg-slate-100" aria-label="關閉圖層選單"><X size={14} /></button>
-                  </div>
-                  <div className="space-y-1">
-                    <div className="mb-2 border-b border-slate-100 pb-2">
-                      <div className="mb-2 flex items-center justify-between">
-                        <span className="text-[11px] font-bold text-slate-500">獨旅特色標籤</span>
-                        {mapFilterTags.length > 0 && <button type="button" onClick={() => setMapFilterTags([])} className="text-[10px] font-semibold text-slate-400 hover:text-[#F04D79]">清除</button>}
-                      </div>
-                      <div className="flex flex-wrap gap-1.5">
-                        {mapFilterTagOptions.map((tag) => {
-                          const selected = mapFilterTags.includes(tag);
-                          return <button key={tag} type="button" onClick={() => setMapFilterTags((current) => selected ? current.filter((item) => item !== tag) : [...current, tag])} className={`rounded-full px-2 py-1 text-[10px] font-semibold transition-colors ${selected ? 'bg-[#F04D79] text-white' : 'bg-slate-100 text-slate-500 hover:bg-pink-50 hover:text-[#F04D79]'}`}>#{tag}</button>;
-                        })}
-                      </div>
-                      <p className="mt-2 text-[10px] leading-4 text-slate-400">選取後會立即篩選目前地圖上的搜尋結果，不會重新搜尋。</p>
-                    </div>
-                    {[
-                      { key: 'itinerary', label: '行程地點', color: 'bg-[#F04D79]' },
-                      { key: 'search', label: '搜尋結果', color: 'bg-blue-500' },
-                      { key: 'userLocation', label: '目前位置', color: 'bg-cyan-500' },
-                    ].map((layer) => {
-                      const checked = mapLayers[layer.key as keyof typeof mapLayers];
-                      return (
-                        <button key={layer.key} type="button" onClick={() => setMapLayers((current) => ({ ...current, [layer.key]: !checked }))} className="flex w-full items-center justify-between rounded-xl px-2 py-2 text-left text-xs font-semibold text-slate-600 hover:bg-slate-50">
-                          <span className="flex items-center gap-2"><span className={`size-2.5 rounded-full ${layer.color}`} />{layer.label}</span>
-                          <span className={`flex size-4 items-center justify-center rounded border text-[10px] ${checked ? 'border-[#F04D79] bg-[#F04D79] text-white' : 'border-slate-300 text-transparent'}`}>✓</span>
-                        </button>
-                      );
-                    })}
-                    <button type="button" onClick={() => setIsRouteVisible((visible) => !visible)} className="flex w-full items-center justify-between rounded-xl px-2 py-2 text-left text-xs font-semibold text-slate-600 hover:bg-slate-50">
-                      <span className="flex items-center gap-2"><span className="h-0.5 w-3 rounded-full bg-[#F04D79]" />目前 Day 路線</span>
-                      <span className={`flex size-4 items-center justify-center rounded border text-[10px] ${isRouteVisible ? 'border-[#F04D79] bg-[#F04D79] text-white' : 'border-slate-300 text-transparent'}`}>✓</span>
-                    </button>
-                  </div>
-                </div>
-              )}
 
               <GoogleMap
                 mapContainerStyle={{ width: '100%', height: '100%' }}
@@ -2761,20 +1594,10 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
                     {mapStatusMessage}
                   </div>
                 )}
-                {userLocation && mapLayers.userLocation && (
-                  <Marker
-                    position={userLocation}
-                    title="目前位置"
-                    icon={{
-                      url: "http://maps.google.com/mapfiles/ms/icons/blue-dot.png",
-                    }}
-                  />
-                )}
-
                 <MarkerClustererF options={{ gridSize: 48, minimumClusterSize: 2, maxZoom: 15, zoomOnClick: true }}>
                   {(clusterer) => (
                     <>
-                      {mapLayers.itinerary && currentDayItems
+                      {currentDayItems
                         .filter((item) => Number.isFinite(Number(item.Latitude)) && Number.isFinite(Number(item.Longitude)))
                         .map((item, index) => (
                           <Marker
@@ -2795,7 +1618,7 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
                           />
                         ))}
 
-                      {mapLayers.search && filteredSearchMarkers.map((place) => (
+                      {searchMarkers.map((place) => (
                         <Marker
                           key={`search-${place.id}`}
                           clusterer={clusterer}
@@ -2946,34 +1769,6 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
                     </div>
                   </InfoWindow>
                 )}
-                {!isMapFocusMode && (
-                <div className="absolute bottom-4 right-4 z-30 w-64 rounded-2xl border border-slate-200/80 bg-white/95 p-3 shadow-lg backdrop-blur-md">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-[11px] font-bold text-slate-700">Day {activeDay} 路線資訊</p>
-                      <p className="mt-0.5 text-[10px] text-slate-400">{routeSegments.length > 0 ? `${routeDistanceKm.toFixed(1)} 公里 · 約 ${routeDurationMinutes} 分鐘` : '至少需要兩個有座標的地點'}</p>
-                    </div>
-                    <MapIcon size={16} className="text-[#F04D79]" />
-                  </div>
-                  <div className="mt-2 grid grid-cols-3 gap-1 rounded-lg bg-slate-100 p-1">
-                    {routeModeOptions.map((option) => (
-                      <button key={option.value} type="button" onClick={() => setRouteMode(option.value)} className={`rounded-md px-1 py-1.5 text-[10px] font-bold transition-colors ${routeMode === option.value ? 'bg-white text-[#F04D79] shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
-                        {option.label}
-                      </button>
-                    ))}
-                  </div>
-                  {routeSegments.length > 0 && (
-                    <div className="mt-2 max-h-28 space-y-1 overflow-y-auto pr-1">
-                      {routeSegments.map((segment, index) => (
-                        <button key={`${segment.from.id}-${segment.to.id}`} type="button" onClick={() => focusMapOnItem(segment.to)} className="flex w-full items-center justify-between rounded-lg px-1.5 py-1 text-left hover:bg-pink-50">
-                          <span className="min-w-0 truncate text-[10px] font-semibold text-slate-500">{index + 1}. {segment.from.title || '地點'} → {segment.to.title || '地點'}</span>
-                          <span className="ml-2 shrink-0 text-[10px] font-bold text-slate-400">{segment.distanceKm.toFixed(1)} km</span>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                )}
               </GoogleMap>
               {mobilePlannerView === 'map' && (
                 <div className="absolute bottom-24 right-4 z-[100] flex flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg md:hidden">
@@ -2996,110 +1791,41 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
                   onKeywordSearch={handleKeywordSearch}
                 />
               </div>
-              <div className="absolute right-4 top-20 z-[110] md:top-4 md:hidden">
-                <button type="button" onClick={() => { setIsMapToolbarOpen((open) => !open); setIsLayerMenuOpen(false); }} aria-expanded={isMapToolbarOpen} className={`flex size-11 items-center justify-center rounded-xl border shadow-lg backdrop-blur transition ${isMapToolbarOpen ? 'border-pink-200 bg-pink-50 text-[#F04D79]' : 'border-slate-200 bg-white/95 text-slate-600 hover:bg-slate-100'}`} aria-label={isMapToolbarOpen ? '隱藏地圖工具列' : '顯示地圖工具列'}><Layers size={18} /></button>
-              </div>
               </>
             )}
           </div>
 
           <div className={`${isMobilePanelOpen ? 'flex' : 'hidden'} xl:flex absolute xl:static inset-0 xl:inset-auto z-[70] xl:z-auto h-full xl:h-auto w-full xl:w-[340px] shrink-0 flex-col bg-white border-0 xl:border-l xl:border-slate-100 shadow-2xl xl:shadow-[-4px_0_24px_rgba(0,0,0,0.01)]`}>
             <div className="xl:hidden flex h-16 shrink-0 items-center gap-3 border-b border-slate-100 bg-white px-4">
-              <button type="button" onClick={() => {
-                if (!isMobileMoreOpen && mobilePanelPreviousView === 'more') {
-                  setIsMobileMoreOpen(true);
-                  setRightPanelTab('overview');
-                  setMobilePanelPreviousView('overview');
-                  return;
-                }
-                setIsMobilePanelOpen(false);
-                setIsMobileMoreOpen(false);
-                setMobilePanelPreviousView('overview');
-              }} className="flex size-9 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-600" aria-label={mobilePanelPreviousView === 'more' && !isMobileMoreOpen ? '返回更多工具' : '返回行程'}><ChevronLeft size={20} /></button>
-              <div className="min-w-0"><p className="truncate text-[11px] font-bold tracking-[0.14em] text-slate-400">{itineraryData?.title || '行程'}</p><h2 className="truncate text-base font-bold text-slate-800">{isMobileMoreOpen ? '更多工具' : rightPanelTab === 'today' ? '今日行程' : rightPanelTab === 'budget' ? '旅程記帳' : rightPanelTab === 'chat' ? '旅伴聊天' : rightPanelTab === 'luggage' ? '行李清單' : rightPanelTab === 'travelers' ? '旅伴管理' : '行程總覽'}</h2></div>
+              <button type="button" onClick={() => setIsMobilePanelOpen(false)} className="flex size-9 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-600" aria-label="返回行程"><ChevronLeft size={20} /></button>
+              <div className="min-w-0"><p className="truncate text-[11px] font-bold tracking-[0.14em] text-slate-400">{itineraryData?.title || '行程'}</p><h2 className="truncate text-base font-bold text-slate-800">{rightPanelTab === 'budget' ? '旅程記帳' : '行李清單'}</h2></div>
             </div>
-
-            <div className="hidden xl:flex pt-2 px-2 border-b border-slate-100 gap-1 overflow-x-auto hide-scrollbar shrink-0">
+            <div className="hidden xl:flex pt-2 px-2 border-b border-slate-100 gap-1 shrink-0">
               {[
-                { id: 'overview', icon: LayoutGrid, label: '總覽' },
-                { id: 'budget', icon: Wallet, label: '記帳' },
-                { id: 'luggage', icon: BaggageClaim, label: '行李' },
-                { id: 'chat', icon: MessageCircle, label: '聊天' },
-                { id: 'travelers', icon: User, label: '旅伴' },
-                { id: 'today', icon: Clock, label: '今日' },
+                { id: 'budget' as const, icon: Wallet, label: '記帳' },
+                { id: 'luggage' as const, icon: BaggageClaim, label: '行李' },
               ].map((tab) => (
-                <button 
-                  key={tab.id}
-                  className={`flex-1 min-w-[60px] py-3 flex flex-col items-center gap-1.5 transition-colors ${rightPanelTab === tab.id ? 'text-[#F04D79] border-b-2 border-[#F04D79]' : 'text-slate-400 hover:text-slate-600'}`}
-                  onClick={() => { setRightPanelTab(tab.id); setIsMobilePanelOpen(true); }}
-                >
-                  <span className="relative"><tab.icon size={16} />{tab.id === 'chat' && chatUnreadCount > 0 && <span className="absolute -right-3 -top-2 flex min-w-4 items-center justify-center rounded-full bg-[#F04D79] px-1 text-[9px] font-bold leading-4 text-white">{chatUnreadCount > 99 ? '99+' : chatUnreadCount}</span>}</span>
+                <button key={tab.id} type="button" className={`flex-1 py-3 flex flex-col items-center gap-1.5 transition-colors ${rightPanelTab === tab.id ? 'text-[#F04D79] border-b-2 border-[#F04D79]' : 'text-slate-400 hover:text-slate-600'}`} onClick={() => setRightPanelTab(tab.id)}>
+                  <tab.icon size={16} />
                   <span className="text-[10px] font-bold tracking-widest">{tab.label}</span>
                 </button>
               ))}
             </div>
-
             <div className="flex-1 overflow-y-auto bg-slate-50/30">
-              {isMobileMoreOpen && (
-                <div className="p-5">
-                  <p className="text-sm leading-6 text-slate-500">把旅程需要的資料集中管理，點選後會開啟完整工具畫面。</p>
-                  <div className="mt-5 grid grid-cols-2 gap-3">
-                    {[
-                      { id: 'luggage', label: '行李清單', description: luggageCount ? `${luggageCount.checked}/${luggageCount.total} 已完成` : '整理出發物品', icon: BaggageClaim },
-                      { id: 'travelers', label: '旅伴管理', description: '查看與邀請旅伴', icon: User },
-                    ].map((tool) => {
-                      const Icon = tool.icon;
-                      return <button key={tool.id} type="button" onClick={() => { setRightPanelTab(tool.id); setIsMobileMoreOpen(false); setMobilePanelPreviousView('more'); }} className="min-h-36 rounded-2xl border border-slate-100 bg-white p-4 text-left shadow-sm transition hover:border-[#F04D79]/30 hover:shadow-md"><Icon size={24} className="text-[#F04D79]" /><div className="mt-5 text-sm font-bold text-slate-800">{tool.label}</div><div className="mt-1 text-xs leading-5 text-slate-400">{tool.description}</div></button>;
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {!isMobileMoreOpen && rightPanelTab === 'overview' && (
-                <div className="p-5 grid grid-cols-2 gap-3 animate-in fade-in zoom-in-95 duration-200">
-                  <div className="col-span-1 row-span-2 bg-white rounded-2xl p-4 shadow-sm border border-slate-100 flex flex-col justify-between hover:shadow-md hover:border-[#F04D79]/30 transition-all cursor-pointer">
-                    <MapPinned size={26} className="text-[#F04D79] mb-4" />
-                    <div><div className="text-xs font-bold text-slate-600 mb-1">直線距離</div><div className="text-2xl font-bold font-mono text-slate-900">{totalStraightLineDistanceKm.toFixed(1)} <span className="text-[10px] text-slate-400 font-sans tracking-wide">公里</span></div><div className="mt-1 text-[10px] text-slate-400">{itineraryItems.length} 個地點</div></div>
-                  </div>
-                  <div onClick={() => setRightPanelTab('luggage')} className="col-span-1 bg-white rounded-2xl p-4 shadow-sm border border-slate-100 flex flex-col justify-between hover:shadow-md hover:border-[#F04D79]/30 transition-all cursor-pointer group"><div className="text-[11px] font-bold text-slate-600 mb-2">行李完成度</div><div className="flex items-end justify-between"><BaggageClaim size={18} className="text-slate-300 group-hover:text-[#F04D79] transition-colors" /><div className="text-xl font-bold font-mono text-slate-900">{luggageCount ? `${luggageCount.checked}/${luggageCount.total}` : '—'}</div></div></div>
-                  <div onClick={() => setRightPanelTab('budget')} className="col-span-1 bg-white rounded-2xl p-4 shadow-sm border border-slate-100 flex flex-col justify-between hover:shadow-md hover:border-[#F04D79]/30 transition-all cursor-pointer group"><div className="text-[11px] font-bold text-slate-600 mb-2">記帳總額</div><div className="flex items-end justify-between"><DollarSign size={18} className="text-slate-300 group-hover:text-[#F04D79] transition-colors" /><div className="text-xl font-bold font-mono text-slate-900">{budgetTotal === null ? '—' : `$${budgetTotal.toLocaleString()}`}</div></div></div>
-                  <button type="button" onClick={() => setRightPanelTab('chat')} className="col-span-2 bg-white rounded-2xl p-4 text-left shadow-sm border border-slate-100 flex items-center justify-between hover:shadow-md hover:border-[#F04D79]/30 transition-all group">
-                    <div><div className="text-[11px] font-bold text-slate-600">旅伴聊天</div><div className="mt-1 text-sm font-bold text-slate-800">{chatUnreadCount > 0 ? `${chatUnreadCount} 則未讀訊息` : '開始討論行程'}</div></div>
-                    <MessageCircle size={22} className="text-slate-300 group-hover:text-[#F04D79] transition-colors" />
-                  </button>
-                </div>
-              )}
-
-              {!isMobileMoreOpen && rightPanelTab === 'overview' && (
-                <div className="px-5 pb-5">
-                  <button type="button" onClick={() => setRightPanelTab('today')} className="w-full rounded-2xl border border-slate-100 bg-white p-4 text-left shadow-sm transition hover:border-[#F04D79]/30 hover:shadow-md">
-                    <div className="mb-2 flex items-center justify-between"><span className="text-xs font-bold text-slate-500">Day {activeDay} 行程摘要</span><span className="text-[11px] font-bold text-[#F04D79]">查看今日</span></div>
-                    {currentDayItems.length > 0 ? <><div className="truncate text-base font-bold text-slate-800">{currentDayItems[0].Title || currentDayItems[0].title || '未命名地點'}</div><div className="mt-1 text-xs text-slate-400">共 {currentDayItems.length} 個行程項目</div></> : <div className="text-sm text-slate-400">今天尚未安排行程</div>}
-                  </button>
-                </div>
-              )}
-
-              {!isMobileMoreOpen && rightPanelTab === 'budget' && <BudgetPanel itineraryId={params.id as string} currentUserId={String(user?.id || (user as any)?.Account || '')} itineraryItems={itineraryItems} onTotalChange={setBudgetTotal} />}
-              {!isMobileMoreOpen && rightPanelTab === 'today' && <TodayPanel dayNumber={activeDay} items={currentDayItems} onFocusItem={focusMapOnItem} />}
-              {!isMobileMoreOpen && rightPanelTab === 'travelers' && <TravelersPanel itineraryId={params.id as string} currentUserId={String(user?.id || (user as any)?.Account || '')} />}
-              {!isMobileMoreOpen && rightPanelTab === 'luggage' && <div className="p-4"><LuggagePanel itineraryId={params.id as string} currentUserId={String(user?.id || (user as any)?.Account || '')} onCountChange={setLuggageCount} /></div>}
-              <div className={!isMobileMoreOpen && rightPanelTab === 'chat' ? 'flex h-full min-h-0' : 'hidden'}><ChatPanel itineraryId={params.id as string} currentUserId={String(user?.id || (user as any)?.Account || '')} isActive={rightPanelTab === 'chat'} onUnreadChange={setChatUnreadCount} /></div>
-
+              {rightPanelTab === 'budget' && <BudgetPanel itineraryId={params.id as string} currentUserId={String(user?.id || (user as any)?.Account || '')}  />}
+              {rightPanelTab === 'luggage' && <div className="p-4"><LuggagePanel itineraryId={params.id as string} currentUserId={String(user?.id || (user as any)?.Account || '')} /></div>}
             </div>
           </div>
         </div>
 
-        <nav className={`${mobilePlannerView === 'map' ? 'hidden' : 'grid'} fixed inset-x-0 bottom-0 z-40 grid-cols-5 gap-1 border-t border-slate-200 bg-white/95 px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 shadow-[0_-4px_20px_rgba(15,23,42,0.08)] backdrop-blur xl:hidden`}>
+        <nav className={`${mobilePlannerView === 'map' ? 'hidden' : 'grid'} fixed inset-x-0 bottom-0 z-40 grid-cols-3 gap-1 border-t border-slate-200 bg-white/95 px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 shadow-[0_-4px_20px_rgba(15,23,42,0.08)] backdrop-blur xl:hidden`}>
+          <button type="button" onClick={() => setIsMobilePanelOpen(false)} className={`flex min-w-0 flex-col items-center gap-1 py-1 text-[10px] font-bold ${!isMobilePanelOpen ? 'text-[#F04D79]' : 'text-slate-400'}`}><LayoutGrid size={18} />行程</button>
           {[
-            { id: 'overview', label: '行程', icon: LayoutGrid },
-            { id: 'today', label: '今日', icon: Clock },
-            { id: 'budget', label: '記帳', icon: Wallet },
-            { id: 'chat', label: '聊天', icon: MessageCircle },
-            { id: 'more', label: '更多', icon: MoreHorizontal },
+            { id: 'budget' as const, label: '記帳', icon: Wallet },
+            { id: 'luggage' as const, label: '行李', icon: BaggageClaim },
           ].map((tab) => {
             const Icon = tab.icon;
-            const isActive = tab.id === 'overview' ? !isMobilePanelOpen : tab.id === 'more' ? isMobilePanelOpen && isMobileMoreOpen : isMobilePanelOpen && !isMobileMoreOpen && rightPanelTab === tab.id;
-            return <button key={tab.id} type="button" onClick={() => { if (tab.id === 'overview') { setRightPanelTab('overview'); setIsMobileMoreOpen(false); setIsMobilePanelOpen(false); setMobilePanelPreviousView('overview'); } else if (tab.id === 'more') { setIsMobileMoreOpen(true); setIsMobilePanelOpen(true); setMobilePanelPreviousView('overview'); } else { setRightPanelTab(tab.id); setIsMobileMoreOpen(false); setIsMobilePanelOpen(true); setMobilePanelPreviousView('overview'); } }} className={`relative flex min-w-0 flex-col items-center gap-1 py-1 text-[10px] font-bold ${isActive ? 'text-[#F04D79]' : 'text-slate-400'}`}><Icon size={18} />{tab.label}{tab.id === 'chat' && chatUnreadCount > 0 && <span className="absolute right-1 top-0 min-w-4 rounded-full bg-[#F04D79] px-1 text-[9px] leading-4 text-white">{chatUnreadCount > 99 ? '99+' : chatUnreadCount}</span>}</button>;
+            return <button key={tab.id} type="button" onClick={() => { setRightPanelTab(tab.id); setIsMobilePanelOpen(true); }} className={`flex min-w-0 flex-col items-center gap-1 py-1 text-[10px] font-bold ${isMobilePanelOpen && rightPanelTab === tab.id ? 'text-[#F04D79]' : 'text-slate-400'}`}><Icon size={18} />{tab.label}</button>;
           })}
         </nav>
 

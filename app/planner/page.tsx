@@ -7,11 +7,11 @@
  * - 驗證 Context：useAuth 取得使用者登入狀態與資訊
  * - Lucide React 圖示庫：提供 UI 所需的向量圖示
  */
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../context/AuthContext";
 import { 
-  Plus, UserPlus, X, Calendar, MapPin, Share2, Loader2, User, Pin, Trash2, MoreVertical, Train, Car, Bike, Compass, ChevronLeft, CheckCircle2,
+  Plus, X, Calendar, MapPin, Loader2, User, Pin, Trash2, MoreVertical, Train, Car, Bike, Compass, ChevronLeft,
   Globe, Lock
 } from "lucide-react";
 
@@ -56,7 +56,7 @@ export default function PlannerDashboard() {
   /** @type {boolean} 資料載入中狀態 (頁面初始化抓取) */
   const [isFetching, setIsFetching] = useState(true);
   
-  /** @type {boolean} 表單提交中狀態 (建立/加入行程) */
+  /** @type {boolean} 建立行程表單提交中狀態 */
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // 表單輸入狀態
@@ -100,20 +100,6 @@ export default function PlannerDashboard() {
   /** @type {Itinerary[]} 使用者擁有的所有行程清單 */
   const [itineraries, setItineraries] = useState<Itinerary[]>([]);
   
-  /** @type {boolean} 輸入邀請碼加入行程的 Modal 開關 */
-  const [isJoinModalOpen, setIsJoinModalOpen] = useState(false); 
-  
-  /** @type {string[]} 儲存 6 位數邀請碼的陣列，每個元素代表一碼 */
-  const [inviteCodeArray, setInviteCodeArray] = useState<string[]>(Array(6).fill(""));
-  
-  /** @type {React.MutableRefObject<(HTMLInputElement | null)[]>} 儲存 6 個邀請碼 Input 的 DOM 引用，用於自動聚焦切換 */
-  const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
-  
-  /** @type {Object} 生成邀請碼後的對話框狀態 */
-  const [generatedCodeInfo, setGeneratedCodeInfo] = useState<{ isOpen: boolean; code: string; copied: boolean }>({
-    isOpen: false, code: "", copied: false
-  });
-
   /**
    * @constant transportOptions
    * @description 交通工具選項列表（用於 UI 顯示與圖示對應）
@@ -171,105 +157,6 @@ export default function PlannerDashboard() {
    * @description 排序後的行程列表（已釘選的行程會排在最前面）
    */
   const sortedItineraries = [...itineraries].sort((a, b) => (a.isPinned === b.isPinned ? 0 : a.isPinned ? -1 : 1));
-
-  /**
-   * @function handleGetInviteCode
-   * @async
-   * @description 取得特定行程的邀請碼，並自動複製至剪貼簿
-   * @param {string} id - 行程 ID
-   * @param {React.MouseEvent} e - 滑鼠點擊事件（用於阻止冒泡）
-   */
-  const handleGetInviteCode = async (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    try {
-      const res = await fetch("http://localhost:8080/itinerary/core.php?action=invite", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ Itinerary_ID: id })
-      });
-      const data = await res.json();
-      if (data.status === 'success') {
-        setGeneratedCodeInfo({ isOpen: true, code: data.code, copied: false });
-        navigator.clipboard.writeText(data.code).then(() => {
-          setGeneratedCodeInfo(prev => ({ ...prev, copied: true }));
-          setTimeout(() => setGeneratedCodeInfo(prev => ({ ...prev, copied: false })), 3000);
-        });
-      } else { alert(data.message); }
-    } catch (error) { alert("無法取得邀請碼"); }
-    setActiveDropdown(null);
-  };
-
-  /**
-   * @function handlePaste
-   * @description 處理邀請碼輸入框的貼上事件，支援貼上完整的 6 位數代碼並自動分拆填入
-   * @param {React.ClipboardEvent<HTMLInputElement>} e - 貼上事件
-   */
-  const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
-    e.preventDefault();
-    const pastedText = e.clipboardData.getData('text/plain');
-    const cleanedText = pastedText.replace(/[^a-zA-Z0-9]/g, '').slice(0, 6).toUpperCase();
-    if (cleanedText) {
-      const newArray = [...inviteCodeArray];
-      for (let i = 0; i < cleanedText.length; i++) {
-        newArray[i] = cleanedText[i];
-      }
-      setInviteCodeArray(newArray);
-      const nextIndex = Math.min(cleanedText.length, 5);
-      inputRefs.current[nextIndex]?.focus();
-    }
-  };
-
-  /**
-   * @function handleCodeChange
-   * @description 處理邀請碼單一輸入框的字元變更與自動跳格聚焦
-   * @param {number} index - 當前輸入框的索引 (0~5)
-   * @param {string} value - 輸入值
-   */
-  const handleCodeChange = (index: number, value: string) => {
-    const char = value.slice(-1).toUpperCase().replace(/[^A-Z0-9]/g, '');
-    const newArray = [...inviteCodeArray];
-    newArray[index] = char;
-    setInviteCodeArray(newArray);
-    if (char && index < 5) {
-      inputRefs.current[index + 1]?.focus();
-    }
-  };
-
-  /**
-   * @function handleKeyDown
-   * @description 處理倒退鍵 (Backspace) 事件，當字元為空時自動聚焦至前一個輸入框
-   * @param {number} index - 當前輸入框的索引 (0~5)
-   * @param {React.KeyboardEvent<HTMLInputElement>} e - 按鍵事件
-   */
-  const handleKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Backspace' && !inviteCodeArray[index] && index > 0) {
-      inputRefs.current[index - 1]?.focus();
-    }
-  };
-
-  /**
-   * @function handleJoinItinerary
-   * @async
-   * @description 送出 6 位邀請碼以加入他人共享的行程
-   */
-  const handleJoinItinerary = async () => {
-    const finalCode = inviteCodeArray.join('');
-    if (finalCode.length < 6) return;
-    
-    setIsSubmitting(true);
-    try {
-      const res = await fetch("http://localhost:8080/itinerary/core.php?action=join", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ Invite_Code: finalCode, Account: user?.id || (user as any)?.Account })
-      });
-      const data = await res.json();
-      if (data.status === 'success') {
-        alert("成功加入行程！");
-        setIsJoinModalOpen(false);
-        setInviteCodeArray(Array(6).fill(""));
-        fetchItineraries();
-      } else { alert(data.message); }
-    } catch (error) { alert("加入行程時發生錯誤"); } finally { setIsSubmitting(false); }
-  };
 
   /**
    * @function openPublicSettings
@@ -390,10 +277,7 @@ export default function PlannerDashboard() {
         {/* 頂部標題與操作按鈕區 */}
         <div className="mb-8 md:mb-12 md:flex md:items-center md:justify-between">
           <h1 className="text-[28px] font-bold leading-tight text-slate-900 tracking-wide md:text-3xl">我的行程</h1>
-          <div className="mt-4 grid grid-cols-2 gap-3 md:mt-0 md:flex">
-            <button onClick={() => setIsJoinModalOpen(true)} className="flex h-12 min-w-0 items-center justify-center gap-2 whitespace-nowrap rounded-lg border border-slate-200 bg-white px-3 text-xs font-medium transition-all hover:border-[#F04D79] sm:text-sm md:px-5">
-              <UserPlus className="size-4" /> <span>收藏他人行程</span>
-            </button>
+          <div className="mt-4 md:mt-0">
             <button onClick={() => setIsModalOpen(true)} className="flex h-12 min-w-0 items-center justify-center gap-2 whitespace-nowrap rounded-lg bg-slate-900 px-3 text-xs font-medium text-white transition-all hover:bg-amber-600 sm:text-sm md:px-5">
               <Plus className="size-4" /> <span>建立新行程</span>
             </button>
@@ -428,7 +312,6 @@ export default function PlannerDashboard() {
                 {/* 卡片下拉操作選單 */}
                 {activeDropdown === itinerary.id && (
                   <div onClick={(e) => e.stopPropagation()} className="absolute right-3 top-14 w-36 bg-white border border-gray-100 shadow-xl rounded-lg py-1.5 z-50">
-                    <button onClick={(e) => handleGetInviteCode(itinerary.id, e)} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-100"><Share2 className="size-4" /> 邀請共編</button>
                     <button onClick={(e) => handlePin(itinerary.id, itinerary.isPinned, e)} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-100"><Pin className="size-4" /> {itinerary.isPinned ? '取消釘選' : '釘選行程'}</button>
                     
                     <button onClick={(e) => openPublicSettings(itinerary.id, e)} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-100">
@@ -521,84 +404,6 @@ export default function PlannerDashboard() {
         </div>
       )}
 
-      {/* ----------------------------------------------------------------------- */
-      /* 彈窗 2：顯示並複製邀請碼 Modal                                          */
-      /* ----------------------------------------------------------------------- */}
-      {generatedCodeInfo.isOpen && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
-          <div className="bg-white w-full max-w-sm rounded-3xl shadow-xl p-8 text-center animate-in zoom-in-95 duration-200">
-            <h3 className="text-xl font-bold text-slate-800 mb-2">邀請共編</h3>
-            <p className="text-sm text-slate-500 mb-6">將此代碼分享給旅伴，他們即可加入編輯</p>
-            <div className="bg-slate-50 py-5 rounded-2xl mb-2 flex items-center justify-center relative border border-slate-100">
-              <span className="text-3xl font-mono font-bold tracking-[0.2em] text-[#F04D79] ml-2">
-                {generatedCodeInfo.code}
-              </span>
-            </div>
-            <div className="h-6 mb-4 flex items-center justify-center">
-              {generatedCodeInfo.copied && (
-                <span className="text-xs font-bold text-green-500 flex items-center gap-1 animate-in fade-in slide-in-from-bottom-2">
-                  <CheckCircle2 size={14} /> 代碼已複製
-                </span>
-              )}
-            </div>
-            <button 
-              onClick={() => setGeneratedCodeInfo({ isOpen: false, code: "", copied: false })} 
-              className="w-full py-3.5 bg-slate-900 hover:bg-[#F04D79] text-white rounded-xl font-bold transition-colors shadow-sm"
-            >
-              完成
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* ----------------------------------------------------------------------- */
-      /* 彈窗 3：輸入邀請碼加入行程 Modal                                        */
-      /* ----------------------------------------------------------------------- */}
-      {isJoinModalOpen && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
-          <div className="bg-white w-full max-w-md rounded-[32px] shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200 p-8">
-            <div className="mb-8 text-center">
-              <h2 className="text-2xl font-bold text-slate-800 mb-3 text-left">輸入邀請碼</h2>
-              <p className="text-sm text-slate-500 font-medium">請輸入 6 碼英數字邀請碼，即可將該行程加入你的清單。</p>
-            </div>
-            {/* 6 位數獨立格子 Input 區域 */}
-            <div className="flex justify-center gap-3 mb-10">
-              {inviteCodeArray.map((char, index) => (
-                <input
-                  key={index}
-                  ref={(el) => { inputRefs.current[index] = el; }}
-                  type="text"
-                  maxLength={1}
-                  value={char}
-                  onPaste={handlePaste}
-                  onChange={(e) => handleCodeChange(index, e.target.value)}
-                  onKeyDown={(e) => handleKeyDown(index, e)}
-                  className={`w-12 h-14 text-center text-2xl font-bold rounded-2xl outline-none transition-all duration-200 shadow-sm ${
-                    char 
-                      ? 'border-2 border-[#F04D79] text-[#F04D79] bg-pink-50/30' 
-                      : 'border-2 border-slate-200 text-slate-700 focus:border-[#F04D79] focus:ring-4 focus:ring-pink-100 bg-white'
-                  }`}
-                />
-              ))}
-            </div>
-            <div className="flex justify-end gap-6 items-center">
-              <button 
-                onClick={() => { setIsJoinModalOpen(false); setInviteCodeArray(Array(6).fill("")); }} 
-                className="text-[17px] font-bold text-[#F04D79] hover:opacity-70 transition-opacity"
-              >
-                取消
-              </button>
-              <button 
-                onClick={handleJoinItinerary} 
-                disabled={isSubmitting || inviteCodeArray.join('').length < 6}
-                className="px-8 py-3 rounded-xl text-[17px] font-bold transition-all shadow-sm flex items-center gap-2 disabled:bg-slate-200 disabled:text-white disabled:shadow-none bg-[#F04D79] text-white hover:bg-pink-600"
-              >
-                {isSubmitting ? <Loader2 size={20} className="animate-spin" /> : "確認加入"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

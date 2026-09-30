@@ -4,10 +4,10 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { AvatarImage } from '../components/AvatarImage';
 import { useRouter } from 'next/navigation';
-import { User, Shield, Compass, Share2, Camera, Loader2, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { User, Shield, Share2, Camera, Loader2, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { GoogleOAuthProvider, useGoogleLogin } from '@react-oauth/google';
 
-type SettingsTab = 'profile' | 'security' | 'preferences' | 'social';
+type SettingsTab = 'profile' | 'security' | 'social';
 type PendingNavigation =
   | { type: 'route'; href: string }
   | { type: 'tab'; tab: SettingsTab };
@@ -70,7 +70,7 @@ function GoogleBindAction({ user, isGoogleBound, setIsGoogleBound }: GoogleBindA
 export default function SettingsPage() {
   const { user, login, loading } = useAuth();
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<'profile' | 'security' | 'preferences' | 'social'>('profile');
+  const [activeTab, setActiveTab] = useState<SettingsTab>('profile');
 
   const [isGoogleBound, setIsGoogleBound] = useState(false);
   const [isFbBound, setIsFbBound] = useState(false);
@@ -291,13 +291,12 @@ export default function SettingsPage() {
         <div className="container mx-auto px-6 max-w-5xl">
           <div className="mb-12">
             <h1 className="text-3xl font-extralight text-neutral-900 mb-2">設定與隱私</h1>
-            <p className="text-xs text-neutral-400 uppercase tracking-widest font-medium">Account Settings & Preferences</p>
+            <p className="text-xs text-neutral-400 uppercase tracking-widest font-medium">Account Settings</p>
           </div>
           <div className="flex flex-col md:flex-row gap-8">
             <aside className="w-full md:w-64 flex-shrink-0 flex flex-row md:flex-col overflow-x-auto no-scrollbar border-b md:border-b-0 border-neutral-100 md:space-y-1">
               <button onClick={() => setActiveTab('profile')} className={`flex items-center gap-3 px-4 py-3 text-xs tracking-widest uppercase font-medium whitespace-nowrap transition-all border-b-2 md:border-b-0 md:border-l-2 ${activeTab === 'profile' ? 'border-neutral-900 text-neutral-900 bg-neutral-50 md:font-bold' : 'border-transparent text-neutral-400 hover:text-neutral-900'}`}><User className="size-4" /> 個人檔案</button>
               <button onClick={() => setActiveTab('security')} className={`flex items-center gap-3 px-4 py-3 text-xs tracking-widest uppercase font-medium whitespace-nowrap transition-all border-b-2 md:border-b-0 md:border-l-2 ${activeTab === 'security' ? 'border-neutral-900 text-neutral-900 bg-neutral-50 md:font-bold' : 'border-transparent text-neutral-400 hover:text-neutral-900'}`}><Shield className="size-4" /> 帳號安全</button>
-              <button onClick={() => setActiveTab('preferences')} className={`flex items-center gap-3 px-4 py-3 text-xs tracking-widest uppercase font-medium whitespace-nowrap transition-all border-b-2 md:border-b-0 md:border-l-2 ${activeTab === 'preferences' ? 'border-neutral-900 text-neutral-900 bg-neutral-50 md:font-bold' : 'border-transparent text-neutral-400 hover:text-neutral-900'}`}><Compass className="size-4" /> 旅遊偏好</button>
               <button onClick={() => setActiveTab('social')} className={`flex items-center gap-3 px-4 py-3 text-xs tracking-widest uppercase font-medium whitespace-nowrap transition-all border-b-2 md:border-b-0 md:border-l-2 ${activeTab === 'social' ? 'border-neutral-900 text-neutral-900 bg-neutral-50 md:font-bold' : 'border-transparent text-neutral-400 hover:text-neutral-900'}`}><Share2 className="size-4" /> 綁定社群帳號</button>
             </aside>
             <main className="flex-1 bg-white border border-neutral-100 rounded-sm p-8 md:p-12 shadow-sm relative overflow-hidden">
@@ -332,9 +331,6 @@ export default function SettingsPage() {
                   </div>
                   <button type="submit" disabled={isUpdatingPassword} className="px-8 py-3.5 bg-neutral-900 text-white text-xs tracking-widest uppercase hover:bg-neutral-800 transition-colors disabled:opacity-70 flex items-center justify-center gap-2 rounded-sm font-medium">{isUpdatingPassword ? "更新中..." : "更新密碼"}</button>
                 </form>
-              )}
-              {activeTab === 'preferences' && (
-                <div className="py-12 text-center space-y-3 animate-in fade-in duration-300"><Compass className="size-8 mx-auto text-neutral-300" /><h3 className="text-base font-light tracking-wider text-neutral-700">旅遊偏好設定功能即將推出</h3></div>
               )}
               {activeTab === 'social' && (
                 <div className="space-y-8 animate-in fade-in duration-300">

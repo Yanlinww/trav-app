@@ -771,7 +771,7 @@ export default function DestinationsPage() {
               {manageError && <div className="mb-4 rounded-xl border border-rose-100 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-600">{manageError}</div>}
               {!selectedOwnedItinerary ? (
                 <>
-                  <p className="mb-4 text-sm leading-6 text-[#71899b]">選擇一份你建立的行程，設定公開標題與封面後即可上傳。公開內容不會包含記帳、票券、備忘錄、聊天或旅伴資料。</p>
+                  <p className="mb-4 text-sm leading-6 text-[#71899b]">選擇一份你建立的行程，設定公開標題與封面後即可上傳。公開內容不會包含記帳、票券或備忘錄。</p>
                   <div className="space-y-3">
                     {ownedItineraries.length === 0 ? <div className="rounded-2xl border border-dashed border-[#cbdce7] bg-white px-5 py-12 text-center text-sm text-[#91a6b7]">你目前還沒有可上傳的行程。<button type="button" onClick={() => router.push('/planner')} className="ml-2 font-bold text-[#5e7891] hover:underline">先建立行程</button></div> : ownedItineraries.map((itinerary) => (
                       <button type="button" key={itinerary.id} onClick={() => selectOwnedItinerary(itinerary)} className="flex w-full items-center gap-4 rounded-2xl border border-[#dce7ef] bg-white p-4 text-left shadow-sm transition hover:border-[#bcd2e0] hover:bg-[#fbfdfe]">
@@ -833,7 +833,7 @@ export default function DestinationsPage() {
                   </div>
                 </div>
                 <div className="border-t border-[#dce7ef] bg-white px-6 py-4">
-                  {copiedItineraryId ? <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-sm font-bold text-emerald-600">已複製為你的私人行程，可隨時到行程規劃編輯。</p><button type="button" onClick={closePreview} className="rounded-xl bg-[#5e7891] px-4 py-2.5 text-sm font-bold text-white hover:bg-[#4d677f]">完成</button></div> : <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-xs leading-5 text-[#8aa0b2]">複製後不會帶入記帳、票券、備忘錄、聊天或旅伴資料。</p><button type="button" onClick={() => handleCopy(preview)} disabled={copyingId === preview.id} className="inline-flex items-center gap-2 rounded-xl bg-[#5e7891] px-5 py-3 text-sm font-bold text-white shadow-sm hover:bg-[#4d677f] disabled:cursor-wait disabled:opacity-60"><Copy size={16} />{copyingId === preview.id ? '複製中…' : '確認複製行程'}</button></div>}
+                  {copiedItineraryId ? <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-sm font-bold text-emerald-600">已複製為你的私人行程，可隨時到行程規劃編輯。</p><button type="button" onClick={closePreview} className="rounded-xl bg-[#5e7891] px-4 py-2.5 text-sm font-bold text-white hover:bg-[#4d677f]">完成</button></div> : <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-xs leading-5 text-[#8aa0b2]">複製後不會帶入記帳、票券或備忘錄。</p><button type="button" onClick={() => handleCopy(preview)} disabled={copyingId === preview.id} className="inline-flex items-center gap-2 rounded-xl bg-[#5e7891] px-5 py-3 text-sm font-bold text-white shadow-sm hover:bg-[#4d677f] disabled:cursor-wait disabled:opacity-60"><Copy size={16} />{copyingId === preview.id ? '複製中…' : '確認複製行程'}</button></div>}
                 </div>
               </>
             )}

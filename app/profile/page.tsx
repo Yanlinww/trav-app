@@ -26,11 +26,6 @@ export default function ProfilePage() {
   // 🗺️ 行程與收藏狀態
   const [itineraries, setItineraries] = useState<any[]>([]);
   const [isLoadingItineraries, setIsLoadingItineraries] = useState(false);
-  const [isJoinModalOpen, setIsJoinModalOpen] = useState(false);
-  const [inviteCodeArray, setInviteCodeArray] = useState<string[]>(Array(6).fill(""));
-  const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
-  const [isSubmittingJoin, setIsSubmittingJoin] = useState(false);
-  
   // 🔗 社群連結設定相關狀態
   const [isLinkModalOpen, setIsLinkModalOpen] = useState(false);
   const [isSavingLinks, setIsSavingLinks] = useState(false);
@@ -132,56 +127,6 @@ export default function ProfilePage() {
     void fetchFollowStats();
     return () => { isCancelled = true; };
   }, [currentAccount]);
-
-  // 處理邀請碼輸入
-  const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
-    e.preventDefault();
-    const pastedText = e.clipboardData.getData('text/plain');
-    const cleanedText = pastedText.replace(/[^a-zA-Z0-9]/g, '').slice(0, 6).toUpperCase();
-    if (cleanedText) {
-      const newArray = [...inviteCodeArray];
-      for (let i = 0; i < cleanedText.length; i++) newArray[i] = cleanedText[i];
-      setInviteCodeArray(newArray);
-      const nextIndex = Math.min(cleanedText.length, 5);
-      inputRefs.current[nextIndex]?.focus();
-    }
-  };
-
-  const handleCodeChange = (index: number, value: string) => {
-    const char = value.slice(-1).toUpperCase().replace(/[^A-Z0-9]/g, '');
-    const newArray = [...inviteCodeArray];
-    newArray[index] = char;
-    setInviteCodeArray(newArray);
-    if (char && index < 5) inputRefs.current[index + 1]?.focus();
-  };
-
-  const handleKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Backspace' && !inviteCodeArray[index] && index > 0) {
-      inputRefs.current[index - 1]?.focus();
-    }
-  };
-
-  // 提交邀請碼
-  const handleJoinItinerary = async () => {
-    const finalCode = inviteCodeArray.join('');
-    if (finalCode.length < 6) return;
-    
-    setIsSubmittingJoin(true);
-    try {
-      const res = await fetch("http://localhost:8080/itinerary/core.php?action=join", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ Invite_Code: finalCode, Account: user?.id || (user as any)?.Account })
-      });
-      const data = await res.json();
-      if (data.status === 'success') {
-        alert("🎉 成功收藏/加入行程！");
-        setIsJoinModalOpen(false);
-        setInviteCodeArray(Array(6).fill(""));
-        fetchItineraries(); 
-      } else { alert(data.message); }
-    } catch (error) { alert("伺服器連線錯誤"); } 
-    finally { setIsSubmittingJoin(false); }
-  };
 
   // 儲存社群連結
   const handleSaveLinks = async () => {
@@ -291,7 +236,7 @@ export default function ProfilePage() {
         {/* ================= 2. 下方內容分頁 (合併為兩項) ================= */}
         <div className="flex flex-wrap gap-4 mt-12 justify-center md:justify-start mb-8">
           <button onClick={() => setActiveTab('photos')} className={`px-6 py-3 flex items-center gap-2 text-xs font-medium tracking-widest uppercase transition-all border ${activeTab === 'photos' ? 'bg-neutral-900 border-neutral-900 text-white' : 'bg-white border-neutral-200 text-neutral-500 hover:border-neutral-400'}`}><Camera className="size-3.5" /> 旅遊照片</button>
-          <button onClick={() => setActiveTab('journeys')} className={`px-6 py-3 flex items-center gap-2 text-xs font-medium tracking-widest uppercase transition-all border ${activeTab === 'journeys' ? 'bg-neutral-900 border-neutral-900 text-white' : 'bg-white border-neutral-200 text-neutral-500 hover:border-neutral-400'}`}><Bookmark className="size-3.5" /> 收藏的行程</button>
+          <button onClick={() => setActiveTab('journeys')} className={`px-6 py-3 flex items-center gap-2 text-xs font-medium tracking-widest uppercase transition-all border ${activeTab === 'journeys' ? 'bg-neutral-900 border-neutral-900 text-white' : 'bg-white border-neutral-200 text-neutral-500 hover:border-neutral-400'}`}><Bookmark className="size-3.5" /> 我的行程</button>
         </div>
 
         <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" accept="image/*" />
@@ -337,26 +282,13 @@ export default function ProfilePage() {
           )
         )}
 
-        {/* 🗺️ 收藏的行程區塊 */}
+        {/* 🗺️ 我的行程區塊 */}
         {activeTab === 'journeys' && (
           isLoadingItineraries ? (
             <div className="flex justify-center py-20"><Loader2 className="w-8 h-8 animate-spin text-neutral-300" /></div>
           ) : itineraries.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6 mb-12 animate-in fade-in duration-300">
               
-              {/* 輸入邀請碼收藏按鈕 */}
-              <div 
-                onClick={() => setIsJoinModalOpen(true)}
-                className="aspect-[4/3] rounded-2xl border-2 border-dashed flex flex-col items-center justify-center cursor-pointer transition-all duration-300 border-neutral-200 bg-neutral-50/50 hover:bg-neutral-50 hover:border-neutral-300 group"
-              >
-                <div className="p-4 rounded-full transition-all duration-300 bg-white text-neutral-400 group-hover:text-[#F04D79] shadow-sm border border-neutral-100 group-hover:shadow group-hover:-translate-y-1 group-hover:border-pink-100">
-                  <Bookmark className="w-6 h-6" />
-                </div>
-                <span className="mt-4 text-xs font-bold tracking-widest uppercase transition-colors text-neutral-400 group-hover:text-[#F04D79]">
-                  輸入邀請碼收藏
-                </span>
-              </div>
-
               {itineraries.map((itinerary) => (
                 <div 
                   key={itinerary.id} 
@@ -371,81 +303,16 @@ export default function ProfilePage() {
                     <h3 className="text-sm font-bold text-neutral-900 truncate">{itinerary.title}</h3>
                     <div className="flex items-center justify-between mt-auto">
                       <p className="text-[10px] text-neutral-400 font-mono font-medium">{itinerary.startDate} - {itinerary.endDate}</p>
-                      <span className="text-[9px] font-bold text-neutral-500 uppercase bg-neutral-100 px-2 py-0.5 rounded-full">
-                        {itinerary.Account === (user?.id || (user as any)?.Account) ? 'Owner' : 'Member'}
-                      </span>
                     </div>
                   </div>
                 </div>
               ))}
             </div>
           ) : (
-            <div 
-              onClick={() => setIsJoinModalOpen(true)}
-              className="bg-white rounded-2xl border-2 border-dashed p-16 sm:p-20 flex flex-col items-center justify-center text-center shadow-sm mb-12 transition-all group animate-in fade-in duration-300 border-neutral-200 cursor-pointer hover:bg-neutral-50 hover:border-neutral-300"
-            >
-              <div className="relative mb-6 group-hover:scale-110 transition-transform duration-300">
-                 <div className="text-neutral-300 group-hover:text-[#F04D79] relative z-10 transition-colors">
-                    <Bookmark className="w-12 h-12" />
-                 </div>
-              </div>
-              <h3 className="text-lg font-bold tracking-widest mb-2 uppercase text-neutral-900">
-                收藏你的專屬行程
-              </h3>
-              <p className="text-sm text-neutral-400 font-medium max-w-sm leading-relaxed">
-                點擊此處輸入 6 碼邀請碼，你所收藏的行程都會自動顯示在這裡。
-              </p>
-            </div>
+            <div className="rounded-2xl border border-dashed border-neutral-200 bg-white p-12 text-center text-sm text-neutral-500">目前沒有行程，前往行程規劃建立第一趟旅程。</div>
           )
         )}
       </div>
-
-      {/* ================= 邀請碼輸入 Modal ================= */}
-      {isJoinModalOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
-          <div className="bg-white w-full max-w-md rounded-[32px] shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200 p-8 relative">
-            <button onClick={() => { setIsJoinModalOpen(false); setInviteCodeArray(Array(6).fill("")); }} className="absolute top-6 right-6 text-slate-400 hover:text-slate-700 bg-slate-50 rounded-full p-1.5 transition-colors">
-              <X size={18} />
-            </button>
-            <div className="mb-8 text-center mt-2">
-              <div className="mx-auto mb-4 flex size-14 items-center justify-center rounded-full bg-pink-50">
-                <Bookmark className="size-7 text-[#F04D79]" />
-              </div>
-              <h2 className="text-2xl font-bold text-slate-800 mb-3 text-center">輸入邀請碼</h2>
-              <p className="text-sm text-slate-500 font-medium text-center">請輸入 6 碼英數字邀請碼，即可將該行程加入你的收藏庫。</p>
-            </div>
-
-            {/* 6 碼輸入框 */}
-            <div className="flex justify-center gap-3 mb-10">
-              {inviteCodeArray.map((char, index) => (
-                <input
-                  key={index}
-                  ref={(el) => { inputRefs.current[index] = el; }}
-                  type="text"
-                  maxLength={1}
-                  value={char}
-                  onPaste={handlePaste}
-                  onChange={(e) => handleCodeChange(index, e.target.value)}
-                  onKeyDown={(e) => handleKeyDown(index, e)}
-                  className={`w-12 h-14 text-center text-2xl font-bold rounded-2xl outline-none transition-all duration-200 shadow-sm ${
-                    char 
-                      ? 'border-2 border-[#F04D79] text-[#F04D79] bg-pink-50/30' 
-                      : 'border-2 border-slate-200 text-slate-700 focus:border-[#F04D79] focus:ring-4 focus:ring-pink-100 bg-white'
-                  }`}
-                />
-              ))}
-            </div>
-
-            <button 
-              onClick={handleJoinItinerary} 
-              disabled={isSubmittingJoin || inviteCodeArray.join('').length < 6}
-              className="w-full py-4 rounded-xl text-[17px] font-bold transition-all shadow-sm flex items-center justify-center gap-2 disabled:bg-slate-200 disabled:text-white disabled:shadow-none bg-[#F04D79] text-white hover:bg-pink-600"
-            >
-              {isSubmittingJoin ? <Loader2 size={20} className="animate-spin" /> : "確認收藏"}
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* ================= 社群連結設定 Modal ================= */}
       {isLinkModalOpen && (
