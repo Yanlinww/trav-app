@@ -1,8 +1,8 @@
 # 公開行程 PHP 端點整理
 
-`backend/trav-api/destinations/` 的 9 支單功能 API 已整合到 `public_itineraries.php`，前端 4 個頁面的 14 處呼叫已更新。舊單功能網址已移除。
+`backend/trav-api/destinations/public_itineraries.php` 目前提供 8 個公開行程操作。
 
-保留的支援檔案：`schema.php` 提供公開行程資料的正規化與資料表升級函式；`public_itinerary_cache.php` 提供 60 秒快取及失效處理；`migrations/run.php` 是僅供命令列執行的資料庫升級入口。`migrations/*.sql` 也沒有搬動。
+保留的支援檔案：`schema.php` 提供公開行程資料的正規化與資料表升級函式；`public_itinerary_cache.php` 提供 60 秒快取及失效處理；`migrations/run.php` 是僅供命令列執行的資料庫升級入口。
 
 ## 新舊操作對照
 
@@ -18,14 +18,13 @@
 | `toggle_public_itinerary_like.php` | `like` | `Itinerary_ID`、`Account` | `status`、`isLiked`、`likeCount` |
 | `toggle_public_itinerary_save.php` | `bookmark` | `Itinerary_ID`、`Account` | `status`、`isSaved` |
 | `copy_public_itinerary.php` | `copy` | `Itinerary_ID`、`Account`；`Title` 可選 | `status`、新行程 ID 等原回傳欄位 |
-| `create_public_itinerary_report.php` | `report` | `Itinerary_ID`、`Account`、`Reason`；`Details` 可選 | `status`、`message` |
 
-公開列表仍先讀檔案快取；命中時不建立資料庫連線。發布、瀏覽、按讚、收藏、複製及檢舉的原有交易、計數與快取失效位置保留。`schema.php` 只提供函式，不在每次 API 請求執行資料表升級。
+公開列表仍先讀檔案快取；命中時不建立資料庫連線。`schema.php` 只提供函式，不在每次 API 請求執行資料表升級。
 
 ## 驗證與範圍
 
-- 新入口通過 PHP 容器的 `php -l`。
-- 新舊網址在 11 組實際 HTTP 請求中狀態碼與 JSON 內容一致，包含公開列表、篩選後列表、有效／無效預覽，以及各寫入操作的無效輸入。
-- 這次未對真實帳號執行發布、瀏覽計數、按讚、收藏、複製或檢舉的成功寫入端對端測試。
+- `public_itineraries.php` 通過 PHP 容器的 `php -l`。
+- 公開列表 HTTP 請求回傳成功；前端通過 `npm run build`。
+- 沒有用真實帳號執行發布、瀏覽計數、按讚、收藏或複製的成功寫入測試。
 
-資料來源：`backend/trav-api/destinations/public_itineraries.php`、保留的支援檔、4 個前端呼叫頁面，以及合併前後的 HTTP 比對結果。
+資料來源：`backend/trav-api/destinations/public_itineraries.php`、支援檔及本地 HTTP 回應。

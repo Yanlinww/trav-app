@@ -226,14 +226,8 @@ export default function SettingsPage() {
 
       const data = await res.json();
       if (data.status === 'success') {
-        const token = localStorage.getItem('auth_token');
-        if (!token) {
-          alert('無法取得驗證權杖，請重新登入。');
-          return;
-        }
-
         const finalAvatarUrl = data.avatarUrl || editAvatar;
-        login({ ...user, nickname: editName, avatar: finalAvatarUrl } as any, token);
+        login({ ...user, nickname: editName, avatar: finalAvatarUrl } as any);
         
         // 更新儲存狀態，消除「未儲存」的警告
         setSavedName(editName);

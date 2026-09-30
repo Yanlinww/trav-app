@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { GoogleMap, Marker, PolylineF, useJsApiLoader } from '@react-google-maps/api';
-import { Bookmark, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Clock3, Copy, Eye, Flag, Globe2, Heart, Loader2, Map as MapIcon, MapPin, Pencil, Search, Settings2, Share2, SlidersHorizontal, Sparkles, Upload, Users, X } from 'lucide-react';
+import { Bookmark, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Clock3, Copy, Eye, Globe2, Heart, Loader2, Map as MapIcon, MapPin, Pencil, Search, Settings2, Share2, SlidersHorizontal, Sparkles, Upload, Users, X } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 type PublicItinerary = {
@@ -198,11 +198,6 @@ export default function DestinationsPage() {
   const [copiedItineraryId, setCopiedItineraryId] = useState<string | null>(null);
   const [previewTab, setPreviewTab] = useState<'schedule' | 'map'>('schedule');
   const [shareNotice, setShareNotice] = useState('');
-  const [reportTarget, setReportTarget] = useState<PublicItinerary | null>(null);
-  const [reportReason, setReportReason] = useState('不當內容');
-  const [reportDetails, setReportDetails] = useState('');
-  const [reportError, setReportError] = useState('');
-  const [isSubmittingReport, setIsSubmittingReport] = useState(false);
   const [publishItineraryId, setPublishItineraryId] = useState<string | null>(null);
   const itineraryListRef = useRef<PublicItinerary[]>([]);
   const publicItineraryCatalogueRef = useRef<PublicItinerary[]>([]);
@@ -525,44 +520,6 @@ export default function DestinationsPage() {
     }
   };
 
-  const openReport = (itinerary: PublicItinerary) => {
-    if (!currentAccount) {
-      router.push('/auth/login');
-      return;
-    }
-    setReportTarget(itinerary);
-    setReportReason('不當內容');
-    setReportDetails('');
-    setReportError('');
-  };
-
-  const closeReport = () => {
-    if (isSubmittingReport) return;
-    setReportTarget(null);
-    setReportError('');
-  };
-
-  const submitReport = async () => {
-    if (!reportTarget) return;
-    setIsSubmittingReport(true);
-    setReportError('');
-    try {
-      const response = await fetch('http://localhost:8080/destinations/public_itineraries.php?action=report', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ Itinerary_ID: reportTarget.id, Account: currentAccount, Reason: reportReason, Details: reportDetails.trim() }),
-      });
-      const data = await response.json();
-      if (!response.ok || data.status !== 'success') throw new Error(data.message || '檢舉送出失敗');
-      setReportTarget(null);
-      setShareNotice(data.message || '已收到你的檢舉');
-    } catch (requestError) {
-      setReportError(requestError instanceof Error ? requestError.message : '檢舉送出失敗，請稍後再試。');
-    } finally {
-      setIsSubmittingReport(false);
-    }
-  };
-
   const switchViewMode = (nextMode: 'discover' | 'saved') => {
     if (nextMode === viewMode) return;
     if (nextMode === 'saved' && !currentAccount) {
@@ -789,10 +746,8 @@ export default function DestinationsPage() {
                   <div className="mt-3 flex flex-wrap gap-x-2 gap-y-1 pt-3 text-[11px] text-[#91a6b7] sm:mt-auto sm:gap-x-3 sm:text-xs"><span className="inline-flex items-center gap-1"><CalendarDays size={13} /> {itinerary.dayCount} 天</span><span>{itinerary.itemCount} 個地點</span><span>{itinerary.copyCount} 次複製</span><span className="inline-flex items-center gap-1"><Eye size={13} />{itinerary.viewCount}</span></div>
                   <div className="mt-4 border-t border-[#edf2f5] pt-3 sm:mt-5 sm:flex sm:items-center sm:justify-between sm:gap-3 sm:pt-4">
                     <div className="mb-3 flex min-w-0 items-center gap-2 sm:mb-0"><div className="flex size-7 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#edf4f8] text-[10px] font-bold text-[#688198]">{itinerary.owner.avatar ? <img src={itinerary.owner.avatar} alt="" className="size-full object-cover" /> : itinerary.owner.name.slice(0, 1)}</div><span className="truncate text-xs font-medium text-[#688198]">{itinerary.owner.name}</span></div>
-                    <div className="grid grid-cols-4 gap-1.5 sm:flex sm:shrink-0 sm:items-center sm:gap-2"><button type="button" onClick={() => void toggleLike(itinerary)} disabled={likingId === itinerary.id} className={`inline-flex items-center justify-center gap-1 rounded-xl border px-1.5 py-2 text-[11px] font-bold transition disabled:cursor-wait disabled:opacity-60 sm:px-2.5 sm:text-xs ${itinerary.isLiked ? 'border-rose-200 bg-rose-50 text-rose-500' : 'border-[#d7e4ec] bg-white text-[#7690a3] hover:border-rose-200 hover:text-rose-500'}`} aria-label={itinerary.isLiked ? '取消按讚' : '按讚'}><Heart size={14} className={itinerary.isLiked ? 'fill-current' : ''} />{itinerary.likeCount}</button><button type="button" onClick={() => void toggleSave(itinerary)} disabled={savingId === itinerary.id} title={itinerary.isSaved ? '取消收藏' : '收藏行程'} aria-label={itinerary.isSaved ? '取消收藏' : '收藏行程'} className={`inline-flex items-center justify-center rounded-xl border p-2 text-xs font-bold transition disabled:cursor-wait disabled:opacity-60 ${itinerary.isSaved ? 'border-[#c7dce9] bg-[#eaf4f9] text-[#4e718c]' : 'border-[#d7e4ec] bg-white text-[#7690a3] hover:border-[#a9c3d4] hover:text-[#4e718c]'}`}><Bookmark size={15} className={itinerary.isSaved ? 'fill-current' : ''} /></button><button type="button" onClick={() => void sharePublicItinerary(itinerary)} title="分享公開行程" aria-label="分享公開行程" className="inline-flex items-center justify-center rounded-xl border border-[#d7e4ec] bg-white p-2 text-[#7690a3] transition hover:border-[#a9c3d4] hover:text-[#4e718c]"><Share2 size={15} /></button>{currentAccount === itinerary.owner.account ? (
+                    <div className="flex flex-wrap gap-1.5 sm:shrink-0 sm:items-center sm:gap-2"><button type="button" onClick={() => void toggleLike(itinerary)} disabled={likingId === itinerary.id} className={`inline-flex items-center justify-center gap-1 rounded-xl border px-1.5 py-2 text-[11px] font-bold transition disabled:cursor-wait disabled:opacity-60 sm:px-2.5 sm:text-xs ${itinerary.isLiked ? 'border-rose-200 bg-rose-50 text-rose-500' : 'border-[#d7e4ec] bg-white text-[#7690a3] hover:border-rose-200 hover:text-rose-500'}`} aria-label={itinerary.isLiked ? '取消按讚' : '按讚'}><Heart size={14} className={itinerary.isLiked ? 'fill-current' : ''} />{itinerary.likeCount}</button><button type="button" onClick={() => void toggleSave(itinerary)} disabled={savingId === itinerary.id} title={itinerary.isSaved ? '取消收藏' : '收藏行程'} aria-label={itinerary.isSaved ? '取消收藏' : '收藏行程'} className={`inline-flex items-center justify-center rounded-xl border p-2 text-xs font-bold transition disabled:cursor-wait disabled:opacity-60 ${itinerary.isSaved ? 'border-[#c7dce9] bg-[#eaf4f9] text-[#4e718c]' : 'border-[#d7e4ec] bg-white text-[#7690a3] hover:border-[#a9c3d4] hover:text-[#4e718c]'}`}><Bookmark size={15} className={itinerary.isSaved ? 'fill-current' : ''} /></button><button type="button" onClick={() => void sharePublicItinerary(itinerary)} title="分享公開行程" aria-label="分享公開行程" className="inline-flex items-center justify-center rounded-xl border border-[#d7e4ec] bg-white p-2 text-[#7690a3] transition hover:border-[#a9c3d4] hover:text-[#4e718c]"><Share2 size={15} /></button>{currentAccount === itinerary.owner.account && (
                       <button type="button" onClick={() => void openManage(itinerary.id)} className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-[#c9dbe7] bg-[#f4f8fb] px-3 py-2 text-xs font-bold text-[#58758c] transition hover:bg-[#eaf2f7]"><Settings2 size={14} />管理</button>
-                    ) : (
-                      <button type="button" onClick={() => openReport(itinerary)} title="檢舉公開行程" aria-label="檢舉公開行程" className="inline-flex rounded-xl border border-[#d7e4ec] bg-white p-2 text-[#7690a3] transition hover:border-rose-200 hover:text-rose-500"><Flag size={15} /></button>
                     )}</div>
                   </div>
                 </div>
@@ -888,7 +843,6 @@ export default function DestinationsPage() {
 
       {shareNotice && <div className="fixed bottom-6 left-1/2 z-[100] -translate-x-1/2 rounded-xl bg-[#30485f] px-4 py-3 text-sm font-bold text-white shadow-xl" role="status"><div className="flex items-center gap-3"><span>{shareNotice}</span><button type="button" onClick={() => setShareNotice('')} className="rounded-md p-0.5 text-white/70 transition hover:bg-white/15 hover:text-white" aria-label="關閉提示"><X size={15} /></button></div></div>}
 
-      {reportTarget && <div className="fixed inset-0 z-[95] flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm"><div className="w-full max-w-lg rounded-3xl border border-[#d7e4ec] bg-[#f8fbfd] shadow-2xl"><div className="flex items-start justify-between gap-4 border-b border-[#dce7ef] bg-white px-6 py-5"><div><p className="text-xs font-bold tracking-[0.16em] text-[#8aa0b2]">REPORT PUBLIC ITINERARY</p><h2 className="mt-1 text-xl font-bold text-[#30485f]">檢舉公開行程</h2><p className="mt-2 line-clamp-1 text-sm text-[#7891a3]">{reportTarget.title}</p></div><button type="button" onClick={closeReport} disabled={isSubmittingReport} className="rounded-xl p-2 text-[#89a0b1] transition hover:bg-[#eef5f9] disabled:opacity-50" aria-label="關閉"><X size={21} /></button></div><div className="space-y-5 p-6"><label className="block text-sm font-bold text-[#4e697e]">檢舉原因<select value={reportReason} onChange={(event) => setReportReason(event.target.value)} disabled={isSubmittingReport} className="mt-2 w-full rounded-xl border border-[#cbdce7] bg-white px-4 py-3 text-sm text-[#365168] outline-none transition focus:border-[#7d9aaf]"><option value="不當內容">不當內容</option><option value="詐騙或不實資訊">詐騙或不實資訊</option><option value="侵犯權利">侵犯權利</option><option value="其他">其他</option></select></label><label className="block text-sm font-bold text-[#4e697e]">補充說明 <span className="font-medium text-[#9aafbd]">（選填）</span><textarea value={reportDetails} onChange={(event) => setReportDetails(event.target.value)} disabled={isSubmittingReport} maxLength={500} rows={4} placeholder="請簡單說明你認為需要確認的內容…" className="mt-2 w-full resize-none rounded-xl border border-[#cbdce7] bg-white px-4 py-3 text-sm leading-6 text-[#365168] outline-none transition focus:border-[#7d9aaf]" /><span className="mt-1 block text-right text-xs font-medium text-[#9aafbd]">{reportDetails.length}/500</span></label>{reportError && <p className="rounded-xl border border-rose-100 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-600">{reportError}</p>}<p className="rounded-xl border border-[#dce8ef] bg-[#f1f7fa] px-4 py-3 text-xs leading-5 text-[#698398]">同一份行程再次送出時，會更新你原本的檢舉內容，不會重複建立資料。</p><div className="flex items-center justify-end gap-3"><button type="button" onClick={closeReport} disabled={isSubmittingReport} className="rounded-xl px-4 py-3 text-sm font-bold text-[#7891a3] transition hover:bg-[#eef5f9] disabled:opacity-50">取消</button><button type="button" onClick={() => void submitReport()} disabled={isSubmittingReport} className="inline-flex items-center gap-2 rounded-xl bg-[#5e7891] px-5 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-[#4d677f] disabled:cursor-wait disabled:opacity-60"><Flag size={16} />{isSubmittingReport ? '送出中…' : '送出檢舉'}</button></div></div></div></div>}
     </div>
   );
 }

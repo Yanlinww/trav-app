@@ -114,7 +114,7 @@ export default function LoginPage() {
   // 服務條款勾選狀態 ( Checkbox )
   const [agreeTerms, setAgreeTerms] = useState(false); 
 
-  // 從 AuthContext 取出 login 函式，用於儲存登入成功的 User Info 與 JWT Token
+  // 從 AuthContext 取出 login 函式，用於儲存登入成功的使用者資料。
   const { login } = useAuth();
   
   // 宣告 Next.js 路由導向器
@@ -147,16 +147,16 @@ export default function LoginPage() {
         })
         .then(res => res.json())
         .then(data => {
-          if (data.status === 'success' && data.token) {
+          if (data.status === 'success' && data.user) {
             // 登入成功：更新全域驗證狀態，顯示成功視窗並跳轉首頁
-            login(data.user, data.token);
+            login(data.user);
             setSuccessInfo({ isOpen: true, message: data.message });
             setTimeout(() => router.push("/"), 1500);
           } else {
             // 登入失敗：顯示錯誤彈窗
             setFailureInfo({ 
               isOpen: true, 
-              message: data.message || '登入工作階段建立失敗，請再試一次。' 
+              message: data.message || '登入失敗，請再試一次。'
             });
           }
         })
@@ -200,14 +200,14 @@ export default function LoginPage() {
       });
       const data = await res.json();
       
-      if (data.status === 'success' && data.token) {
-        login(data.user, data.token);
+      if (data.status === 'success' && data.user) {
+        login(data.user);
         setSuccessInfo({ isOpen: true, message: data.message });
         setTimeout(() => router.push("/"), 1500);
       } else {
         setFailureInfo({ 
           isOpen: true, 
-          message: data.message || '登入工作階段建立失敗，請再試一次。' 
+          message: data.message || '登入失敗，請再試一次。'
         });
       }
     } catch (err) {
@@ -239,9 +239,9 @@ export default function LoginPage() {
       });
       const data = await res.json();
       
-      if (data.status === 'success' && data.token) {
+      if (data.status === 'success' && data.user) {
         setSuccessInfo({ isOpen: true, message: "登入成功，歡迎回來 TRAVMADE！" });
-        login(data.user, data.token);
+        login(data.user);
         setTimeout(() => { router.push("/"); }, 1500);
       } else {
         setFailureInfo({ isOpen: true, message: data.message || "登入失敗" });

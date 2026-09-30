@@ -232,10 +232,8 @@
 
 | 外部 PHP（資料來源） | 引用行號 |
 | --- | ---: |
-| [backend/trav-api/admin/api.php](F:/trav-app/backend/trav-api/admin/api.php:12) | 12 |
-| [backend/trav-api/destinations/public_itineraries.php](F:/trav-app/backend/trav-api/destinations/public_itineraries.php:9) | 9 |
-| [backend/trav-api/profile/profile.php](F:/trav-app/backend/trav-api/profile/profile.php:156) | 156（`follow_list` 功能） |
-| [backend/trav-api/social.php](F:/trav-app/backend/trav-api/social.php:12) | 12 |
+| [backend/trav-api/destinations/public_itineraries.php](F:/trav-app/backend/trav-api/destinations/public_itineraries.php:8) | 8 |
+| [backend/trav-api/social.php](F:/trav-app/backend/trav-api/social.php:11) | 11 |
 
 ## 14. Luggage 合併進度（2026-09-28）
 

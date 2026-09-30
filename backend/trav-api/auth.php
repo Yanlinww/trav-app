@@ -7,7 +7,6 @@ header('Content-Type: application/json; charset=utf-8');
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(200); exit(); }
 
 require_once __DIR__ . '/db_connect.php';
-require_once __DIR__ . '/auth/auth_session_helpers.php';
 
 $actions = ['login' => 'auth_login', 'register' => 'auth_register', 'google' => 'auth_google', 'facebook' => 'auth_facebook'];
 $action = $_GET['action'] ?? '';
@@ -35,24 +34,17 @@ function auth_login(mysqli $conn): void {
             // 🔒 安全解密：比對前端傳來的密碼，跟資料庫裡的加密雜湊值是否吻合
             if (password_verify($password, $user['Password'])) {
                 
-                try {
-                    $sessionToken = issue_auth_session($conn, $user['Account']);
-                    echo json_encode([
-                        "status" => "success",
-                        "message" => "登入成功！歡迎回來 TRAVMADE！",
-                        "token" => $sessionToken,
-                        "user" => [
-                            "id" => $user['Account'],
-                            "email" => $user['Email'],
-                            "nickname" => $user['Name'],
-                            "avatar" => $user['Avatar'],
-                            "role" => $user['Role'] ?? 'user'
-                        ]
-                    ], JSON_UNESCAPED_UNICODE);
-                } catch (Throwable $error) {
-                    http_response_code(500);
-                    echo json_encode(["status" => "error", "message" => "登入工作階段建立失敗，請稍後再試。"], JSON_UNESCAPED_UNICODE);
-                }
+                echo json_encode([
+                    "status" => "success",
+                    "message" => "登入成功！歡迎回來 TRAVMADE！",
+                    "user" => [
+                        "id" => $user['Account'],
+                        "email" => $user['Email'],
+                        "nickname" => $user['Name'],
+                        "avatar" => $user['Avatar'],
+                        "role" => $user['Role'] ?? 'user'
+                    ]
+                ], JSON_UNESCAPED_UNICODE);
                 
             } else {
                 echo json_encode(["status" => "error", "message" => "密碼輸入錯誤喔，請再確認一次！"], JSON_UNESCAPED_UNICODE);
@@ -113,13 +105,8 @@ function auth_register(mysqli $conn): void {
     $conn->close();
 }
 
-function respond_google_login_success(mysqli $conn, string $message, array $user): void {
-    try {
-        echo json_encode(["status" => "success", "message" => $message, "token" => issue_auth_session($conn, $user['id']), "user" => $user], JSON_UNESCAPED_UNICODE);
-    } catch (Throwable $error) {
-        http_response_code(500);
-        echo json_encode(["status" => "error", "message" => "登入工作階段建立失敗，請稍後再試。"], JSON_UNESCAPED_UNICODE);
-    }
+function respond_google_login_success(string $message, array $user): void {
+    echo json_encode(["status" => "success", "message" => $message, "user" => $user], JSON_UNESCAPED_UNICODE);
 }
 
 
@@ -162,7 +149,7 @@ function auth_google(mysqli $conn): void {
                     $upd->bind_param("ss", $g_id, $user['Account']);
                     $upd->execute(); $upd->close();
                 }
-                respond_google_login_success($conn, "🎉 Google 登入成功！", ["id" => $user['Account'], "email" => $user['Email'], "nickname" => $user['Name'], "avatar" => $user['Avatar'], "role" => $user['Role'] ?? 'user']);
+                respond_google_login_success("🎉 Google 登入成功！", ["id" => $user['Account'], "email" => $user['Email'], "nickname" => $user['Name'], "avatar" => $user['Avatar'], "role" => $user['Role'] ?? 'user']);
             } else {
                 // 🆕 情境 B：帳號不存在 -> 自動註冊並登入
                 $account = $email; // 將 Email 作為帳號
@@ -172,7 +159,7 @@ function auth_google(mysqli $conn): void {
                 $ins->bind_param("ssssss", $account, $random_password, $email, $name, $avatar, $g_id);
                 
                 if ($ins->execute()) {
-                    respond_google_login_success($conn, "🎉 帳號建立完成，Google 登入成功！", ["id" => $account, "email" => $email, "nickname" => $name, "avatar" => $avatar, "role" => 'user']);
+                    respond_google_login_success("🎉 帳號建立完成，Google 登入成功！", ["id" => $account, "email" => $email, "nickname" => $name, "avatar" => $avatar, "role" => 'user']);
                 } else {
                     echo json_encode(["status" => "error", "message" => "自動註冊失敗：" . $conn->error]);
                 }
@@ -184,13 +171,8 @@ function auth_google(mysqli $conn): void {
     $conn->close();
 }
 
-function respond_facebook_login_success(mysqli $conn, string $message, array $user): void {
-    try {
-        echo json_encode(["status" => "success", "message" => $message, "token" => issue_auth_session($conn, $user['id']), "user" => $user], JSON_UNESCAPED_UNICODE);
-    } catch (Throwable $error) {
-        http_response_code(500);
-        echo json_encode(["status" => "error", "message" => "登入工作階段建立失敗，請稍後再試。"], JSON_UNESCAPED_UNICODE);
-    }
+function respond_facebook_login_success(string $message, array $user): void {
+    echo json_encode(["status" => "success", "message" => $message, "user" => $user], JSON_UNESCAPED_UNICODE);
 }
 
 
@@ -245,7 +227,7 @@ function auth_facebook(mysqli $conn): void {
                         $upd->bind_param("ss", $fb_id, $user['Account']);
                         $upd->execute(); $upd->close();
                     }
-                    respond_facebook_login_success($conn, "🎉 Facebook 登入成功！", ["id" => $user['Account'], "email" => $user['Email'], "nickname" => $user['Name'], "avatar" => $user['Avatar'], "role" => $user['Role'] ?? 'user']);
+                    respond_facebook_login_success("🎉 Facebook 登入成功！", ["id" => $user['Account'], "email" => $user['Email'], "nickname" => $user['Name'], "avatar" => $user['Avatar'], "role" => $user['Role'] ?? 'user']);
                 } else {
                     // 🆕 情境 B：帳號不存在 -> 自動註冊並登入
                     $account = $email;
@@ -253,7 +235,7 @@ function auth_facebook(mysqli $conn): void {
                     $ins = $conn->prepare("INSERT INTO `Member` (`Account`, `Password`, `Email`, `Name`, `Avatar`, `facebook_id`) VALUES (?, ?, ?, ?, ?, ?)");
                     $ins->bind_param("ssssss", $account, $random_password, $email, $name, $avatar, $fb_id);
                     if ($ins->execute()) {
-                        respond_facebook_login_success($conn, "🎉 帳號建立完成，Facebook 登入成功！", ["id" => $account, "email" => $email, "nickname" => $name, "avatar" => $avatar, "role" => 'user']);
+                        respond_facebook_login_success("🎉 帳號建立完成，Facebook 登入成功！", ["id" => $account, "email" => $email, "nickname" => $name, "avatar" => $avatar, "role" => 'user']);
                     } else {
                         echo json_encode(["status" => "error", "message" => "自動註冊失敗：" . $conn->error]);
                     }

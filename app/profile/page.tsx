@@ -9,7 +9,6 @@ import {
   Link2, X, Loader2, Plus, Eye
 } from 'lucide-react';
 import { FaFacebook, FaInstagram, FaTwitter, FaYoutube, FaTiktok } from 'react-icons/fa';
-import FollowListModal from '../components/FollowListModal';
 
 export default function ProfilePage() {
   const { user } = useAuth();
@@ -39,7 +38,6 @@ export default function ProfilePage() {
     instagram: '', twitter: '', xiaohongshu: '', tiktok: '', youtube: '', facebook: ''
   });
   const [followStats, setFollowStats] = useState<{ followersCount: number; followingCount: number } | null>(null);
-  const [followListType, setFollowListType] = useState<'followers' | 'following' | null>(null);
 
   const displayName = user?.nickname || 'TRAVELER';
   const avatarUrl = (user as any)?.avatar;
@@ -115,9 +113,8 @@ export default function ProfilePage() {
 
     const fetchFollowStats = async () => {
       try {
-        const authToken = window.localStorage.getItem('auth_token');
         const res = await fetch("http://localhost:8080/social.php?action=profile", {
-          method: "POST", headers: { "Content-Type": "application/json", ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}) },
+          method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ Account: currentAccount }),
         });
         const data = await res.json();
@@ -274,9 +271,9 @@ export default function ProfilePage() {
           </div>
           <div className="flex flex-col items-center md:items-end gap-5 mt-2 md:mt-0">
             <div className="flex items-center gap-6 text-neutral-800">
-              <button type="button" onClick={() => setFollowListType('followers')} className="text-center flex items-baseline gap-1.5 rounded-lg px-1 transition hover:text-[#50718a] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#86a5ba]" aria-label="查看粉絲名單"><span className="text-2xl font-bold">{followStats?.followersCount ?? '—'}</span> <span className="text-sm text-neutral-500 font-medium">粉絲</span></button>
+              <div className="text-center flex items-baseline gap-1.5 px-1"><span className="text-2xl font-bold">{followStats?.followersCount ?? '—'}</span> <span className="text-sm text-neutral-500 font-medium">粉絲</span></div>
               <div className="w-px h-6 bg-neutral-200"></div>
-              <button type="button" onClick={() => setFollowListType('following')} className="text-center flex items-baseline gap-1.5 rounded-lg px-1 transition hover:text-[#50718a] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#86a5ba]" aria-label="查看追蹤中名單"><span className="text-2xl font-bold">{followStats?.followingCount ?? '—'}</span> <span className="text-sm text-neutral-500 font-medium">追蹤中</span></button>
+              <div className="text-center flex items-baseline gap-1.5 px-1"><span className="text-2xl font-bold">{followStats?.followingCount ?? '—'}</span> <span className="text-sm text-neutral-500 font-medium">追蹤中</span></div>
               <div className="w-px h-6 bg-neutral-200"></div>
               <div className="text-center flex items-baseline gap-1.5"><span className="text-2xl font-bold">0</span> <span className="text-sm text-neutral-500 font-medium">影音</span></div>
             </div>
@@ -474,15 +471,6 @@ export default function ProfilePage() {
             </div>
           </div>
         </div>
-      )}
-      {followListType && currentAccount && (
-        <FollowListModal
-          account={currentAccount}
-          listType={followListType}
-          isOwnList
-          onClose={() => setFollowListType(null)}
-          onOwnFollowingChanged={() => setFollowStats((stats) => stats ? { ...stats, followingCount: Math.max(0, stats.followingCount - 1) } : stats)}
-        />
       )}
     </div>
   );

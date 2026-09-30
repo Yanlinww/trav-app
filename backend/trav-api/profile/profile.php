@@ -1,35 +1,21 @@
 <?php
 /**
- * 個人設定功能入口：基本資料、密碼、追蹤名單與社群帳號綁定。
+ * 個人設定功能入口：基本資料、密碼與社群帳號綁定。
  * 呼叫：POST /profile/profile.php?action=功能名稱。
  * 更新頭像使用 FormData；其餘功能使用 JSON 物件。
- * 追蹤名單維持 Bearer 驗證；根目錄的個人公開資料與追蹤操作另有入口。
  */
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: POST, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, Authorization');
+header('Access-Control-Allow-Headers: Content-Type');
 header('Content-Type: application/json; charset=utf-8');
 
 $action = $_GET['action'] ?? '';
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
-    // 原追蹤名單入口回 204，其餘個人設定入口回 200。
-    http_response_code($action === 'follow_list' ? 204 : 200);
+    http_response_code(200);
     exit();
 }
 
 require_once __DIR__ . '/../db_connect.php';
-
-// 追蹤名單專用的既有建表函式，其他 action 不呼叫。
-function ensure_user_follows_table(mysqli $conn): void {
-    $created = $conn->query("CREATE TABLE IF NOT EXISTS `User_Follows` (
-        `Follow_ID` INT AUTO_INCREMENT PRIMARY KEY,
-        `Follower_Account` VARCHAR(50) NOT NULL,
-        `Target_Account` VARCHAR(50) NOT NULL,
-        `Created_At` DATETIME DEFAULT CURRENT_TIMESTAMP,
-        UNIQUE KEY `unique_follow` (`Follower_Account`, `Target_Account`)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci");
-    if (!$created) api_error('追蹤資料初始化失敗。', 500);
-}
 
 /**
  * action=update：更新會員暱稱；若有 Avatar 檔案則一併儲存頭像。
@@ -145,69 +131,6 @@ function profile_update_password(mysqli $conn): void
     }
 
     $conn->close();
-}
-
-/**
- * action=follow_list：使用 Bearer 驗證後讀取指定帳號的粉絲或追蹤名單。
- * 原端點：get_follow_list.php；保留原本輸入欄位與 JSON 回應格式。
- */
-function profile_get_follow_list(mysqli $conn): void
-{
-    require_once __DIR__ . '/../itinerary/api_helpers.php';
-    require_once __DIR__ . '/../auth/auth_session_helpers.php';
-
-    $data = read_json_body();
-    $viewerAccount = require_authenticated_account($conn);
-    $account = trim((string)($data->Account ?? ''));
-    $listType = trim((string)($data->List_Type ?? ''));
-
-    if ($account === '') api_error('缺少要查詢的帳號。', 422);
-    if (!in_array($listType, ['followers', 'following'], true)) api_error('無效的名單類型。', 422);
-
-    ensure_user_follows_table($conn);
-
-    $memberStatement = $conn->prepare('SELECT 1 FROM Member WHERE Account = ? LIMIT 1');
-    if (!$memberStatement) api_error('帳號檢查失敗。', 500);
-    $memberStatement->bind_param('s', $account);
-    if (!$memberStatement->execute() || !$memberStatement->get_result()->fetch_row()) {
-        $memberStatement->close();
-        api_error('找不到此旅行者。', 404);
-    }
-    $memberStatement->close();
-
-    $relatedAccountColumn = $listType === 'followers' ? 'f.Follower_Account' : 'f.Target_Account';
-    $ownerCondition = $listType === 'followers' ? 'f.Target_Account = ?' : 'f.Follower_Account = ?';
-    $statement = $conn->prepare(
-        "SELECT m.Account, COALESCE(NULLIF(m.Name, ''), m.Account) AS Member_Name, m.Avatar, f.Created_At,
-                EXISTS(SELECT 1 FROM User_Follows vf WHERE vf.Follower_Account = ? AND vf.Target_Account = m.Account) AS Is_Followed_By_Viewer
-         FROM User_Follows f
-         INNER JOIN Member m ON m.Account = {$relatedAccountColumn}
-         WHERE {$ownerCondition}
-         ORDER BY f.Created_At DESC, f.Follow_ID DESC
-         LIMIT 100"
-    );
-    if (!$statement) api_error('無法讀取追蹤名單。', 500);
-    $statement->bind_param('ss', $viewerAccount, $account);
-    if (!$statement->execute()) {
-        $statement->close();
-        api_error('無法讀取追蹤名單。', 500);
-    }
-
-    $members = [];
-    $result = $statement->get_result();
-    while ($row = $result->fetch_assoc()) {
-        $members[] = [
-            'account' => $row['Account'],
-            'name' => $row['Member_Name'],
-            'avatar' => $row['Avatar'] ?? '',
-            'createdAt' => $row['Created_At'],
-            'isFollowedByViewer' => (bool)$row['Is_Followed_By_Viewer'],
-        ];
-    }
-    $statement->close();
-    $conn->close();
-
-    api_json(['status' => 'success', 'data' => $members]);
 }
 
 /**
@@ -424,7 +347,6 @@ function profile_bind_instagram(mysqli $conn): void
 $handlers = [
     'update' => 'profile_update_details', // 更新會員暱稱；若有 Avatar 檔案則一併儲存頭像。
     'password' => 'profile_update_password', // 核對舊密碼，雜湊新密碼後更新 Member。
-    'follow_list' => 'profile_get_follow_list', // 使用 Bearer 驗證後讀取指定帳號的粉絲或追蹤名單。
     'bindings' => 'profile_get_social_bindings', // 查詢 Google 和 Facebook 是否已綁定。
     'bind_google' => 'profile_bind_google', // 向 Google 查驗 AccessToken 並寫入 google_id。
     'bind_facebook' => 'profile_bind_facebook', // 以 Facebook 授權 Code 換取使用者 ID 並寫入 facebook_id。

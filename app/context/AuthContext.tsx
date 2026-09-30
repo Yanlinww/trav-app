@@ -18,7 +18,7 @@ export interface User {
 interface AuthContextType {
   user: User | null;
   loading: boolean;
-  login: (userData: User, token: string) => void;
+  login: (userData: User) => void;
   logout: () => void;
 }
 
@@ -35,13 +35,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const checkLoginStatus = () => {
       try {
         const savedUser = localStorage.getItem('user_info');
-        const savedToken = localStorage.getItem('auth_token');
-
-        if (savedUser && savedToken && savedToken !== 'auth_token_from_php') {
+        localStorage.removeItem('auth_token');
+        if (savedUser) {
           setUser(JSON.parse(savedUser));
-        } else if (savedToken === 'auth_token_from_php') {
-          localStorage.removeItem('user_info');
-          localStorage.removeItem('auth_token');
         }
       } catch (error) {
         console.error("讀取登入狀態失敗:", error);
@@ -55,11 +51,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     checkLoginStatus();
   }, []);
 
-  // 登入功能：把後端傳來的資料與 Token 存起來
-  const login = (userData: User, token: string) => {
+  // 登入功能：儲存前端顯示需要的使用者資料。
+  const login = (userData: User) => {
     setUser(userData);
     localStorage.setItem('user_info', JSON.stringify(userData));
-    localStorage.setItem('auth_token', token);
   };
 
   // 登出功能：清空所有暫存資料
@@ -68,7 +63,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem('user_info');
     localStorage.removeItem('auth_token');
     
-    // 登出後強制把畫面導回首頁，確保安全
+    // 登出後將畫面導回首頁。
     if (typeof window !== 'undefined') {
       window.location.href = '/';
     }

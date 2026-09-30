@@ -1,6 +1,6 @@
 <?php
 /**
- * 公開行程功能入口：列表、預覽、發布、瀏覽、按讚、收藏、複製及檢舉。
+ * 公開行程功能入口：列表、預覽、發布、瀏覽、按讚、收藏及複製。
  * 呼叫：POST /destinations/public_itineraries.php?action=功能名稱，參數為 JSON 物件。
  * schema.php、public_itinerary_cache.php 與 migrations/run.php 各自保留原本用途。
  * 列表的快取命中路徑不開啟資料庫連線。
@@ -602,57 +602,6 @@ function destinations_copy_public_itinerary(): void
     }
 }
 
-/**
- * action=report：新增或更新公開行程檢舉，成功後清除公開列表快取。
- * 來源：create_public_itinerary_report.php；保留原本輸入欄位、交易與 JSON 回應格式。
- */
-function destinations_create_public_itinerary_report(): void
-{
-    require_once __DIR__ . '/../db_connect.php';
-
-    $data = read_json_body();
-    $account = trim((string)($data->Account ?? ''));
-    $itineraryId = (int)($data->Itinerary_ID ?? 0);
-    $reason = trim((string)($data->Reason ?? ''));
-    $details = trim((string)($data->Details ?? ''));
-    $allowedReasons = ['不當內容', '詐騙或不實資訊', '侵犯權利', '其他'];
-
-    if ($account === '') api_error('請先登入後再檢舉。', 401);
-    if ($itineraryId <= 0) api_error('缺少公開行程資料。', 400);
-    if (!in_array($reason, $allowedReasons, true)) api_error('請選擇有效的檢舉原因。', 422);
-    if (mb_strlen($details) > 500) api_error('補充說明最多 500 字。', 422);
-
-    try {
-        $itinerary = $conn->prepare('SELECT Account FROM Itinerary WHERE Itinerary_ID = ? AND Is_Public = 1 LIMIT 1');
-        if (!$itinerary) throw new RuntimeException('無法讀取公開行程。');
-        $itinerary->bind_param('i', $itineraryId);
-        if (!$itinerary->execute()) throw new RuntimeException('無法讀取公開行程。');
-        $row = $itinerary->get_result()->fetch_assoc();
-        $itinerary->close();
-
-        if (!$row) api_error('找不到此公開行程。', 404);
-        if ((string)$row['Account'] === $account) api_error('不能檢舉自己的公開行程。', 403);
-
-        $statement = $conn->prepare(
-            "INSERT INTO Public_Itinerary_Report (Itinerary_ID, Reporter_Account, Reason, Details, Status)
-             VALUES (?, ?, ?, NULLIF(?, ''), 'pending')
-             ON DUPLICATE KEY UPDATE Reason = VALUES(Reason), Details = VALUES(Details), Status = 'pending',
-                 Admin_Note = NULL, Reviewed_By = NULL, Reviewed_At = NULL, Updated_At = CURRENT_TIMESTAMP"
-        );
-        if (!$statement) throw new RuntimeException('無法送出檢舉。');
-        $statement->bind_param('isss', $itineraryId, $account, $reason, $details);
-        if (!$statement->execute()) throw new RuntimeException('無法送出檢舉。');
-        $statement->close();
-        $conn->close();
-        invalidate_public_itinerary_cache();
-
-        api_json(['status' => 'success', 'message' => '已收到你的檢舉，我們會盡快確認。']);
-    } catch (Throwable $error) {
-        $conn->close();
-        api_error($error->getMessage(), 500);
-    }
-}
-
 // 網址 action 對應上面的功能函式；固定白名單避免任意函式被呼叫。
 $handlers = [
     'list' => 'destinations_list_public_itineraries', // 搜尋、篩選、排序公開行程；優先讀取快取，未命中才連資料庫。
@@ -663,7 +612,6 @@ $handlers = [
     'like' => 'destinations_toggle_public_itinerary_like', // 切換公開行程按讚，更新按讚數及公開列表快取。
     'bookmark' => 'destinations_toggle_public_itinerary_save', // 切換指定帳號對公開行程的收藏狀態並清除快取。
     'copy' => 'destinations_copy_public_itinerary', // 複製公開行程及其細項到指定帳號，更新複製次數。
-    'report' => 'destinations_create_public_itinerary_report', // 新增或更新公開行程檢舉，成功後清除公開列表快取。
 ];
 $action = $_GET['action'] ?? '';
 if (!is_string($action) || !isset($handlers[$action])) api_error('無效的公開行程操作。', 400);
