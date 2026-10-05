@@ -1,8 +1,8 @@
 <?php
 /**
- * 行程細項：每天的景點／自訂項目、時間、座標、詳細資訊與拖曳排序。
+ * 行程細項：每天的景點／自訂項目、時間、座標與拖曳排序。
  * 呼叫：POST /itinerary/items.php?action=功能名稱，參數放在 JSON 物件。
- * 主要資料表：Itinerary_Item、Place；圖片上傳另見 uploads/upload.php?action=screenshot。
+ * 主要資料表：Itinerary_Item、Place。
  * 閱讀順序：先看底部 $handlers 找功能，再看對應函式中的輸入、SQL 與回應。
  */
 require_once __DIR__ . '/../db_connect.php';
@@ -24,7 +24,7 @@ function normalize_time_value($value) {
 /**
  * 讀取每天的行程細項
  * action=list｜輸入：Itinerary_ID。
- * LEFT JOIN Place；地點資料非 null 時優先採用，否則使用細項自己的名稱、分類與座標。
+ * LEFT JOIN Place；地點資料非 null 時優先採用，否則使用細項自己的名稱與座標。
  * 回傳：status、data（細項陣列），依 Day_Number、Sort_Order 排序，時間為 HH:mm。
  */
 function items_get_itinerary_items(mysqli $conn, object $data): void {
@@ -33,8 +33,7 @@ function items_get_itinerary_items(mysqli $conn, object $data): void {
                 i.*,
                 p.Name AS Place_Name,
                 p.Latitude AS Place_Lat,
-                p.Longitude AS Place_Lng,
-                p.Category AS Place_Category
+                p.Longitude AS Place_Lng
             FROM `Itinerary_Item` i
             LEFT JOIN `Place` p ON i.Place_ID = p.Place_ID
             WHERE i.`Itinerary_ID` = ?
@@ -48,18 +47,12 @@ function items_get_itinerary_items(mysqli $conn, object $data): void {
                 "id" => (string)$row['Item_ID'],
                 "placeId" => $row['Place_ID'] ? (int)$row['Place_ID'] : null,
                 "dayNumber" => (int)$row['Day_Number'],
-                "type" => $row['Place_Category'] ?? $row['Item_Type'],
                 "title" => $row['Place_Name'] ?? $row['Title'],
                 "startTime" => $row['Start_Time'] ? substr($row['Start_Time'], 0, 5) : "",
                 "endTime" => $row['End_Time'] ? substr($row['End_Time'], 0, 5) : "",
                 "sortOrder" => (int)$row['Sort_Order'],
                 "Latitude" => $row['Place_Lat'] ?? $row['Latitude'],
-                "Longitude" => $row['Place_Lng'] ?? $row['Longitude'],
-                // 細項詳細資訊：備註、預約編號、外部連結與截圖網址。
-                "content" => $row['Content'],
-                "reservationNo" => $row['Reservation_No'],
-                "link" => $row['Link'],
-                "screenshotUrl" => $row['Screenshot_URL']
+                "Longitude" => $row['Place_Lng'] ?? $row['Longitude']
             ];
         }
 
@@ -73,7 +66,7 @@ function items_get_itinerary_items(mysqli $conn, object $data): void {
 /**
  * 建立行程細項
  * action=create｜必填：Itinerary_ID、Day_Number、Title。
- * 選填：StartTime、EndTime、Place_ID、Item_Type、Latitude、Longitude 及四個詳細資訊欄位。
+ * 選填：StartTime、EndTime、Place_ID、Latitude、Longitude。
  * 時間先正規化；新項目放在同一天排序的末尾。回傳 status、message、Item_ID。
  */
 function items_create_itinerary_item(mysqli $conn, object $data): void {
@@ -96,14 +89,8 @@ function items_create_itinerary_item(mysqli $conn, object $data): void {
         }
 
         $place_id = (isset($data->Place_ID) && $data->Place_ID !== '') ? (int)$data->Place_ID : null;
-        $item_type = isset($data->Item_Type) ? $data->Item_Type : 'custom';$lat = isset($data->Latitude) ?$data->Latitude : null;
+        $lat = isset($data->Latitude) ? $data->Latitude : null;
         $lng = isset($data->Longitude) ?$data->Longitude : null;
-
-        // 選填的詳細資訊，未提供時寫入 null。
-        $content = isset($data->Content) ?$data->Content : null;
-        $reservation_no = isset($data->Reservation_No) ?$data->Reservation_No : null;
-        $link = isset($data->Link) ?$data->Link : null;
-        $screenshot_url = isset($data->Screenshot_URL) ?$data->Screenshot_URL : null;
 
         // 以同一行程、同一天的最大排序加 1；當天第一個細項從 0 開始。
         $sort_stmt =$conn->prepare("SELECT MAX(`Sort_Order`) as MaxSort FROM `Itinerary_Item` WHERE `Itinerary_ID` = ? AND `Day_Number` = ?");
@@ -111,10 +98,10 @@ function items_create_itinerary_item(mysqli $conn, object $data): void {
         $sort_stmt->execute();$sort_result = $sort_stmt->get_result()->fetch_assoc();$new_sort_order = ($sort_result['MaxSort'] !== null) ?$sort_result['MaxSort'] + 1 : 0;
         $sort_stmt->close();
 
-        // 寫入細項主資料及詳細資訊；參數順序對應 INSERT 的欄位順序。
-        $stmt =$conn->prepare("INSERT INTO `Itinerary_Item` (`Itinerary_ID`, `Day_Number`, `Item_Type`, `Place_ID`, `Title`, `Start_Time`, `End_Time`, `Sort_Order`, `Latitude`, `Longitude`, `Content`, `Reservation_No`, `Link`, `Screenshot_URL`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+        // 參數順序對應 INSERT 的欄位順序。
+        $stmt =$conn->prepare("INSERT INTO `Itinerary_Item` (`Itinerary_ID`, `Day_Number`, `Place_ID`, `Title`, `Start_Time`, `End_Time`, `Sort_Order`, `Latitude`, `Longitude`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
 
-        $stmt->bind_param("iisisssiddssss", $itinerary_id,$day_number, $item_type,$place_id, $title,$start_time, $end_time,$new_sort_order, $lat,$lng, $content,$reservation_no, $link,$screenshot_url);
+        $stmt->bind_param("iiisssidd", $itinerary_id, $day_number, $place_id, $title, $start_time, $end_time, $new_sort_order, $lat, $lng);
 
         if ($stmt->execute()) {
             echo json_encode(["status" => "success", "message" => "建立成功", "Item_ID" => $conn->insert_id]);
@@ -223,37 +210,6 @@ function items_update_item_location(mysqli $conn, object $data): void {
 }
 
 /**
- * 儲存細項詳細資訊
- * action=update_details｜輸入：Item_ID；Content、Reservation_No、Link、Screenshot_URL。
- * 一次覆寫備註、預約編號、連結、截圖網址；省略或 null 的欄位會寫成 null。
- * 回傳：status、message。
- */
-function items_update_item_details(mysqli $conn, object $data): void {
-    if (!empty($data->Item_ID)) {
-        $itemId = (int)$data->Item_ID;
-
-        // 四個欄位一起覆寫；未傳入的欄位也會設為 null。
-        $content = isset($data->Content) ?$data->Content : null;
-        $reservationNo = isset($data->Reservation_No) ?$data->Reservation_No : null;
-        $link = isset($data->Link) ?$data->Link : null;
-        $screenshotUrl = isset($data->Screenshot_URL) ?$data->Screenshot_URL : null;
-
-        // 更新到行程細項表
-        $stmt =$conn->prepare("UPDATE `Itinerary_Item` SET `Content` = ?, `Reservation_No` = ?, `Link` = ?, `Screenshot_URL` = ? WHERE `Item_ID` = ?");
-        $stmt->bind_param("ssssi", $content, $reservationNo,$link, $screenshotUrl,$itemId);
-
-        if ($stmt->execute()) {
-            echo json_encode(["status" => "success", "message" => "詳細資訊更新成功！"]);
-        } else {
-            echo json_encode(["status" => "error", "message" => "更新失敗: " . $stmt->error]);
-        }
-        $stmt->close();
-    } else {
-        echo json_encode(["status" => "error", "message" => "缺少 Item_ID 參數"]);
-    }
-}
-
-/**
  * 刪除單一行程細項
  * action=delete｜輸入：Item_ID。
  * 依 Item_ID 刪除 Itinerary_Item 資料列。
@@ -318,7 +274,6 @@ $handlers = [
     'update_title' => 'items_update_item_title', // 修改細項標題
     'update_time' => 'items_update_item_time', // 修改細項開始／結束時間
     'update_location' => 'items_update_item_location', // 修改細項座標
-    'update_details' => 'items_update_item_details', // 儲存細項詳細資訊
     'delete' => 'items_delete_itinerary_item', // 刪除單一行程細項
     'sort' => 'items_update_sort_order', // 拖曳後批次更新排序
 ];

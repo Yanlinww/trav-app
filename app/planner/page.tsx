@@ -11,7 +11,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../context/AuthContext";
 import { 
-  Plus, X, Calendar, MapPin, Loader2, User, Pin, Trash2, MoreVertical, Train, Car, Bike, Compass, ChevronLeft,
+  Plus, X, Calendar, MapPin, Loader2, User, Pin, Trash2, MoreVertical, ChevronLeft,
   Globe, Lock
 } from "lucide-react";
 
@@ -63,7 +63,6 @@ export default function PlannerDashboard() {
   const [title, setTitle] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
-  const [transport, setTransport] = useState("public"); 
   const [destination, setDestination] = useState("taipei");
 
   /**
@@ -100,17 +99,6 @@ export default function PlannerDashboard() {
   /** @type {Itinerary[]} 使用者擁有的所有行程清單 */
   const [itineraries, setItineraries] = useState<Itinerary[]>([]);
   
-  /**
-   * @constant transportOptions
-   * @description 交通工具選項列表（用於 UI 顯示與圖示對應）
-   */
-  const transportOptions = [
-    { id: 'public', label: '大眾運輸', icon: Train },
-    { id: 'car', label: '汽車', icon: Car },
-    { id: 'motorcycle', label: '機車', icon: Bike },
-    { id: 'other', label: '其他', icon: Compass },
-  ];
-
   // ---------------------------------------------------------------------------
   // API 與資料操作函式 (API Handling & Business Logic)
   // ---------------------------------------------------------------------------
@@ -243,7 +231,6 @@ export default function PlannerDashboard() {
           Title: title, 
           StartDate: startDate, 
           EndDate: endDate, 
-          Transport: transport, 
           Dest_Lat: coords.lat, 
           Dest_Lng: coords.lng 
         }),
@@ -255,7 +242,6 @@ export default function PlannerDashboard() {
         setTitle("");
         setStartDate("");
         setEndDate("");
-        setTransport("public");
         setDestination("taipei");
       } 
     else { alert("建立失敗: " + data.message); }

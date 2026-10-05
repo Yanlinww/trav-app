@@ -97,7 +97,6 @@ export default function PublicProfilePage() {
             Owner_Account: targetAccount,
             Search: '',
             Tags: [],
-            Transport: '',
             Duration: 'all',
             Limit: 48,
           }),

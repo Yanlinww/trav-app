@@ -4,12 +4,12 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useAuth } from "../../context/AuthContext";
 import { 
-  Map as MapIcon, Calendar, BaggageClaim, Ticket,
+  Map as MapIcon, Calendar, BaggageClaim,
   GripVertical, Plus, Train, Hotel, Coffee, Camera, Search,
   ChevronLeft, Wallet, Loader2, MapPin, Trash2, Check, Edit2,Copy,
   LayoutGrid,
   ChevronUp, ChevronDown, XCircle, Save,
-  Receipt, TrainFront, Bed, X, User, ExternalLink, FileText, Image as ImageIcon
+  Receipt, TrainFront, Bed, X, User
 } from "lucide-react";
 import { GoogleMap, useJsApiLoader, Marker, InfoWindow, MarkerClustererF } from '@react-google-maps/api';
 import PlaceAutocomplete from '../../components/PlaceAutocomplete';
@@ -404,7 +404,7 @@ const getMarkerStatusOption = (status: MarkerStatus) => (
 
 function SortableItem({ 
   item, editingItemId, editingTitle, setEditingItemId, setEditingTitle, handleUpdateTitle,
-  editingTimeId, editStartTime, editEndTime, setEditingTimeId, setEditStartTime, setEditEndTime, handleUpdateTime, handleDeleteItem, handleDuplicateItem, onFocusItem, isMapItemSelected, savingTimeId, timeFlags, markerStatus, onMarkerStatusChange, onEditDetails
+  editingTimeId, editStartTime, editEndTime, setEditingTimeId, setEditStartTime, setEditEndTime, handleUpdateTime, handleDeleteItem, handleDuplicateItem, onFocusItem, isMapItemSelected, savingTimeId, timeFlags, markerStatus, onMarkerStatusChange
 }: any) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.id });
   const style = { transform: CSS.Transform.toString(transform), transition, zIndex: isDragging ? 50 : 1, opacity: isDragging ? 0.5 : 1 };
@@ -442,16 +442,6 @@ function SortableItem({
             <div onDoubleClick={() => { setEditingItemId(item.id); setEditingTitle(item.title); }} className="text-[15px] leading-6 font-bold text-slate-700 whitespace-normal break-words tracking-wide cursor-text hover:text-[#F04D79] transition-colors" title="雙擊以編輯名稱">{item.title}</div>
           )}
           
-          {/* 🌟 新增：將筆記與預約顯示在卡片上 */}
-          {(item.content || item.reservationNo || item.link || item.screenshotUrl) && (
-            <div className="mt-2 bg-slate-50 rounded-xl p-3 space-y-2 relative group/details">
-              {item.content && <div className="text-xs text-slate-600 leading-relaxed whitespace-pre-wrap"><FileText size={14} className="inline mr-1.5 text-slate-400 align-text-bottom"/>{item.content}</div>}
-              {item.reservationNo && <div className="text-xs font-mono text-slate-600"><Ticket size={14} className="inline mr-1.5 text-slate-400 align-text-bottom"/>編號：{item.reservationNo}</div>}
-              {item.link && <a href={item.link} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()} className="text-xs font-bold text-[#F04D79] hover:underline flex items-center gap-1"><ExternalLink size={12}/> 開啟連結</a>}
-              {item.screenshotUrl && <img src={item.screenshotUrl} alt="截圖" className="max-h-32 rounded-lg object-contain mt-2 border border-slate-200" />}
-            </div>
-          )}
-
           <select
             value={markerStatus}
             onChange={(event) => { event.stopPropagation(); onMarkerStatusChange?.(item.id, event.target.value as MarkerStatus); }}
@@ -464,8 +454,6 @@ function SortableItem({
         </div>
         <div className={`flex flex-col gap-1.5 pt-0.5 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity shrink-0 ${editingTimeId === item.id ? 'hidden' : ''}`}>
           <button onClick={(event) => { event.stopPropagation(); setEditingItemId(item.id); setEditingTitle(item.title); }} className="size-8 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 hover:bg-[#F04D79] hover:text-white transition-colors shrink-0 shadow-sm" title="編輯行程名稱" aria-label="編輯行程名稱"><Edit2 size={14} /></button>
-          {/* 🌟 新增：編輯詳細資訊按鈕 */}
-          <button onClick={(event) => { event.stopPropagation(); onEditDetails?.(item); }} className="size-8 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 hover:bg-[#F04D79] hover:text-white transition-colors shrink-0 shadow-sm" title="編輯筆記與預訂" aria-label="編輯筆記與預訂"><FileText size={14} /></button>
           <button onClick={() => handleDeleteItem(item.id)} className="size-8 rounded-full bg-slate-50 flex items-center justify-center text-slate-300 hover:bg-red-500 hover:text-white transition-colors shrink-0 shadow-sm" title="刪除此行程"><Trash2 size={14} /></button>
         </div>
       </div>
@@ -500,8 +488,6 @@ export default function ItineraryEditor() {
   const [editInfoTitle, setEditInfoTitle] = useState("");
   const [editInfoStart, setEditInfoStart] = useState("");
   const [editInfoEnd, setEditInfoEnd] = useState("");
-  const [travelStyle, setTravelStyle] = useState('自助旅行');
-  const [isEditingStyle, setIsEditingStyle] = useState(false);
 
   const [activeDay, setActiveDay] = useState(1);
   const [mobilePlannerView, setMobilePlannerView] = useState<'list' | 'map'>('list');
@@ -511,23 +497,6 @@ export default function ItineraryEditor() {
   const [rightPanelTab, setRightPanelTab] = useState<'budget' | 'luggage'>('budget');
   const [isMobilePanelOpen, setIsMobilePanelOpen] = useState(false);
   const preferencesHydratedRef = useRef(false);
-
-  // 🌟 新增：編輯詳細資訊(筆記/預約)用的 state
-  const [editingDetailsItem, setEditingDetailsItem] = useState<any>(null);
-  const [detailsForm, setDetailsForm] = useState({ content: '', reservationNo: '', link: '', screenshotUrl: '' });
-  const [detailsFile, setDetailsFile] = useState<File | null>(null);
-  const [isSavingDetails, setIsSavingDetails] = useState(false);
-
-  const openDetailsModal = (item: any) => {
-    setEditingDetailsItem(item);
-    setDetailsForm({
-      content: item.content || '',
-      reservationNo: item.reservationNo || '',
-      link: item.link || '',
-      screenshotUrl: item.screenshotUrl || ''
-    });
-    setDetailsFile(null);
-  };
 
   useEffect(() => {
     const savedTab = window.localStorage.getItem(`trav-app:right-panel:${params.id}`);
@@ -1080,8 +1049,6 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
           setCoverImage(data.data.coverImage || FALLBACK_COVER_IMAGE);
           setCoverImageVersion(Date.now());
           setHasRetriedCoverImage(false);
-          fetch("http://localhost:8080/itinerary/core.php?action=get_style", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ Itinerary_ID: params.id }) })
-            .then((styleRes) => styleRes.json()).then((styleData) => { if (styleData.status === 'success') setTravelStyle(styleData.style); }).catch(() => {});
         } else { alert(data.message); router.push("/planner"); }
       } catch (error) { alert("資料讀取失敗"); } finally { setIsLoading(false); }
     };
@@ -1105,18 +1072,6 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
       const data = await res.json(); if (data.status === 'success') { setCoverImage(data.new_image_url); setCoverImageVersion(Date.now()); setHasRetriedCoverImage(false); } else { alert(data.message); setCoverImage(previousCoverImage); }
     } catch (error) { alert(error instanceof Error ? error.message : "圖片上傳失敗"); setCoverImage(previousCoverImage); } 
     finally { URL.revokeObjectURL(previewUrl); setIsUploading(false); if (fileInputRef.current) fileInputRef.current.value = ""; }
-  };
-
-  const handleUpdateStyle = async (style: string) => {
-    setTravelStyle(style);
-    setIsEditingStyle(false);
-    try {
-      const res = await fetch("http://localhost:8080/itinerary/core.php?action=update_style", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ Itinerary_ID: params.id, Style: style }) });
-      const data = await res.json();
-      if (data.status !== 'success') alert(data.message || "儲存行程風格失敗");
-    } catch (error) {
-      alert("儲存行程風格失敗");
-    }
   };
 
   const handleUpdateItineraryInfo = async () => {
@@ -1342,43 +1297,6 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
     }
   };
 
-  // 🌟 新增：儲存詳細資訊 (筆記/預約)
-  const handleSaveDetails = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingDetailsItem) return;
-    setIsSavingDetails(true);
-    try {
-      await fetch('http://localhost:8080/itinerary/items.php?action=update_details', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          Item_ID: editingDetailsItem.id,
-          Content: detailsForm.content,
-          Reservation_No: detailsForm.reservationNo,
-          Link: detailsForm.link,
-          Screenshot_URL: detailsForm.screenshotUrl
-        })
-      });
-
-      if (detailsFile) {
-        const formData = new FormData();
-        formData.append('Item_ID', String(editingDetailsItem.id));
-        formData.append('screenshot', detailsFile);
-        await fetch('http://localhost:8080/itinerary/uploads/upload.php?action=screenshot', {
-          method: 'POST',
-          body: formData
-        });
-      }
-
-      setEditingDetailsItem(null);
-      fetchItems(params.id as string);
-    } catch (err) {
-      alert('更新詳細資訊失敗，請稍後再試。');
-    } finally {
-      setIsSavingDetails(false);
-    }
-  };
-
   if (authLoading || isLoading) return <div className="h-screen w-full flex items-center justify-center bg-[#FAFAFA]"><Loader2 className="animate-spin text-slate-300 size-8" /></div>;
   
   if (!itineraryData) {
@@ -1459,13 +1377,6 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
               </div>
             ) : (
               <>
-                {isEditingStyle ? (
-                  <select autoFocus value={travelStyle} onChange={(e) => handleUpdateStyle(e.target.value)} onBlur={() => setIsEditingStyle(false)} className="mb-3 rounded-md border border-pink-200 bg-pink-50 px-2.5 py-1 text-[10px] font-bold tracking-wide text-[#F04D79] focus:outline-none">
-                    {['自助旅行', '親子旅行', '情侶旅行', '朋友出遊', '商務出差', '自訂'].map((style) => <option key={style} value={style}>{style}</option>)}
-                  </select>
-                ) : (
-                  <button onClick={() => setIsEditingStyle(true)} className="inline-block px-2.5 py-1 bg-pink-50 text-[#F04D79] text-[10px] font-bold tracking-wide rounded-md mb-3 hover:bg-pink-100 transition-colors" title="點擊修改行程風格">{travelStyle}</button>
-                )}
                 <h1 className="text-xl font-bold text-slate-900 tracking-wide mb-2 truncate">{itineraryData.title}</h1>
                 <div className="flex items-center text-xs font-medium text-slate-400 tracking-wide">
                   <Calendar size={14} className="mr-2 opacity-70" />
@@ -1508,7 +1419,7 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
                   return (
                     <div key={item.id} className="relative">
                       {index < currentDayItems.length - 1 && <div className="absolute left-[2.1rem] top-full z-0 h-3.5 border-l-2 border-dashed border-slate-200" />}
-                      <SortableItem key={item.id} item={item} editingItemId={editingItemId} editingTitle={editingTitle} setEditingItemId={setEditingItemId} setEditingTitle={setEditingTitle} handleUpdateTitle={handleUpdateTitle} editingTimeId={editingTimeId} editStartTime={editStartTime} editEndTime={editEndTime} setEditingTimeId={setEditingTimeId} setEditStartTime={setEditStartTime} setEditEndTime={setEditEndTime} handleUpdateTime={handleUpdateTime} handleDeleteItem={handleDeleteItem} handleDuplicateItem={handleDuplicateItem} onFocusItem={focusMapOnItem} isMapItemSelected={selectedMapItem?.id === item.id} savingTimeId={savingTimeId} timeFlags={timeFlags} markerStatus={getItemMarkerStatus(item)} onMarkerStatusChange={updateMarkerStatus} onEditDetails={openDetailsModal} />
+                      <SortableItem key={item.id} item={item} editingItemId={editingItemId} editingTitle={editingTitle} setEditingItemId={setEditingItemId} setEditingTitle={setEditingTitle} handleUpdateTitle={handleUpdateTitle} editingTimeId={editingTimeId} editStartTime={editStartTime} editEndTime={editEndTime} setEditingTimeId={setEditingTimeId} setEditStartTime={setEditStartTime} setEditEndTime={setEditEndTime} handleUpdateTime={handleUpdateTime} handleDeleteItem={handleDeleteItem} handleDuplicateItem={handleDuplicateItem} onFocusItem={focusMapOnItem} isMapItemSelected={selectedMapItem?.id === item.id} savingTimeId={savingTimeId} timeFlags={timeFlags} markerStatus={getItemMarkerStatus(item)} onMarkerStatusChange={updateMarkerStatus} />
                     </div>
                   );
                 })}
@@ -1909,82 +1820,6 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
             </div>
           </div>
         )}
-        
-        {/* 🌟 新增：編輯詳細資訊 (筆記與預約) 彈窗 */}
-        {editingDetailsItem && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-            <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => setEditingDetailsItem(null)}></div>
-            <div className="bg-white w-full max-w-sm rounded-3xl shadow-2xl p-6 relative animate-in zoom-in-95 duration-200">
-              <div className="flex justify-between items-center mb-6">
-                <div>
-                  <h3 className="text-lg font-bold text-slate-800 tracking-widest">編輯詳細資訊</h3>
-                  <p className="text-xs text-slate-400 mt-1 truncate max-w-[200px]">{editingDetailsItem.title}</p>
-                </div>
-                <button onClick={() => setEditingDetailsItem(null)} className="text-slate-400 hover:text-slate-600">
-                  <X size={20} />
-                </button>
-              </div>
-              <form onSubmit={handleSaveDetails} className="space-y-4">
-                <div className="space-y-1.5">
-                  <label className="text-sm font-bold text-slate-600 flex items-center gap-1.5"><FileText size={14} className="text-[#F04D79]"/> 筆記 / 備忘錄</label>
-                  <textarea 
-                    value={detailsForm.content} 
-                    onChange={e => setDetailsForm({...detailsForm, content: e.target.value})} 
-                    rows={3} 
-                    placeholder="記下這個行程的注意事項..."
-                    className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-700 focus:outline-none focus:border-[#F04D79] resize-none"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-sm font-bold text-slate-600 flex items-center gap-1.5"><Ticket size={14} className="text-[#F04D79]"/> 預約代號 / 票券號碼</label>
-                  <input 
-                    type="text" 
-                    value={detailsForm.reservationNo} 
-                    onChange={e => setDetailsForm({...detailsForm, reservationNo: e.target.value})} 
-                    placeholder="例如：AB123456"
-                    className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-700 focus:outline-none focus:border-[#F04D79] font-mono"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-sm font-bold text-slate-600 flex items-center gap-1.5"><ExternalLink size={14} className="text-[#F04D79]"/> 相關連結</label>
-                  <input 
-                    type="url" 
-                    value={detailsForm.link} 
-                    onChange={e => setDetailsForm({...detailsForm, link: e.target.value})} 
-                    placeholder="https://"
-                    className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-700 focus:outline-none focus:border-[#F04D79]"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-sm font-bold text-slate-600 flex items-center gap-1.5"><ImageIcon size={14} className="text-[#F04D79]"/> 票券或確認信截圖</label>
-                  <label className="block w-full border-2 border-dashed border-slate-200 rounded-xl p-4 text-center cursor-pointer hover:border-[#F04D79] hover:bg-pink-50 transition-colors">
-                    <input 
-                      type="file" 
-                      accept="image/jpeg,image/png,image/webp" 
-                      onChange={e => setDetailsFile(e.target.files?.[0] || null)} 
-                      className="hidden" 
-                    />
-                    <div className="text-xs font-bold text-slate-500">
-                      {detailsFile ? detailsFile.name : (detailsForm.screenshotUrl ? '更換現有截圖' : '點擊上傳圖片 (最大 10MB)')}
-                    </div>
-                  </label>
-                  {!detailsFile && detailsForm.screenshotUrl && (
-                    <img src={detailsForm.screenshotUrl} alt="預覽" className="mt-2 max-h-24 rounded-lg object-contain border border-slate-100" />
-                  )}
-                </div>
-                <div className="mt-6 flex justify-end gap-3 pt-2">
-                  <button type="button" onClick={() => setEditingDetailsItem(null)} disabled={isSavingDetails} className="px-4 py-2 text-sm font-bold text-slate-500 hover:text-slate-700 transition-colors">
-                    取消
-                  </button>
-                  <button type="submit" disabled={isSavingDetails} className="px-6 py-2 bg-[#F04D79] hover:bg-pink-600 text-white rounded-lg text-sm font-bold tracking-widest shadow-sm transition-colors flex items-center gap-2">
-                    {isSavingDetails ? <Loader2 size={16} className="animate-spin" /> : "儲存"}
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
-
     </div>
   );
 }

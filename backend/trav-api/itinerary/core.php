@@ -1,6 +1,6 @@
 <?php
 /**
- * 行程主檔：列表、建立、修改、刪除、釘選、公開設定與旅行風格。
+ * 行程主檔：列表、建立、修改、刪除、釘選與公開設定。
  * 呼叫：POST /itinerary/core.php?action=功能名稱，參數放在 JSON 物件。
  * 主要資料表：Itinerary；公開設定也會清除目的地快取。
  * 閱讀順序：先看底部 $handlers 找功能，再看對應函式中的輸入、SQL 與回應。
@@ -45,7 +45,6 @@ function core_get_itineraries(mysqli $conn, object $data): void {
                 // 將資料庫的 YYYY-MM-DD 轉為前端預期的 YYYY/MM/DD
                 "startDate" => str_replace('-', '/', $row['Start_Date']),
                 "endDate" => str_replace('-', '/', $row['End_Date']),
-                "transport" => $row['Transport'],
                 "coverImage" => $row['Cover_Image'] ?: "https://images.unsplash.com/photo-1436491865332-7a61a109cc05?q=80&w=800&auto=format&fit=crop",
                 "isPinned" => (bool)$row['Is_Pinned'],
                 // 公開狀態轉為布林值，供前端顯示公開／私密圖示。
@@ -104,7 +103,7 @@ function core_get_itinerary_detail(mysqli $conn, object $data): void {
 /**
  * 建立行程
  * action=create｜必填：Account、Title、StartDate、EndDate。
- * 選填：Transport（預設 train）、Dest_Lat、Dest_Lng；Account 寫入為擁有者。
+ * 選填：Dest_Lat、Dest_Lng；Account 寫入為擁有者。
  * 回傳：status、itinerary_id（新行程 ID）、coverImage（預設封面）。
  */
 function core_create_itinerary(mysqli $conn, object $data): void {
@@ -113,16 +112,15 @@ function core_create_itinerary(mysqli $conn, object $data): void {
         $title = $data->Title;
         $startDate = $data->StartDate;
         $endDate = $data->EndDate;
-        $transport = $data->Transport ?? 'train';
         $coverImage = "https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?q=80&w=800&auto=format&fit=crop";
 
         // 沒有目的地座標時使用 null。
         $dest_lat = isset($data->Dest_Lat) ? $data->Dest_Lat : null;
         $dest_lng = isset($data->Dest_Lng) ? $data->Dest_Lng : null;
 
-        // ? 是 SQL 參數位置；bind_param 依序綁定 6 個字串與 2 個座標數值。
-        $stmt = $conn->prepare("INSERT INTO `Itinerary` (`Account`, `Title`, `Start_Date`, `End_Date`, `Transport`, `Cover_Image`, `Dest_Lat`, `Dest_Lng`) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
-        $stmt->bind_param("ssssssdd", $account, $title, $startDate, $endDate, $transport, $coverImage, $dest_lat, $dest_lng);
+        // ? 是 SQL 參數位置；bind_param 依序綁定 5 個字串與 2 個座標數值。
+        $stmt = $conn->prepare("INSERT INTO `Itinerary` (`Account`, `Title`, `Start_Date`, `End_Date`, `Cover_Image`, `Dest_Lat`, `Dest_Lng`) VALUES (?, ?, ?, ?, ?, ?, ?)");
+        $stmt->bind_param("sssssdd", $account, $title, $startDate, $endDate, $coverImage, $dest_lat, $dest_lng);
 
         if ($stmt->execute()) {
             $new_id = $conn->insert_id;
@@ -252,60 +250,6 @@ function core_toggle_itinerary_visibility(mysqli $conn, object $data): void {
     }
 }
 
-/**
- * 讀取旅行風格
- * action=get_style｜輸入：Itinerary_ID。
- * 讀取 Itinerary.Style；沒有值或查不到主檔時，仍使用預設「自助旅行」。
- * 回傳：status、style。
- */
-function core_get_itinerary_style(mysqli $conn, object $data): void {
-    if (empty($data->Itinerary_ID)) {
-        http_response_code(400);
-        echo json_encode(['status' => 'error', 'message' => '缺少行程ID'], JSON_UNESCAPED_UNICODE);
-        exit();
-    }
-
-    // 直接從主檔 Itinerary 表的 Style 欄位撈取，不再查詢獨立的 Itinerary_Style 表
-    $stmt = $conn->prepare('SELECT `Style` FROM `Itinerary` WHERE `Itinerary_ID` = ?');
-    $stmt->bind_param('i', $data->Itinerary_ID);
-    $stmt->execute();
-    $result = $stmt->get_result()->fetch_assoc();
-    $stmt->close();
-
-    // 若主表剛好沒填，預設回傳 '自助旅行'
-    $style = !empty($result['Style']) ? $result['Style'] : '自助旅行';
-
-    echo json_encode(['status' => 'success', 'style' => $style], JSON_UNESCAPED_UNICODE);
-}
-
-/**
- * 儲存旅行風格
- * action=update_style｜輸入：Itinerary_ID、Style。
- * Style 必須在下方 $allowed 清單中；驗證成功後更新 Itinerary.Style。
- * 回傳：status、style；無效風格為 HTTP 422，寫入失敗為 HTTP 500。
- */
-function core_update_itinerary_style(mysqli $conn, object $data): void {
-    $allowed = ['自助旅行', '親子旅行', '情侶旅行', '朋友出遊', '商務出差', '自訂'];
-
-    if (empty($data->Itinerary_ID) || empty($data->Style) || !in_array($data->Style, $allowed, true)) {
-        http_response_code(422);
-        echo json_encode(['status' => 'error', 'message' => '無效的行程風格'], JSON_UNESCAPED_UNICODE);
-        exit();
-    }
-
-    // 直接更新主檔 Itinerary 表的 Style 欄位
-    $stmt = $conn->prepare('UPDATE `Itinerary` SET `Style` = ? WHERE `Itinerary_ID` = ?');
-    $stmt->bind_param('si', $data->Style, $data->Itinerary_ID);
-
-    if ($stmt->execute()) {
-        echo json_encode(['status' => 'success', 'style' => $data->Style], JSON_UNESCAPED_UNICODE);
-    } else {
-        http_response_code(500);
-        echo json_encode(['status' => 'error', 'message' => '儲存行程風格失敗'], JSON_UNESCAPED_UNICODE);
-    }
-    $stmt->close();
-}
-
 // ===== 請求入口與功能分派：所有功能共用這一段 =====
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') api_error('只允許 POST 請求', 405);
 // 左側是網址的 action，右側是上方要執行的函式；只允許清單中的操作。
@@ -317,8 +261,6 @@ $handlers = [
     'delete' => 'core_delete_itinerary', // 刪除自己的行程
     'pin' => 'core_pin_itinerary', // 設定釘選
     'visibility' => 'core_toggle_itinerary_visibility', // 設定公開／私密
-    'get_style' => 'core_get_itinerary_style', // 讀取旅行風格
-    'update_style' => 'core_update_itinerary_style', // 儲存旅行風格
 ];
 // 例如 ?action=list；這是網址參數，即使 HTTP 方法是 POST 也用 $_GET 取得。
 $action = $_GET['action'] ?? '';

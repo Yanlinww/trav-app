@@ -19,7 +19,6 @@ function destinations_list_public_itineraries(): void
     $search = trim((string)($data->Search ?? ''));
     $account = trim((string)($data->Account ?? ''));
     $ownerAccount = trim((string)($data->Owner_Account ?? ''));
-    $transport = trim((string)($data->Transport ?? ''));
     $duration = (string)($data->Duration ?? 'all');
     $savedOnly = !empty($data->Saved_Only);
     $limit = min(max((int)($data->Limit ?? 24), 1), 48);
@@ -37,7 +36,7 @@ function destinations_list_public_itineraries(): void
     ];
     [$durationMin, $durationMax] = $durationRanges[$duration] ?? [0, 0];
     $searchLike = '%' . $search . '%';
-    $cacheKey = hash('sha256', json_encode([$account, $ownerAccount, $search, $tags, $transport, $duration, $location, $savedOnly, $sort, $limit], JSON_UNESCAPED_UNICODE));
+    $cacheKey = hash('sha256', json_encode([$account, $ownerAccount, $search, $tags, $duration, $location, $savedOnly, $sort, $limit], JSON_UNESCAPED_UNICODE));
     $cachedPayload = public_itinerary_cache_read($cacheKey);
     if ($cachedPayload !== null) api_json($cachedPayload);
 
@@ -49,7 +48,6 @@ function destinations_list_public_itineraries(): void
         COALESCE(NULLIF(i.Public_Title, ''), i.Title) AS Title,
         i.Start_Date,
         i.End_Date,
-        i.Transport,
         COALESCE(NULLIF(i.Public_Cover_Image, ''), i.Cover_Image) AS Cover_Image,
         i.Public_Description, i.Public_Location, i.Public_Updated_At, i.Copy_Count, i.Like_Count, i.View_Count,
         i.Account AS Owner_Account,
@@ -87,14 +85,13 @@ function destinations_list_public_itineraries(): void
                AND search_item.Title LIKE ?
           )
         )
-        AND (? = '' OR i.Transport = ?)
         AND (? = '' OR i.Public_Location = ?)
         AND (? = 0 OR DATEDIFF(i.End_Date, i.Start_Date) + 1 >= ?)
         AND (? = 0 OR DATEDIFF(i.End_Date, i.Start_Date) + 1 <= ?)
     ";
 
-    $types = 'ssssssssssssiiii';
-    $params = [$account, $account, $ownerAccount, $ownerAccount, $search, $searchLike, $searchLike, $searchLike, $transport, $transport, $location, $location, $durationMin, $durationMin, $durationMax, $durationMax];
+    $types = 'ssssssssssiiii';
+    $params = [$account, $account, $ownerAccount, $ownerAccount, $search, $searchLike, $searchLike, $searchLike, $location, $location, $durationMin, $durationMin, $durationMax, $durationMax];
 
     if ($savedOnly) {
         // 這裡也改成查詢新的 Interaction 總表，並指定 Action_Type = 'save'
@@ -136,7 +133,6 @@ function destinations_list_public_itineraries(): void
             'title' => $row['Title'],
             'startDate' => $row['Start_Date'],
             'endDate' => $row['End_Date'],
-            'transport' => $row['Transport'],
             'coverImage' => $row['Cover_Image'] ?: 'https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?q=80&w=1200&auto=format&fit=crop',
             'description' => $row['Public_Description'],
             'location' => $row['Public_Location'],
@@ -178,7 +174,7 @@ function destinations_get_public_itinerary_preview(): void
 
     $itineraryStmt = $conn->prepare(
         'SELECT i.Itinerary_ID, COALESCE(NULLIF(i.Public_Title, \'\'), i.Title) AS Title,
-                i.Start_Date, i.End_Date, i.Transport, COALESCE(NULLIF(i.Public_Cover_Image, \'\'), i.Cover_Image) AS Cover_Image,
+                i.Start_Date, i.End_Date, COALESCE(NULLIF(i.Public_Cover_Image, \'\'), i.Cover_Image) AS Cover_Image,
                 i.Public_Description, i.Public_Location, i.Copy_Count, i.Like_Count, i.View_Count, i.Account AS Owner_Account,
                 COALESCE(NULLIF(m.Name, \'\'), i.Account) AS Owner_Name, m.Avatar AS Owner_Avatar
                 ,(SELECT GROUP_CONCAT(pt.Tag ORDER BY pt.Tag SEPARATOR \'|\')
@@ -197,7 +193,7 @@ function destinations_get_public_itinerary_preview(): void
     if (!$itinerary) api_error('找不到此公開行程。', 404);
 
     $itemsStmt = $conn->prepare(
-        'SELECT Item_ID, Day_Number, Item_Type, Title, Start_Time, End_Time, Sort_Order, Latitude, Longitude
+        'SELECT Item_ID, Day_Number, Title, Start_Time, End_Time, Sort_Order, Latitude, Longitude
          FROM Itinerary_Item
          WHERE Itinerary_ID = ?
          ORDER BY Day_Number ASC, Sort_Order ASC, Item_ID ASC'
@@ -212,7 +208,6 @@ function destinations_get_public_itinerary_preview(): void
         $items[] = [
             'id' => (string)$row['Item_ID'],
             'dayNumber' => (int)$row['Day_Number'],
-            'type' => $row['Item_Type'],
             'title' => $row['Title'],
             'startTime' => $row['Start_Time'] ? substr($row['Start_Time'], 0, 5) : '',
             'endTime' => $row['End_Time'] ? substr($row['End_Time'], 0, 5) : '',
@@ -229,7 +224,6 @@ function destinations_get_public_itinerary_preview(): void
         'title' => $itinerary['Title'],
         'startDate' => $itinerary['Start_Date'],
         'endDate' => $itinerary['End_Date'],
-        'transport' => $itinerary['Transport'],
         'coverImage' => $itinerary['Cover_Image'],
         'description' => $itinerary['Public_Description'],
         'location' => $itinerary['Public_Location'],
@@ -259,7 +253,7 @@ function destinations_get_publishable_itineraries(): void
     if ($account === '') api_error('請先登入後再管理公開行程。', 401);
 
     $stmt = $conn->prepare(
-        "SELECT i.Itinerary_ID, i.Title, i.Start_Date, i.End_Date, i.Transport, i.Cover_Image, i.Is_Public,
+        "SELECT i.Itinerary_ID, i.Title, i.Start_Date, i.End_Date, i.Cover_Image, i.Is_Public,
                 i.Public_Title, i.Public_Cover_Image, i.Public_Description, i.Public_Location, COUNT(ii.Item_ID) AS Item_Count, MAX(ii.Day_Number) AS Day_Count,
                 (SELECT GROUP_CONCAT(pt.Tag ORDER BY pt.Tag SEPARATOR '|')
                    FROM Public_Itinerary_Tag pt
@@ -282,7 +276,6 @@ function destinations_get_publishable_itineraries(): void
             'title' => $row['Title'],
             'startDate' => $row['Start_Date'],
             'endDate' => $row['End_Date'],
-            'transport' => $row['Transport'],
             'coverImage' => $row['Cover_Image'],
             'isPublic' => (bool)$row['Is_Public'],
             'publicTitle' => $row['Public_Title'],
@@ -561,7 +554,7 @@ function destinations_copy_public_itinerary(): void
     $account = trim((string)($data->Account ?? ''));
     if ($sourceId <= 0 || $account === '') api_error('缺少行程或使用者資料', 400);
 
-    $sourceStmt = $conn->prepare('SELECT Itinerary_ID, Title, Start_Date, End_Date, Transport, Cover_Image, Dest_Lat, Dest_Lng FROM Itinerary WHERE Itinerary_ID = ? AND Is_Public = 1 LIMIT 1');
+    $sourceStmt = $conn->prepare('SELECT Itinerary_ID, Title, Start_Date, End_Date, Cover_Image, Dest_Lat, Dest_Lng FROM Itinerary WHERE Itinerary_ID = ? AND Is_Public = 1 LIMIT 1');
     if (!$sourceStmt) api_error('無法讀取公開行程', 500);
     $sourceStmt->bind_param('i', $sourceId);
     $sourceStmt->execute();
@@ -572,14 +565,14 @@ function destinations_copy_public_itinerary(): void
     $conn->begin_transaction();
     try {
         $title = trim((string)($data->Title ?? '')) ?: $source['Title'] . '（複製）';
-        $insertItinerary = $conn->prepare('INSERT INTO Itinerary (Account, Title, Start_Date, End_Date, Transport, Cover_Image, Dest_Lat, Dest_Lng, Is_Public, Copied_From_Itinerary_ID) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?)');
+        $insertItinerary = $conn->prepare('INSERT INTO Itinerary (Account, Title, Start_Date, End_Date, Cover_Image, Dest_Lat, Dest_Lng, Is_Public, Copied_From_Itinerary_ID) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)');
         if (!$insertItinerary) throw new Exception('建立新行程失敗');
-        $insertItinerary->bind_param('ssssssddi', $account, $title, $source['Start_Date'], $source['End_Date'], $source['Transport'], $source['Cover_Image'], $source['Dest_Lat'], $source['Dest_Lng'], $sourceId);
+        $insertItinerary->bind_param('sssssddi', $account, $title, $source['Start_Date'], $source['End_Date'], $source['Cover_Image'], $source['Dest_Lat'], $source['Dest_Lng'], $sourceId);
         if (!$insertItinerary->execute()) throw new Exception('建立新行程失敗');
         $newItineraryId = $conn->insert_id;
         $insertItinerary->close();
 
-        $copyItems = $conn->prepare('INSERT INTO Itinerary_Item (Itinerary_ID, Day_Number, Item_Type, Title, Start_Time, End_Time, Sort_Order, Latitude, Longitude) SELECT ?, Day_Number, Item_Type, Title, Start_Time, End_Time, Sort_Order, Latitude, Longitude FROM Itinerary_Item WHERE Itinerary_ID = ? ORDER BY Day_Number, Sort_Order');
+        $copyItems = $conn->prepare('INSERT INTO Itinerary_Item (Itinerary_ID, Day_Number, Title, Start_Time, End_Time, Sort_Order, Latitude, Longitude) SELECT ?, Day_Number, Title, Start_Time, End_Time, Sort_Order, Latitude, Longitude FROM Itinerary_Item WHERE Itinerary_ID = ? ORDER BY Day_Number, Sort_Order');
         if (!$copyItems) throw new Exception('複製行程地點失敗');
         $copyItems->bind_param('ii', $newItineraryId, $sourceId);
         if (!$copyItems->execute()) throw new Exception('複製行程地點失敗');

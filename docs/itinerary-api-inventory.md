@@ -40,20 +40,18 @@
 | --- | --- | --- | --- | --- |
 | [get_itineraries.php](F:/trav-app/backend/trav-api/itinerary/core.php:17) | 行程列表 | `Account*`；`Viewer_Account` 可省略，預設空字串 | `S + data: 行程[]` | 查 Account 擁有或加入的行程；只有 Account 與 Viewer_Account 相同時不限制公開狀態，否則加 `Is_Public=1`；依開始日期排序 |
 | [get_itinerary_detail.php](F:/trav-app/backend/trav-api/itinerary/core.php:78) | 行程主檔 | `Itinerary_ID*`、`Account*` | `S + data: 行程物件` | 擁有者或成員；查不到或不符權限回 error |
-| [create_itinerary.php](F:/trav-app/backend/trav-api/itinerary/core.php:118) | 建立行程 | `Account*`、`Title*`、`StartDate*`、`EndDate*`；`Transport` 預設 train；`Dest_Lat`、`Dest_Lng` 預設 null | `S + itinerary_id + coverImage` | Account 寫為擁有者；設定預設封面 |
+| [create_itinerary.php](F:/trav-app/backend/trav-api/itinerary/core.php:118) | 建立行程 | `Account*`、`Title*`、`StartDate*`、`EndDate*`；`Dest_Lat`、`Dest_Lng` 預設 null | `S + itinerary_id + coverImage` | Account 寫為擁有者；設定預設封面 |
 | [update_itinerary_info.php](F:/trav-app/backend/trav-api/itinerary/core.php:158) | 更新名稱與日期 | `Itinerary_ID*`、`Title*`、`StartDate*`、`EndDate*` | `S` | 未見行程權限檢查；三個資訊欄位一起更新 |
 | [delete_itinerary.php](F:/trav-app/backend/trav-api/itinerary/core.php:180) | 刪除／退出 | `Itinerary_ID*`、`Account*` | `S + message` | Account 等於擁有者：先刪成員與費用，再刪主檔；否則只刪該 Account 的成員關聯。兩種語意不能遺漏；程式未使用交易 |
 | [pin_itinerary.php](F:/trav-app/backend/trav-api/itinerary/core.php:227) | 釘選設定 | `Itinerary_ID*`、`Account*`、`Is_Pinned*` | `S` | SQL 條件限擁有者；以 execute 成功判定，未確認實際更新筆數 |
 | [toggle_itinerary_visibility.php](F:/trav-app/backend/trav-api/itinerary/core.php:251) | 設定公開／私密 | `Itinerary_ID*`、`Account*`、`Is_Public*` | `S + message` | SQL 條件限擁有者；成功後清除公開行程快取；未確認實際更新筆數。名稱為 toggle，但實際使用傳入值設定狀態 |
 | [get_or_create_invite_code.php](F:/trav-app/backend/trav-api/itinerary/core.php:281) | 取得／建立邀請碼 | `Itinerary_ID*` | `S + code` | 未見行程權限檢查；即使名稱以 get 開頭，也可能寫入 Invite_Code；生成 6 碼英數 |
 | [join_itinerary.php](F:/trav-app/backend/trav-api/itinerary/core.php:313) | 使用邀請碼加入 | `Invite_Code*`、`Account*` | `S + message` | 查邀請碼；擁有者不能加入自己的行程；使用 INSERT IGNORE，重複加入回 error |
-| [get_itinerary_style.php](F:/trav-app/backend/trav-api/itinerary/core.php:350) | 讀取旅行風格 | `Itinerary_ID*` | `S + style` | 未見行程權限檢查；缺 ID 為 400；找不到／未設定風格也回預設「自助旅行」 |
-| [update_itinerary_style.php](F:/trav-app/backend/trav-api/itinerary/core.php:376) | 設定旅行風格 | `Itinerary_ID*`、`Style*` | `S + style` | 未見行程權限檢查；Style 限自助旅行、親子旅行、情侶旅行、朋友出遊、商務出差、自訂；無效值 422，執行失敗 500 |
 | [update_cover_image.php](F:/trav-app/backend/trav-api/itinerary/uploads/upload.php:14) | 上傳封面 | **FormData**：`Itinerary_ID*`、`Account*`、檔案 `cover_image*` | `S + message + new_image_url` | 查擁有者；檔案最大 10 MiB，副檔名 jpg/jpeg/png/webp，另以 getimagesize 檢查；寫入實體圖片與 Cover_Image |
 
 ### Core 回傳欄位與相容性
 
-- 列表 `data[]`：`id`、`title`、`startDate`、`endDate`、`transport`、`coverImage`、`isPinned`、`isPublic`、`Account`。日期轉成 `YYYY/MM/DD`；兩個 is 欄位轉成布林。
+- 列表 `data[]`：`id`、`title`、`startDate`、`endDate`、`coverImage`、`isPinned`、`isPublic`、`Account`。日期轉成 `YYYY/MM/DD`；兩個 is 欄位轉成布林。
 - 詳情 `data`：`id`、`title`、`startDate`、`endDate`、`coverImage`、`ownerAccount`、`destLat`、`destLng`。日期維持資料庫的 `YYYY-MM-DD`。
 - 新建 ID 的回傳鍵是 `itinerary_id`，與細項的 `Item_ID`、費用的 `Expense_ID` 不同。
 - [個人頁面呼叫](F:/trav-app/app/profile/page.tsx:69)未傳 `Viewer_Account`；[Planner 列表呼叫](F:/trav-app/app/planner/page.tsx:84)有傳。這會造成目前公開篩選條件不同，合併時應先保留並另外決定是否調整。
@@ -65,25 +63,19 @@
 | 原始端點（資料來源） | 用途 | JSON 輸入／表單 | 成功回應 | 目前權限與特殊行為 |
 | --- | --- | --- | --- | --- |
 | [get_itinerary_items.php](F:/trav-app/backend/trav-api/itinerary/items.php:30) | 讀取細項 | `Itinerary_ID*` | `S + data: 細項[]` | 未見行程權限檢查；JOIN Place；依 Day_Number、Sort_Order 排序；缺 ID 400 |
-| [create_itinerary_item.php](F:/trav-app/backend/trav-api/itinerary/items.php:79) | 建立細項 | `Itinerary_ID*`、`Day_Number*`、`Title*`；`StartTime`、`EndTime`、`Place_ID`、`Item_Type`、`Latitude`、`Longitude`、`Content`、`Reservation_No`、`Link`、`Screenshot_URL` | 程式預期 `S + message + Item_ID` | 未見行程權限檢查；Item_Type 預設 custom；Sort_Order 為同日最大值 +1，首筆 0；時間錯誤／相同回 422；**另見下方原始碼異常** |
+| [create_itinerary_item.php](F:/trav-app/backend/trav-api/itinerary/items.php:79) | 建立細項 | `Itinerary_ID*`、`Day_Number*`、`Title*`；`StartTime`、`EndTime`、`Place_ID`、`Latitude`、`Longitude` | 程式預期 `S + message + Item_ID` | 未見行程權限檢查；Sort_Order 為同日最大值 +1，首筆 0；時間錯誤／相同回 422 |
 | [update_item_title.php](F:/trav-app/backend/trav-api/itinerary/items.php:136) | 修改標題 | `Item_ID*`、`Title*`（isset；可空字串） | `S` | 未見行程權限檢查；只更新 Title |
 | [update_item_time.php](F:/trav-app/backend/trav-api/itinerary/items.php:158) | 修改起訖時間 | `Item_ID*`；`StartTime`、`EndTime` | `S` | 未見行程權限檢查；兩個時間一起更新；缺少、null、空字串皆轉 null；格式錯誤／起訖相同 422 |
 | [update_item_location.php](F:/trav-app/backend/trav-api/itinerary/items.php:193) | 修改座標與選用標題 | `Item_ID*`（正整數）、`Latitude*`、`Longitude*`；`Title` | `S` | 未見行程權限檢查；座標須數值、緯度 -90～90、經度 -180～180；Title trim 後非空才更新；輸入錯誤 400、執行失敗 500 |
-| [update_item_details.php](F:/trav-app/backend/trav-api/itinerary/items.php:231) | 修改筆記／預約資料 | `Item_ID*`；`Content`、`Reservation_No`、`Link`、`Screenshot_URL` | `S + message` | 未見行程權限檢查；四個資訊欄位一起覆寫，缺少／null 欄位會寫成 null |
 | [delete_itinerary_item.php](F:/trav-app/backend/trav-api/itinerary/items.php:262) | 刪除細項 | `Item_ID*` | `S` | 未見行程權限檢查 |
 | [update_sort_order.php](F:/trav-app/backend/trav-api/itinerary/items.php:284) | 批次排序 | `updates*`：非空陣列，元素含 `id`、`sortOrder` | `S` | 未見行程權限檢查；id、sortOrder 轉整數，使用單一 CASE UPDATE；更新只涉及 Sort_Order |
-| [upload_item_screenshot.php](F:/trav-app/backend/trav-api/itinerary/uploads/upload.php:97) | 上傳預約截圖 | **FormData**：`Item_ID*`、檔案 `screenshot*` | `S + screenshotUrl` | 未見行程權限檢查；最大 10 MiB，副檔名 jpg/jpeg/png/webp；更新 Screenshot_URL；不像封面有 getimagesize 檢查 |
 
 ### Items 回傳欄位與相容性
 
-- 細項 `data[]`：`id`（字串）、`placeId`（整數或 null）、`dayNumber`（整數）、`type`、`title`、`startTime`、`endTime`、`sortOrder`（整數）、`Latitude`、`Longitude`、`content`、`reservationNo`、`link`、`screenshotUrl`。
+- 細項 `data[]`：`id`（字串）、`placeId`（整數或 null）、`dayNumber`（整數）、`title`、`startTime`、`endTime`、`sortOrder`（整數）、`Latitude`、`Longitude`。
 - 時間讀取轉為 HH:mm，未設定回空字串；時間寫入接受 HH:mm 或 HH:mm:ss，再截成 HH:mm。未見禁止結束早於開始的檢查。
-- 關聯 Place 存在時，回傳標題、分類與座標優先採用 Place 欄位，再回退細項欄位；整合更新時要考慮讀取來源。
-- 詳細資訊更新與時間更新目前是「整組覆寫」。若未來改成部分更新，必須明訂「未傳保持原值」與「傳 null 清空」的規則，並保留或轉接舊操作的語意。
+- 關聯 Place 存在時，回傳標題與座標優先採用 Place 欄位，再回退細項欄位；整合更新時要考慮讀取來源。
 - 前端拖曳排序會另行呼叫時間更新；合併排序入口時不能遺漏這個流程，見 [排序與時間呼叫](F:/trav-app/app/planner/[id]/page.tsx:2368)。
-- 詳細資訊儲存先送 JSON 更新，選了圖片才另送 FormData 上傳，最後重新抓細項；目前這兩個 fetch 未解析成功／失敗回應，見 [詳細資訊儲存](F:/trav-app/app/planner/[id]/page.tsx:2387)。
-- 截圖實體目錄用相對字串 `../uploads/reservations/`，回傳 URL 卻是 `/uploads/reservations/`；本次只記錄路徑差異，未確認伺服器工作目錄與實際檔案位置。
-- 原始碼異常：[create_itinerary_item.php:17](F:/trav-app/backend/trav-api/itinerary/items.php:79) 與 [第 30 行](F:/trav-app/backend/trav-api/itinerary/items.php:79) 在條件式出現字面值 `\vert{}\vert{}`。這不是預期的 PHP 邏輯 OR `||`，需要在後續修改前檢查。主機未找到 PHP CLI，Docker 存取遭拒，本次未完成 php -l，也未修改該檔案；表格中的建立行為是依程式意圖整理，尚未確認可執行。
 
 ## 5. Expenses：5 個端點
 
@@ -203,14 +195,12 @@
 | [/itinerary/core/delete_itinerary.php](F:/trav-app/backend/trav-api/itinerary/core.php:180) | 1 | [app/planner/page.tsx:191](F:/trav-app/app/planner/page.tsx:191) |
 | [/itinerary/core/get_itineraries.php](F:/trav-app/backend/trav-api/itinerary/core.php:17) | 2 | [app/planner/page.tsx:84](F:/trav-app/app/planner/page.tsx:84)<br>[app/profile/page.tsx:69](F:/trav-app/app/profile/page.tsx:69) |
 | [/itinerary/core/get_itinerary_detail.php](F:/trav-app/backend/trav-api/itinerary/core.php:78) | 1 | [app/planner/[id]/page.tsx:2108](F:/trav-app/app/planner/[id]/page.tsx:2108) |
-| [/itinerary/core/get_itinerary_style.php](F:/trav-app/backend/trav-api/itinerary/core.php:350) | 1 | [app/planner/[id]/page.tsx:2119](F:/trav-app/app/planner/[id]/page.tsx:2119) |
 | [/itinerary/core/get_or_create_invite_code.php](F:/trav-app/backend/trav-api/itinerary/core.php:281) | 3 | [app/planner/page.tsx:114](F:/trav-app/app/planner/page.tsx:114)<br>[app/planner/[id]/page.tsx:190](F:/trav-app/app/planner/[id]/page.tsx:190)<br>[app/planner/[id]/page.tsx:612](F:/trav-app/app/planner/[id]/page.tsx:612) |
 | [/itinerary/core/join_itinerary.php](F:/trav-app/backend/trav-api/itinerary/core.php:313) | 2 | [app/planner/page.tsx:167](F:/trav-app/app/planner/page.tsx:167)<br>[app/profile/page.tsx:174](F:/trav-app/app/profile/page.tsx:174) |
 | [/itinerary/core/pin_itinerary.php](F:/trav-app/backend/trav-api/itinerary/core.php:227) | 1 | [app/planner/page.tsx:209](F:/trav-app/app/planner/page.tsx:209) |
 | [/itinerary/core/toggle_itinerary_visibility.php](F:/trav-app/backend/trav-api/itinerary/core.php:251) | 0 | 未找到直接前端呼叫 |
 | [/itinerary/core/update_cover_image.php](F:/trav-app/backend/trav-api/itinerary/uploads/upload.php:14) | 1 | [app/planner/[id]/page.tsx:2140](F:/trav-app/app/planner/[id]/page.tsx:2140) |
 | [/itinerary/core/update_itinerary_info.php](F:/trav-app/backend/trav-api/itinerary/core.php:158) | 1 | [app/planner/[id]/page.tsx:2162](F:/trav-app/app/planner/[id]/page.tsx:2162) |
-| [/itinerary/core/update_itinerary_style.php](F:/trav-app/backend/trav-api/itinerary/core.php:376) | 1 | [app/planner/[id]/page.tsx:2150](F:/trav-app/app/planner/[id]/page.tsx:2150) |
 | [/itinerary/expenses/create_expense.php](F:/trav-app/backend/trav-api/itinerary/expenses.php:82) | 1 | [app/planner/[id]/page.tsx:705](F:/trav-app/app/planner/[id]/page.tsx:705) |
 | [/itinerary/expenses/delete_expense.php](F:/trav-app/backend/trav-api/itinerary/expenses.php:161) | 1 | [app/planner/[id]/page.tsx:785](F:/trav-app/app/planner/[id]/page.tsx:785) |
 | [/itinerary/expenses/get_expenses.php](F:/trav-app/backend/trav-api/itinerary/expenses.php:26) | 1 | [app/planner/[id]/page.tsx:552](F:/trav-app/app/planner/[id]/page.tsx:552) |
@@ -219,12 +209,10 @@
 | [/itinerary/items/create_itinerary_item.php](F:/trav-app/backend/trav-api/itinerary/items.php:79) | 2 | [app/planner/[id]/page.tsx:2251](F:/trav-app/app/planner/[id]/page.tsx:2251)<br>[app/planner/[id]/page.tsx:2331](F:/trav-app/app/planner/[id]/page.tsx:2331) |
 | [/itinerary/items/delete_itinerary_item.php](F:/trav-app/backend/trav-api/itinerary/items.php:262) | 1 | [app/planner/[id]/page.tsx:2324](F:/trav-app/app/planner/[id]/page.tsx:2324) |
 | [/itinerary/items/get_itinerary_items.php](F:/trav-app/backend/trav-api/itinerary/items.php:30) | 1 | [app/planner/[id]/page.tsx:2077](F:/trav-app/app/planner/[id]/page.tsx:2077) |
-| [/itinerary/items/update_item_details.php](F:/trav-app/backend/trav-api/itinerary/items.php:231) | 1 | [app/planner/[id]/page.tsx:2387](F:/trav-app/app/planner/[id]/page.tsx:2387) |
 | [/itinerary/items/update_item_location.php](F:/trav-app/backend/trav-api/itinerary/items.php:193) | 1 | [app/planner/[id]/page.tsx:1975](F:/trav-app/app/planner/[id]/page.tsx:1975) |
 | [/itinerary/items/update_item_time.php](F:/trav-app/backend/trav-api/itinerary/items.php:158) | 2 | [app/planner/[id]/page.tsx:2306](F:/trav-app/app/planner/[id]/page.tsx:2306)<br>[app/planner/[id]/page.tsx:2371](F:/trav-app/app/planner/[id]/page.tsx:2371) |
 | [/itinerary/items/update_item_title.php](F:/trav-app/backend/trav-api/itinerary/items.php:136) | 1 | [app/planner/[id]/page.tsx:2281](F:/trav-app/app/planner/[id]/page.tsx:2281) |
 | [/itinerary/items/update_sort_order.php](F:/trav-app/backend/trav-api/itinerary/items.php:284) | 1 | [app/planner/[id]/page.tsx:2368](F:/trav-app/app/planner/[id]/page.tsx:2368) |
-| [/itinerary/items/upload_item_screenshot.php](F:/trav-app/backend/trav-api/itinerary/uploads/upload.php:97) | 1 | [app/planner/[id]/page.tsx:2403](F:/trav-app/app/planner/[id]/page.tsx:2403) |
 | [/itinerary/luggage/get_luggage.php](F:/trav-app/backend/trav-api/itinerary/luggage.php:41) | 1 | [app/planner/[id]/page.tsx:1169](F:/trav-app/app/planner/[id]/page.tsx:1169) |
 | [/itinerary/luggage/update_luggage.php](F:/trav-app/backend/trav-api/itinerary/luggage.php:58) | 1 | [app/planner/[id]/page.tsx:1196](F:/trav-app/app/planner/[id]/page.tsx:1196) |
 | [/itinerary/places/get_place_tags.php](F:/trav-app/backend/trav-api/itinerary/places.php:17) | 1 | [app/planner/[id]/page.tsx:1760](F:/trav-app/app/planner/[id]/page.tsx:1760) |
@@ -292,14 +280,12 @@ F:\trav-app\backend\trav-api\itinerary\
 | `/itinerary/core/delete_itinerary.php` | `/itinerary/core.php?action=delete` | [core.php:180](F:/trav-app/backend/trav-api/itinerary/core.php:180) |
 | `/itinerary/core/get_itineraries.php` | `/itinerary/core.php?action=list` | [core.php:17](F:/trav-app/backend/trav-api/itinerary/core.php:17) |
 | `/itinerary/core/get_itinerary_detail.php` | `/itinerary/core.php?action=detail` | [core.php:78](F:/trav-app/backend/trav-api/itinerary/core.php:78) |
-| `/itinerary/core/get_itinerary_style.php` | `/itinerary/core.php?action=get_style` | [core.php:350](F:/trav-app/backend/trav-api/itinerary/core.php:350) |
 | `/itinerary/core/get_or_create_invite_code.php` | `/itinerary/core.php?action=invite` | [core.php:281](F:/trav-app/backend/trav-api/itinerary/core.php:281) |
 | `/itinerary/core/join_itinerary.php` | `/itinerary/core.php?action=join` | [core.php:313](F:/trav-app/backend/trav-api/itinerary/core.php:313) |
 | `/itinerary/core/pin_itinerary.php` | `/itinerary/core.php?action=pin` | [core.php:227](F:/trav-app/backend/trav-api/itinerary/core.php:227) |
 | `/itinerary/core/toggle_itinerary_visibility.php` | `/itinerary/core.php?action=visibility` | [core.php:251](F:/trav-app/backend/trav-api/itinerary/core.php:251) |
 | `/itinerary/core/update_cover_image.php` | `/itinerary/uploads/upload.php?action=cover` | [uploads/upload.php:14](F:/trav-app/backend/trav-api/itinerary/uploads/upload.php:14) |
 | `/itinerary/core/update_itinerary_info.php` | `/itinerary/core.php?action=update` | [core.php:158](F:/trav-app/backend/trav-api/itinerary/core.php:158) |
-| `/itinerary/core/update_itinerary_style.php` | `/itinerary/core.php?action=update_style` | [core.php:376](F:/trav-app/backend/trav-api/itinerary/core.php:376) |
 | `/itinerary/expenses/create_expense.php` | `/itinerary/expenses.php?action=create` | [expenses.php:82](F:/trav-app/backend/trav-api/itinerary/expenses.php:82) |
 | `/itinerary/expenses/delete_expense.php` | `/itinerary/expenses.php?action=delete` | [expenses.php:161](F:/trav-app/backend/trav-api/itinerary/expenses.php:161) |
 | `/itinerary/expenses/get_expenses.php` | `/itinerary/expenses.php?action=list` | [expenses.php:26](F:/trav-app/backend/trav-api/itinerary/expenses.php:26) |
@@ -308,12 +294,10 @@ F:\trav-app\backend\trav-api\itinerary\
 | `/itinerary/items/create_itinerary_item.php` | `/itinerary/items.php?action=create` | [items.php:79](F:/trav-app/backend/trav-api/itinerary/items.php:79) |
 | `/itinerary/items/delete_itinerary_item.php` | `/itinerary/items.php?action=delete` | [items.php:262](F:/trav-app/backend/trav-api/itinerary/items.php:262) |
 | `/itinerary/items/get_itinerary_items.php` | `/itinerary/items.php?action=list` | [items.php:30](F:/trav-app/backend/trav-api/itinerary/items.php:30) |
-| `/itinerary/items/update_item_details.php` | `/itinerary/items.php?action=update_details` | [items.php:231](F:/trav-app/backend/trav-api/itinerary/items.php:231) |
 | `/itinerary/items/update_item_location.php` | `/itinerary/items.php?action=update_location` | [items.php:193](F:/trav-app/backend/trav-api/itinerary/items.php:193) |
 | `/itinerary/items/update_item_time.php` | `/itinerary/items.php?action=update_time` | [items.php:158](F:/trav-app/backend/trav-api/itinerary/items.php:158) |
 | `/itinerary/items/update_item_title.php` | `/itinerary/items.php?action=update_title` | [items.php:136](F:/trav-app/backend/trav-api/itinerary/items.php:136) |
 | `/itinerary/items/update_sort_order.php` | `/itinerary/items.php?action=sort` | [items.php:284](F:/trav-app/backend/trav-api/itinerary/items.php:284) |
-| `/itinerary/items/upload_item_screenshot.php` | `/itinerary/uploads/upload.php?action=screenshot` | [uploads/upload.php:97](F:/trav-app/backend/trav-api/itinerary/uploads/upload.php:97) |
 | `/itinerary/luggage/get_luggage.php` | `/itinerary/luggage.php?action=get` | [luggage.php:41](F:/trav-app/backend/trav-api/itinerary/luggage.php:41) |
 | `/itinerary/luggage/update_luggage.php` | `/itinerary/luggage.php?action=update` | [luggage.php:58](F:/trav-app/backend/trav-api/itinerary/luggage.php:58) |
 | `/itinerary/places/get_place_tags.php` | `/itinerary/places.php?action=get` | [places.php:17](F:/trav-app/backend/trav-api/itinerary/places.php:17) |
@@ -323,7 +307,6 @@ F:\trav-app\backend\trav-api\itinerary\
 
 - 前端 43 處呼叫已遷移；涉及 Planner 列表、行程編輯、個人頁面。公開狀態操作雖無直接前端呼叫，仍保留為 core 的 visibility action。
 - 各操作輸入欄位、成功 payload、資料排序、個人行李格式、輪詢頻率與資料存取規則沿用盤點中的邏輯。
-- items 仍分 update_title / update_time / update_location / update_details，這次沒有把整組覆寫改為部分更新；缺欄位清空規則維持原狀。
 - 保留地點標籤交易、費用分攤、排序時另更新時間、聊天最新 100 筆、公開快取失效，以及擁有者刪除／成員退出。
 - 費用與聊天的重複建表 SQL 各集中成模組函式，仍在原本操作中執行；沒有另外做 schema migration 或效能重構。
 - 全部新入口明確拒絕非 POST（405）；OPTIONS 由既有 db_connect.php 回 200。無效／缺少 action、無效 JSON 或 JSON 根節點陣列回 400。其他操作層錯誤狀態碼維持既有邏輯；luggage 缺欄位的調整另見第 14 節。

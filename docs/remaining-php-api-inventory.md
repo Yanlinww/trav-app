@@ -18,7 +18,7 @@
 
 `get_places.php` 原本就是單一地點查詢端點，沒有其他同類端點可合併，因此保留。`db_connect.php` 是共用程式；`admin/schema.php` 與 `admin/migrations/run.php` 是資料表及命令列遷移工具。
 
-行程的兩支上傳端點也合併為 `POST /itinerary/uploads/upload.php?action=cover` 和 `POST /itinerary/uploads/upload.php?action=screenshot`，仍使用各自原有的 FormData 欄位；詳見 `itinerary-api-inventory.md`。
+行程封面使用 `POST /itinerary/uploads/upload.php?action=cover` 上傳；詳見 `itinerary-api-inventory.md`。
 
 密碼及第三方登入仍會回傳使用者資料，但不再建立專案自建的登入權杖。`admin/api.php` 暫時回傳 503；追蹤操作與追蹤名單端點不再開放。既有追蹤紀錄仍保留於 `User_Follows`。
 

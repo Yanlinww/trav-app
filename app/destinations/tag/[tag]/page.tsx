@@ -11,7 +11,6 @@ type PublicItinerary = {
   title: string;
   startDate: string;
   endDate: string;
-  transport: string;
   coverImage: string;
   description?: string | null;
   location?: string | null;
