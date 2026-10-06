@@ -2,7 +2,7 @@
 /**
  * 行程細項：每天的景點／自訂項目、時間、座標與拖曳排序。
  * 呼叫：POST /itinerary/items.php?action=功能名稱，參數放在 JSON 物件。
- * 主要資料表：Itinerary_Item、Place。
+ * 主要資料表：Itinerary_Item。
  * 閱讀順序：先看底部 $handlers 找功能，再看對應函式中的輸入、SQL 與回應。
  */
 require_once __DIR__ . '/../db_connect.php';
@@ -24,18 +24,12 @@ function normalize_time_value($value) {
 /**
  * 讀取每天的行程細項
  * action=list｜輸入：Itinerary_ID。
- * LEFT JOIN Place；地點資料非 null 時優先採用，否則使用細項自己的名稱與座標。
  * 回傳：status、data（細項陣列），依 Day_Number、Sort_Order 排序，時間為 HH:mm。
  */
 function items_get_itinerary_items(mysqli $conn, object $data): void {
     if (!empty($data->Itinerary_ID)) {$sql = "
-            SELECT
-                i.*,
-                p.Name AS Place_Name,
-                p.Latitude AS Place_Lat,
-                p.Longitude AS Place_Lng
+            SELECT i.*
             FROM `Itinerary_Item` i
-            LEFT JOIN `Place` p ON i.Place_ID = p.Place_ID
             WHERE i.`Itinerary_ID` = ?
             ORDER BY i.`Day_Number` ASC, i.`Sort_Order` ASC
         ";
@@ -45,14 +39,13 @@ function items_get_itinerary_items(mysqli $conn, object $data): void {
         $stmt->execute();$result = $stmt->get_result();$items = [];
         while ($row = $result->fetch_assoc()) {$items[] = [
                 "id" => (string)$row['Item_ID'],
-                "placeId" => $row['Place_ID'] ? (int)$row['Place_ID'] : null,
                 "dayNumber" => (int)$row['Day_Number'],
-                "title" => $row['Place_Name'] ?? $row['Title'],
+                "title" => $row['Title'],
                 "startTime" => $row['Start_Time'] ? substr($row['Start_Time'], 0, 5) : "",
                 "endTime" => $row['End_Time'] ? substr($row['End_Time'], 0, 5) : "",
                 "sortOrder" => (int)$row['Sort_Order'],
-                "Latitude" => $row['Place_Lat'] ?? $row['Latitude'],
-                "Longitude" => $row['Place_Lng'] ?? $row['Longitude']
+                "Latitude" => $row['Latitude'],
+                "Longitude" => $row['Longitude']
             ];
         }
 
@@ -66,7 +59,7 @@ function items_get_itinerary_items(mysqli $conn, object $data): void {
 /**
  * 建立行程細項
  * action=create｜必填：Itinerary_ID、Day_Number、Title。
- * 選填：StartTime、EndTime、Place_ID、Latitude、Longitude。
+ * 選填：StartTime、EndTime、Latitude、Longitude。
  * 時間先正規化；新項目放在同一天排序的末尾。回傳 status、message、Item_ID。
  */
 function items_create_itinerary_item(mysqli $conn, object $data): void {
@@ -88,7 +81,6 @@ function items_create_itinerary_item(mysqli $conn, object $data): void {
             exit();
         }
 
-        $place_id = (isset($data->Place_ID) && $data->Place_ID !== '') ? (int)$data->Place_ID : null;
         $lat = isset($data->Latitude) ? $data->Latitude : null;
         $lng = isset($data->Longitude) ?$data->Longitude : null;
 
@@ -99,9 +91,9 @@ function items_create_itinerary_item(mysqli $conn, object $data): void {
         $sort_stmt->close();
 
         // 參數順序對應 INSERT 的欄位順序。
-        $stmt =$conn->prepare("INSERT INTO `Itinerary_Item` (`Itinerary_ID`, `Day_Number`, `Place_ID`, `Title`, `Start_Time`, `End_Time`, `Sort_Order`, `Latitude`, `Longitude`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+        $stmt =$conn->prepare("INSERT INTO `Itinerary_Item` (`Itinerary_ID`, `Day_Number`, `Title`, `Start_Time`, `End_Time`, `Sort_Order`, `Latitude`, `Longitude`) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
 
-        $stmt->bind_param("iiisssidd", $itinerary_id, $day_number, $place_id, $title, $start_time, $end_time, $new_sort_order, $lat, $lng);
+        $stmt->bind_param("iisssidd", $itinerary_id, $day_number, $title, $start_time, $end_time, $new_sort_order, $lat, $lng);
 
         if ($stmt->execute()) {
             echo json_encode(["status" => "success", "message" => "建立成功", "Item_ID" => $conn->insert_id]);
@@ -117,7 +109,7 @@ function items_create_itinerary_item(mysqli $conn, object $data): void {
 /**
  * 修改細項標題
  * action=update_title｜輸入：Item_ID、Title（可為空字串）。
- * 只更新 Itinerary_Item.Title，不修改關聯 Place 的名稱。
+ * 只更新 Itinerary_Item.Title。
  * 回傳：status；失敗時附 message。
  */
 function items_update_item_title(mysqli $conn, object $data): void {

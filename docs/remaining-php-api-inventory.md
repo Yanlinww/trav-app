@@ -16,7 +16,7 @@
 | `get_user_files.php` | `POST /files.php?action=get` | 讀取個人檔案清單 |
 | `upload_photo.php` | `POST /files.php?action=upload` | FormData 上傳照片 |
 
-`get_places.php` 原本就是單一地點查詢端點，沒有其他同類端點可合併，因此保留。`db_connect.php` 是共用程式；`admin/schema.php` 與 `admin/migrations/run.php` 是資料表及命令列遷移工具。
+`get_places.php` 已隨舊 `Place` 表移除。`db_connect.php` 是共用程式；`admin/schema.php` 與 `admin/migrations/run.php` 是資料表及命令列遷移工具。
 
 行程封面使用 `POST /itinerary/uploads/upload.php?action=cover` 上傳；詳見 `itinerary-api-inventory.md`。
 

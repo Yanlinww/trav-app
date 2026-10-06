@@ -62,8 +62,8 @@
 
 | 原始端點（資料來源） | 用途 | JSON 輸入／表單 | 成功回應 | 目前權限與特殊行為 |
 | --- | --- | --- | --- | --- |
-| [get_itinerary_items.php](F:/trav-app/backend/trav-api/itinerary/items.php:30) | 讀取細項 | `Itinerary_ID*` | `S + data: 細項[]` | 未見行程權限檢查；JOIN Place；依 Day_Number、Sort_Order 排序；缺 ID 400 |
-| [create_itinerary_item.php](F:/trav-app/backend/trav-api/itinerary/items.php:79) | 建立細項 | `Itinerary_ID*`、`Day_Number*`、`Title*`；`StartTime`、`EndTime`、`Place_ID`、`Latitude`、`Longitude` | 程式預期 `S + message + Item_ID` | 未見行程權限檢查；Sort_Order 為同日最大值 +1，首筆 0；時間錯誤／相同回 422 |
+| [get_itinerary_items.php](F:/trav-app/backend/trav-api/itinerary/items.php:30) | 讀取細項 | `Itinerary_ID*` | `S + data: 細項[]` | 未見行程權限檢查；依 Day_Number、Sort_Order 排序；缺 ID 400 |
+| [create_itinerary_item.php](F:/trav-app/backend/trav-api/itinerary/items.php:79) | 建立細項 | `Itinerary_ID*`、`Day_Number*`、`Title*`；`StartTime`、`EndTime`、`Latitude`、`Longitude` | 程式預期 `S + message + Item_ID` | 未見行程權限檢查；Sort_Order 為同日最大值 +1，首筆 0；時間錯誤／相同回 422 |
 | [update_item_title.php](F:/trav-app/backend/trav-api/itinerary/items.php:136) | 修改標題 | `Item_ID*`、`Title*`（isset；可空字串） | `S` | 未見行程權限檢查；只更新 Title |
 | [update_item_time.php](F:/trav-app/backend/trav-api/itinerary/items.php:158) | 修改起訖時間 | `Item_ID*`；`StartTime`、`EndTime` | `S` | 未見行程權限檢查；兩個時間一起更新；缺少、null、空字串皆轉 null；格式錯誤／起訖相同 422 |
 | [update_item_location.php](F:/trav-app/backend/trav-api/itinerary/items.php:193) | 修改座標與選用標題 | `Item_ID*`（正整數）、`Latitude*`、`Longitude*`；`Title` | `S` | 未見行程權限檢查；座標須數值、緯度 -90～90、經度 -180～180；Title trim 後非空才更新；輸入錯誤 400、執行失敗 500 |
@@ -72,9 +72,9 @@
 
 ### Items 回傳欄位與相容性
 
-- 細項 `data[]`：`id`（字串）、`placeId`（整數或 null）、`dayNumber`（整數）、`title`、`startTime`、`endTime`、`sortOrder`（整數）、`Latitude`、`Longitude`。
+- 細項 `data[]`：`id`（字串）、`dayNumber`（整數）、`title`、`startTime`、`endTime`、`sortOrder`（整數）、`Latitude`、`Longitude`。
 - 時間讀取轉為 HH:mm，未設定回空字串；時間寫入接受 HH:mm 或 HH:mm:ss，再截成 HH:mm。未見禁止結束早於開始的檢查。
-- 關聯 Place 存在時，回傳標題與座標優先採用 Place 欄位，再回退細項欄位；整合更新時要考慮讀取來源。
+- 舊 `Place` 表及 `Itinerary_Item.Place_ID` 已移除；標題和座標直接取自 `Itinerary_Item`。地點標籤仍使用獨立的 `Itinerary_Places`。
 - 前端拖曳排序會另行呼叫時間更新；合併排序入口時不能遺漏這個流程，見 [排序與時間呼叫](F:/trav-app/app/planner/[id]/page.tsx:2368)。
 
 ## 5. Expenses：5 個端點
