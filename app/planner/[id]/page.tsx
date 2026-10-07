@@ -537,8 +537,6 @@ export default function ItineraryEditor() {
   const [selectedMapItem, setSelectedMapItem] = useState<any | null>(null);
   const [editingLocationItemId, setEditingLocationItemId] = useState<string | null>(null);
   const [searchMarkers, setSearchMarkers] = useState<any[]>([]);
-  const [placeTags, setPlaceTags] = useState<Record<string, string[]>>({});
-  const [placeTagsSaving, setPlaceTagsSaving] = useState(false);
   const mapRef = useRef<google.maps.Map | null>(null);
   const [mapCenter, setMapCenter] = useState({ lat: 25.0478, lng: 121.5170 });
   const [mapZoom, setMapZoom] = useState(12);
@@ -616,23 +614,6 @@ export default function ItineraryEditor() {
     }
   }, [fetchPlaceDetailsOnce]);
 
-  const getPlaceMapTags = (place: any) => {
-    const tags = new Set<string>([
-      ...(Array.isArray(place?.tags) ? place.tags : []),
-      ...(Array.isArray(placeTags[String(place?.id || '')]) ? placeTags[String(place?.id || '')] : []),
-    ]);
-    const types = Array.isArray(place?.types) ? place.types : [];
-
-    if (types.includes('restaurant') || types.includes('meal_takeaway') || types.includes('meal_delivery')) tags.add('餐廳');
-    if (types.includes('cafe')) tags.add('咖啡廳');
-    if (types.includes('lodging')) tags.add('住宿');
-    if (types.includes('tourist_attraction') || types.includes('museum') || types.includes('park')) tags.add('景點');
-    if (['PRICE_LEVEL_FREE', 'PRICE_LEVEL_INEXPENSIVE'].includes(place?.priceLevel)) tags.add('平價');
-    if (types.some((type: string) => ['restaurant', 'cafe', 'meal_takeaway', 'meal_delivery', 'lodging'].includes(type))) tags.add('單人友善');
-
-    return tags;
-  };
-
   const focusMapOnItem = useCallback((item: any) => {
     const lat = Number(item.Latitude);
     const lng = Number(item.Longitude);
@@ -704,52 +685,6 @@ export default function ItineraryEditor() {
       });
     });
   }, [fitCurrentDayPlaces]);
-
-  const loadPlaceTags = useCallback(async (places: any[]) => {
-    const placeIds = places.map((place) => String(place?.id || '')).filter(Boolean);
-    if (!placeIds.length || !currentAccount) return;
-    try {
-      const response = await fetch('http://localhost:8080/itinerary/places.php?action=get', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ Itinerary_ID: params.id, Account: currentAccount, PlaceIds: placeIds }),
-      });
-      const data = await response.json();
-      if (response.ok && data.status === 'success') setPlaceTags((current) => ({ ...current, ...(data.data || {}) }));
-    } catch (error) {
-      console.warn('Place tags load failed:', error);
-    }
-  }, [currentAccount, params.id]);
-
-  const savePlaceTags = useCallback(async (place: any, tags: string[]) => {
-    if (!place?.id || !currentAccount) return;
-    setPlaceTagsSaving(true);
-    try {
-      const response = await fetch('http://localhost:8080/itinerary/places.php?action=update', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          Itinerary_ID: params.id,
-          Account: currentAccount,
-          Place: {
-            GooglePlaceID: place.id,
-            Name: place.displayName?.text || place.name || '未命名地點',
-            Address: place.formattedAddress || '',
-            Latitude: place.location?.latitude,
-            Longitude: place.location?.longitude,
-          },
-          Tags: tags,
-        }),
-      });
-      const data = await response.json();
-      if (!response.ok || data.status !== 'success') throw new Error(data.message || '標籤儲存失敗');
-      setPlaceTags((current) => ({ ...current, [String(place.id)]: tags }));
-    } catch (error) {
-      alert(error instanceof Error ? error.message : '標籤儲存失敗');
-    } finally {
-      setPlaceTagsSaving(false);
-    }
-  }, [currentAccount, params.id]);
 
   useEffect(() => {
     routePolylineRef.current?.setMap(null);
@@ -855,7 +790,6 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
       if (data.places && data.places.length > 0) {
         setMapStatusMessage(null);
         setSearchMarkers(data.places);
-        void loadPlaceTags(data.places);
         
         if (mapRef.current && window.google) {
           const bounds = new window.google.maps.LatLngBounds();
@@ -1597,18 +1531,6 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
                   >
                     <div className="p-1 max-w-[200px] text-slate-800">
                       <h3 className="font-bold text-base mb-1">{selectedPlace.displayName?.text}</h3>
-                      {(() => {
-                        const tagOptions = ['單人友善', '寵物友善', '餐廳', '咖啡廳'];
-                        const savedTags = placeTags[String(selectedPlace.id)];
-                        const inferredTags = Array.from(getPlaceMapTags(selectedPlace));
-                        const currentTags = savedTags || inferredTags;
-                        return <div className="mb-2 flex flex-wrap gap-1">
-                          {tagOptions.map((tag) => {
-                            const selected = currentTags.includes(tag);
-                            return <button key={tag} type="button" disabled={placeTagsSaving} onClick={() => savePlaceTags(selectedPlace, selected ? currentTags.filter((item) => item !== tag) : [...currentTags, tag])} className={`rounded-full border px-2 py-1 text-[10px] font-bold transition ${selected ? 'border-[#F04D79] bg-pink-50 text-[#F04D79]' : 'border-slate-200 text-slate-400 hover:border-[#F04D79] hover:text-[#F04D79]'} disabled:opacity-50`}>{selected ? '✓ ' : '+ '}{tag}</button>;
-                          })}
-                        </div>;
-                      })()}
                       {placeDetailsLoading === selectedPlace.id && (
                         <p className="mb-2 text-[10px] font-semibold text-slate-400">載入地點詳細資料…</p>
                       )}

@@ -15,7 +15,6 @@ type PublicItinerary = {
   coverImage: string;
   description?: string | null;
   location?: string | null;
-  tags: string[];
   copyCount: number;
   likeCount: number;
   viewCount: number;
@@ -38,7 +37,6 @@ type OwnedItinerary = {
   publicCoverImage?: string | null;
   publicDescription?: string | null;
   publicLocation?: string | null;
-  tags: string[];
   itemCount: number;
   dayCount: number;
 };
@@ -57,14 +55,6 @@ type PreviewItem = {
 type ItineraryPreview = Omit<PublicItinerary, 'itemCount' | 'dayCount'> & { items: PreviewItem[] };
 
 const fallbackCover = 'https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?q=80&w=1200&auto=format&fit=crop';
-
-const publicTagOptions = ['獨旅', '慢遊', '美食', '咖啡', '自然景點', '文化歷史', '親子', '寵物友善', '低預算'];
-
-const publicTagGroups = [
-  { label: '旅行方式', tags: ['獨旅', '慢遊', '低預算'] },
-  { label: '旅程主題', tags: ['美食', '咖啡', '自然景點', '文化歷史'] },
-  { label: '同行需求', tags: ['親子', '寵物友善'] },
-];
 
 const durationFilterOptions = [
   { value: 'all', label: '不限天數' },
@@ -103,13 +93,13 @@ function sortPublicItineraries(rows: PublicItinerary[], sort: ItinerarySort): Pu
   });
 }
 
-function filterPublicItineraries(rows: PublicItinerary[], tags: string[], duration: string, sort: ItinerarySort, location = ''): PublicItinerary[] {
+function filterPublicItineraries(rows: PublicItinerary[], duration: string, sort: ItinerarySort, location = ''): PublicItinerary[] {
   return sortPublicItineraries(rows.filter((itinerary) => {
     if (location && normalizePublicLocation(itinerary.location) !== location) return false;
     if (duration === '1-2' && (itinerary.dayCount < 1 || itinerary.dayCount > 2)) return false;
     if (duration === '3-4' && (itinerary.dayCount < 3 || itinerary.dayCount > 4)) return false;
     if (duration === '5+' && itinerary.dayCount < 5) return false;
-    return tags.every((tag) => itinerary.tags.includes(tag));
+    return true;
   }), sort);
 }
 
@@ -147,7 +137,6 @@ export default function DestinationsPage() {
   const [publicItineraryCatalogue, setPublicItineraryCatalogue] = useState<PublicItinerary[]>([]);
   const [search, setSearch] = useState('');
   const [appliedSearch, setAppliedSearch] = useState('');
-  const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [durationFilter, setDurationFilter] = useState('all');
   const [sortBy, setSortBy] = useState<ItinerarySort>('popular');
   const [selectedLocation, setSelectedLocation] = useState('');
@@ -165,7 +154,6 @@ export default function DestinationsPage() {
   const [publicCoverImage, setPublicCoverImage] = useState('');
   const [publicDescription, setPublicDescription] = useState('');
   const [publicLocation, setPublicLocation] = useState('');
-  const [publicTags, setPublicTags] = useState<string[]>([]);
   const [isSavingPublic, setIsSavingPublic] = useState(false);
   const [likingId, setLikingId] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
@@ -189,15 +177,6 @@ export default function DestinationsPage() {
   const selectedOwnedItinerary = ownedItineraries.find((itinerary) => itinerary.id === selectedOwnedId) || null;
   const featuredItineraries = itineraries.slice(0, 4);
   const featuredItinerary = featuredItineraries[Math.min(featuredIndex, Math.max(featuredItineraries.length - 1, 0))];
-  const popularTagSummaries = useMemo(() => {
-    const tagCounts = new Map<string, number>();
-    publicItineraryCatalogue.forEach((itinerary) => itinerary.tags.forEach((tag) => tagCounts.set(tag, (tagCounts.get(tag) || 0) + 1)));
-    return publicTagOptions
-      .map((tag) => ({ tag, count: tagCounts.get(tag) || 0 }))
-      .filter(({ count }) => count > 0)
-      .sort((left, right) => right.count - left.count || publicTagOptions.indexOf(left.tag) - publicTagOptions.indexOf(right.tag));
-  }, [publicItineraryCatalogue]);
-  const tagCountByName = useMemo(() => new Map(popularTagSummaries.map(({ tag, count }) => [tag, count])), [popularTagSummaries]);
   const popularLocationSummaries = useMemo(() => {
     const locationCounts = new Map<string, number>();
     publicItineraryCatalogue.forEach((itinerary) => {
@@ -217,7 +196,6 @@ export default function DestinationsPage() {
 
   const fetchPublicItineraries = useCallback(async (
     keyword = '',
-    tags: string[] = [],
     duration = 'all',
     limit = 24,
     savedOnly = false,
@@ -236,7 +214,7 @@ export default function DestinationsPage() {
       const response = await fetch('http://localhost:8080/destinations/public_itineraries.php?action=list', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ Account: currentAccount, Search: keyword, Tags: tags, Duration: duration, Sort: sort, Location: location, Limit: limit, Saved_Only: savedOnly }),
+        body: JSON.stringify({ Account: currentAccount, Search: keyword, Duration: duration, Sort: sort, Location: location, Limit: limit, Saved_Only: savedOnly }),
         signal: controller.signal,
       });
       const data = await response.json();
@@ -244,7 +222,7 @@ export default function DestinationsPage() {
       if (requestId === publicRequestIdRef.current) {
         hasPublicItineraryLoadedRef.current = true;
         const nextRows = Array.isArray(data.data) ? data.data as PublicItinerary[] : [];
-        if (!savedOnly && !keyword && tags.length === 0 && duration === 'all' && !location) {
+        if (!savedOnly && !keyword && duration === 'all' && !location) {
           publicItineraryCatalogueRef.current = nextRows;
           setPublicItineraryCatalogue(nextRows);
         }
@@ -263,7 +241,7 @@ export default function DestinationsPage() {
   }, [currentAccount]);
 
   useEffect(() => {
-    void fetchPublicItineraries('', [], 'all', 48);
+    void fetchPublicItineraries('', 'all', 48);
     return () => publicRequestRef.current?.abort();
   }, [fetchPublicItineraries]);
   useEffect(() => {
@@ -290,7 +268,6 @@ export default function DestinationsPage() {
     setPublicCoverImage(itinerary.publicCoverImage || itinerary.coverImage || '');
     setPublicDescription(itinerary.publicDescription || '');
     setPublicLocation(itinerary.publicLocation || '');
-    setPublicTags(itinerary.tags || []);
     setManageError('');
   };
 
@@ -314,7 +291,6 @@ export default function DestinationsPage() {
         setPublicCoverImage('');
         setPublicDescription('');
         setPublicLocation('');
-        setPublicTags([]);
       }
     } catch (requestError) {
       setManageError(requestError instanceof Error ? requestError.message : '無法取得你的行程。');
@@ -357,7 +333,6 @@ export default function DestinationsPage() {
           Public_Cover_Image: publicCoverImage.trim(),
           Public_Description: publicDescription.trim(),
           Public_Location: publicLocation.trim(),
-          Tags: publicTags,
         }),
       });
       const data = await response.json();
@@ -365,10 +340,10 @@ export default function DestinationsPage() {
       const savedOnly = viewMode === 'saved';
       await Promise.all([
         fetchOwnedItineraries(),
-        fetchPublicItineraries('', [], 'all', 48, savedOnly, sortBy),
+        fetchPublicItineraries('', 'all', 48, savedOnly, sortBy),
       ]);
-      if (savedOnly || appliedSearch) await fetchPublicItineraries(appliedSearch, selectedTags, durationFilter, 24, savedOnly, sortBy, selectedLocation);
-      else applyLocalFilters(selectedTags, durationFilter, sortBy, selectedLocation);
+      if (savedOnly || appliedSearch) await fetchPublicItineraries(appliedSearch, durationFilter, 24, savedOnly, sortBy, selectedLocation);
+      else applyLocalFilters(durationFilter, sortBy, selectedLocation);
       closeManage();
     } catch (requestError) {
       setManageError(requestError instanceof Error ? requestError.message : '無法儲存公開設定。');
@@ -387,9 +362,9 @@ export default function DestinationsPage() {
     return appliedSearch ? `「${appliedSearch}」的行程靈感` : '公開行程靈感';
   }, [appliedSearch, viewMode]);
 
-  const applyLocalFilters = useCallback((tags: string[], duration: string, sort: ItinerarySort = sortBy, location = selectedLocation) => {
+  const applyLocalFilters = useCallback((duration: string, sort: ItinerarySort = sortBy, location = selectedLocation) => {
     if (!hasPublicItineraryLoadedRef.current) return false;
-    setItineraries(filterPublicItineraries(publicItineraryCatalogueRef.current, tags, duration, sort, location).slice(0, 24));
+    setItineraries(filterPublicItineraries(publicItineraryCatalogueRef.current, duration, sort, location).slice(0, 24));
     return true;
   }, [selectedLocation, sortBy]);
 
@@ -506,68 +481,44 @@ export default function DestinationsPage() {
     setViewMode(nextMode);
     setSearch('');
     setAppliedSearch('');
-    setSelectedTags([]);
     setDurationFilter('all');
     setSelectedLocation('');
-    void fetchPublicItineraries('', [], 'all', 48, nextMode === 'saved', sortBy);
+    void fetchPublicItineraries('', 'all', 48, nextMode === 'saved', sortBy);
   };
 
   const submitSearch = (event: React.FormEvent) => {
     event.preventDefault();
     const keyword = search.trim();
     setAppliedSearch(keyword);
-    if (viewMode === 'discover' && !keyword && applyLocalFilters(selectedTags, durationFilter, sortBy, selectedLocation)) return;
-    void fetchPublicItineraries(keyword, selectedTags, durationFilter, 24, viewMode === 'saved', sortBy, selectedLocation);
-  };
-
-  const toggleDiscoveryTag = (tag: string) => {
-    const nextTags = selectedTags.includes(tag)
-      ? selectedTags.filter((item) => item !== tag)
-      : [...selectedTags, tag];
-    setSelectedTags(nextTags);
-    if (viewMode === 'discover' && !appliedSearch && applyLocalFilters(nextTags, durationFilter, sortBy, selectedLocation)) return;
-    void fetchPublicItineraries(appliedSearch, nextTags, durationFilter, 24, viewMode === 'saved', sortBy, selectedLocation);
+    if (viewMode === 'discover' && !keyword && applyLocalFilters(durationFilter, sortBy, selectedLocation)) return;
+    void fetchPublicItineraries(keyword, durationFilter, 24, viewMode === 'saved', sortBy, selectedLocation);
   };
 
   const updateDurationFilter = (value: string) => {
     setDurationFilter(value);
-    if (viewMode === 'discover' && !appliedSearch && applyLocalFilters(selectedTags, value, sortBy, selectedLocation)) return;
-    void fetchPublicItineraries(appliedSearch, selectedTags, value, 24, viewMode === 'saved', sortBy, selectedLocation);
+    if (viewMode === 'discover' && !appliedSearch && applyLocalFilters(value, sortBy, selectedLocation)) return;
+    void fetchPublicItineraries(appliedSearch, value, 24, viewMode === 'saved', sortBy, selectedLocation);
   };
 
   const updateLocationFilter = (location: string) => {
     const nextLocation = selectedLocation === location ? '' : location;
     setSelectedLocation(nextLocation);
-    if (viewMode === 'discover' && !appliedSearch && applyLocalFilters(selectedTags, durationFilter, sortBy, nextLocation)) return;
-    void fetchPublicItineraries(appliedSearch, selectedTags, durationFilter, 24, viewMode === 'saved', sortBy, nextLocation);
+    if (viewMode === 'discover' && !appliedSearch && applyLocalFilters(durationFilter, sortBy, nextLocation)) return;
+    void fetchPublicItineraries(appliedSearch, durationFilter, 24, viewMode === 'saved', sortBy, nextLocation);
   };
 
   const clearFilters = () => {
-    setSelectedTags([]);
     setDurationFilter('all');
     setSelectedLocation('');
-    if (viewMode === 'discover' && !appliedSearch && applyLocalFilters([], 'all', sortBy, '')) return;
-    void fetchPublicItineraries(appliedSearch, [], 'all', 24, viewMode === 'saved', sortBy, '');
+    if (viewMode === 'discover' && !appliedSearch && applyLocalFilters('all', sortBy, '')) return;
+    void fetchPublicItineraries(appliedSearch, 'all', 24, viewMode === 'saved', sortBy, '');
   };
 
   const updateSort = (nextSort: ItinerarySort) => {
     if (nextSort === sortBy) return;
     setSortBy(nextSort);
-    if (viewMode === 'discover' && !appliedSearch && applyLocalFilters(selectedTags, durationFilter, nextSort, selectedLocation)) return;
-    void fetchPublicItineraries(appliedSearch, selectedTags, durationFilter, 24, viewMode === 'saved', nextSort, selectedLocation);
-  };
-
-  const togglePublicTag = (tag: string) => {
-    if (publicTags.includes(tag)) {
-      setPublicTags(publicTags.filter((item) => item !== tag));
-      return;
-    }
-    if (publicTags.length >= 5) {
-      setManageError('最多可選擇 5 個旅遊標籤。');
-      return;
-    }
-    setManageError('');
-    setPublicTags([...publicTags, tag]);
+    if (viewMode === 'discover' && !appliedSearch && applyLocalFilters(durationFilter, nextSort, selectedLocation)) return;
+    void fetchPublicItineraries(appliedSearch, durationFilter, 24, viewMode === 'saved', nextSort, selectedLocation);
   };
 
   const openPreview = async (itineraryId: string) => {
@@ -617,9 +568,9 @@ export default function DestinationsPage() {
       if (!response.ok || data.status !== 'success') throw new Error(data.message || '複製行程失敗');
       setCopiedItineraryId(String(data.itineraryId));
       const savedOnly = viewMode === 'saved';
-      await fetchPublicItineraries('', [], 'all', 48, savedOnly, sortBy);
-      if (savedOnly || appliedSearch) await fetchPublicItineraries(appliedSearch, selectedTags, durationFilter, 24, savedOnly, sortBy, selectedLocation);
-      else applyLocalFilters(selectedTags, durationFilter, sortBy, selectedLocation);
+      await fetchPublicItineraries('', 'all', 48, savedOnly, sortBy);
+      if (savedOnly || appliedSearch) await fetchPublicItineraries(appliedSearch, durationFilter, 24, savedOnly, sortBy, selectedLocation);
+      else applyLocalFilters(durationFilter, sortBy, selectedLocation);
     } catch (requestError) {
       window.alert(requestError instanceof Error ? requestError.message : '複製行程失敗，請稍後再試。');
     } finally {
@@ -656,16 +607,12 @@ export default function DestinationsPage() {
                 <button type="submit" className="rounded-xl bg-[#56758e] px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-[#45647d]">搜尋</button>
               </form>
 
-              {viewMode === 'discover' && popularTagSummaries.length > 0 && <div className="mt-3 flex max-w-xl flex-wrap items-center gap-2 text-xs text-white/80"><span className="mr-1 font-bold text-white/65">熱門主題</span>{popularTagSummaries.slice(0, 4).map(({ tag, count }) => <button type="button" key={tag} onClick={() => { setIsFilterOpen(true); toggleDiscoveryTag(tag); }} className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1.5 font-bold transition ${selectedTags.includes(tag) ? 'border-white bg-white text-[#496981]' : 'border-white/25 bg-white/10 text-white hover:bg-white/20'}`}>#{tag}<span className="text-[10px] opacity-75">{count}</span></button>)}<button type="button" onClick={() => setIsFilterOpen(true)} className="rounded-full px-2 py-1.5 font-bold text-white/70 transition hover:bg-white/10 hover:text-white">全部標籤</button></div>}
-
               <div className="mt-3 max-w-xl rounded-2xl border border-white/20 bg-slate-900/20 backdrop-blur-md">
-                <button type="button" onClick={() => setIsFilterOpen((value) => !value)} aria-expanded={isFilterOpen} className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left text-sm font-bold text-white transition hover:bg-white/10"><span className="inline-flex items-center gap-2"><SlidersHorizontal size={16} />篩選行程{(selectedTags.length > 0 || selectedLocation || durationFilter !== 'all') && <span className="rounded-full bg-white/20 px-2 py-0.5 text-[11px]">{selectedTags.length + Number(Boolean(selectedLocation)) + Number(durationFilter !== 'all')}</span>}</span><ChevronDown size={17} className={`transition ${isFilterOpen ? 'rotate-180' : ''}`} /></button>
+                <button type="button" onClick={() => setIsFilterOpen((value) => !value)} aria-expanded={isFilterOpen} className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left text-sm font-bold text-white transition hover:bg-white/10"><span className="inline-flex items-center gap-2"><SlidersHorizontal size={16} />篩選行程{(selectedLocation || durationFilter !== 'all') && <span className="rounded-full bg-white/20 px-2 py-0.5 text-[11px]">{Number(Boolean(selectedLocation)) + Number(durationFilter !== 'all')}</span>}</span><ChevronDown size={17} className={`transition ${isFilterOpen ? 'rotate-180' : ''}`} /></button>
                 {isFilterOpen && <div className="border-t border-white/15 bg-white/95 p-4 text-[#4e697e] shadow-xl backdrop-blur-md">
-                  <div className="flex items-center justify-between gap-3"><span className="text-xs font-bold">探索條件</span>{(selectedTags.length > 0 || selectedLocation || durationFilter !== 'all') && <button type="button" onClick={clearFilters} className="text-xs font-bold text-[#5e7891] hover:text-[#365168]">清除篩選</button>}</div>
+                  <div className="flex items-center justify-between gap-3"><span className="text-xs font-bold">探索條件</span>{(selectedLocation || durationFilter !== 'all') && <button type="button" onClick={clearFilters} className="text-xs font-bold text-[#5e7891] hover:text-[#365168]">清除篩選</button>}</div>
                   <div className="mt-3"><label className="block text-xs font-bold text-[#7891a4]">旅行天數<select value={durationFilter} onChange={(event) => updateDurationFilter(event.target.value)} className="mt-1.5 w-full rounded-xl border border-[#d6e3eb] bg-[#f8fbfd] px-3 py-2.5 text-sm font-medium text-[#4e697e] outline-none focus:border-[#7d9aaf]">{durationFilterOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label></div>
                   {popularLocationSummaries.length > 0 && <div className="mt-4"><p className="mb-1.5 text-[11px] font-bold tracking-wide text-[#8ca3b4]">目的地</p><div className="flex flex-wrap gap-2">{popularLocationSummaries.slice(0, 8).map(({ location, count }) => <button type="button" key={location} onClick={() => updateLocationFilter(location)} className={`inline-flex items-center gap-1 rounded-full border px-3 py-1.5 text-xs font-bold transition ${selectedLocation === location ? 'border-[#5e7891] bg-[#5e7891] text-white shadow-sm' : 'border-[#d6e3eb] bg-[#f8fbfd] text-[#668096] hover:border-[#a9bfce] hover:bg-[#f0f6f9]'}`}><MapPin size={12} />{location}<span className={`text-[10px] ${selectedLocation === location ? 'text-white/75' : 'text-[#98acba]'}`}>{count}</span></button>)}</div></div>}
-                  <div className="mt-4 space-y-3">{publicTagGroups.map((group) => <div key={group.label}><p className="mb-1.5 text-[11px] font-bold tracking-wide text-[#8ca3b4]">{group.label}</p><div className="flex flex-wrap gap-2">{group.tags.map((tag) => { const count = tagCountByName.get(tag) || 0; return <button type="button" key={tag} onClick={() => toggleDiscoveryTag(tag)} className={`inline-flex items-center gap-1 rounded-full border px-3 py-1.5 text-xs font-bold transition ${selectedTags.includes(tag) ? 'border-[#5e7891] bg-[#5e7891] text-white shadow-sm' : 'border-[#d6e3eb] bg-[#f8fbfd] text-[#668096] hover:border-[#a9bfce] hover:bg-[#f0f6f9]'}`}>#{tag}{count > 0 && <span className={`text-[10px] ${selectedTags.includes(tag) ? 'text-white/75' : 'text-[#98acba]'}`}>{count}</span>}</button>; })}</div></div>)}</div>
-                  <p className="mt-3 text-xs leading-5 text-[#91a6b7]">標籤後的數字代表目前公開行程數量；多選會以「同時符合」搜尋。</p>
                 </div>}
               </div>
             </div>
@@ -695,7 +642,7 @@ export default function DestinationsPage() {
         {isLoading ? (
           <div className="flex min-h-72 items-center justify-center rounded-3xl border border-[#dce7ef] bg-white shadow-sm"><Loader2 className="size-7 animate-spin text-[#b2c3cf]" /></div>
         ) : error ? (
-          <div className="rounded-3xl border border-rose-100 bg-rose-50 px-6 py-12 text-center"><p className="font-bold text-rose-700">暫時無法載入{viewMode === 'saved' ? '收藏行程' : '行程靈感'}</p><p className="mt-2 text-sm text-rose-500">{error}</p><button type="button" onClick={() => void fetchPublicItineraries(appliedSearch, selectedTags, durationFilter, 24, viewMode === 'saved', sortBy, selectedLocation)} className="mt-5 rounded-xl bg-white px-4 py-2 text-sm font-bold text-rose-700 shadow-sm">重新整理</button></div>
+          <div className="rounded-3xl border border-rose-100 bg-rose-50 px-6 py-12 text-center"><p className="font-bold text-rose-700">暫時無法載入{viewMode === 'saved' ? '收藏行程' : '行程靈感'}</p><p className="mt-2 text-sm text-rose-500">{error}</p><button type="button" onClick={() => void fetchPublicItineraries(appliedSearch, durationFilter, 24, viewMode === 'saved', sortBy, selectedLocation)} className="mt-5 rounded-xl bg-white px-4 py-2 text-sm font-bold text-rose-700 shadow-sm">重新整理</button></div>
         ) : itineraries.length === 0 ? (
           <div className="rounded-3xl border border-dashed border-[#cbdce7] bg-white px-6 py-20 text-center shadow-sm">{viewMode === 'saved' ? <><Bookmark className="mx-auto text-[#b2c5d2]" size={32} /><h3 className="mt-5 text-lg font-bold text-[#4c657b]">收藏清單還是空的</h3><p className="mt-2 text-sm text-[#91a6b7]">看到喜歡的公開行程時，按下書籤就能先留在這裡。</p><button type="button" onClick={() => switchViewMode('discover')} className="mt-5 rounded-xl bg-[#5e7891] px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-[#4d677f]">探索公開行程</button></> : <><Globe2 className="mx-auto text-[#b2c5d2]" size={32} /><h3 className="mt-5 text-lg font-bold text-[#4c657b]">目前還沒有公開行程</h3><p className="mt-2 text-sm text-[#91a6b7]">完成一份行程後，可在「行程規劃」將它公開分享。</p></>}</div>
         ) : (
@@ -709,9 +656,6 @@ export default function DestinationsPage() {
                 <div className="flex flex-col p-3 sm:flex-1 sm:p-5">
                   <h3 className="line-clamp-2 min-h-10 break-words text-base font-bold leading-5 text-[#30485f] sm:min-h-12 sm:text-lg sm:leading-6">{itinerary.title}</h3>
                   <p className="mt-2 min-h-9 break-all text-xs leading-4 text-[#7690a3] line-clamp-2 sm:min-h-10 sm:text-sm sm:leading-5">{itinerary.description || ''}</p>
-                  <div className="mt-3 min-h-10 overflow-hidden sm:min-h-7">
-                    {itinerary.tags.length > 0 && <div className="flex flex-nowrap gap-1.5">{itinerary.tags.slice(0, 3).map((tag) => <Link href={`/destinations/tag/${encodeURIComponent(tag)}`} key={tag} className="shrink-0 rounded-full bg-[#edf4f8] px-2 py-1 text-[11px] font-bold text-[#5f7c94] transition hover:bg-[#dcecf4] hover:text-[#45647d]">#{tag}</Link>)}</div>}
-                  </div>
                   <div className="mt-3 flex flex-wrap gap-x-2 gap-y-1 pt-3 text-[11px] text-[#91a6b7] sm:mt-auto sm:gap-x-3 sm:text-xs"><span className="inline-flex items-center gap-1"><CalendarDays size={13} /> {itinerary.dayCount} 天</span><span>{itinerary.itemCount} 個地點</span><span>{itinerary.copyCount} 次複製</span><span className="inline-flex items-center gap-1"><Eye size={13} />{itinerary.viewCount}</span></div>
                   <div className="mt-4 border-t border-[#edf2f5] pt-3 sm:mt-5 sm:flex sm:items-center sm:justify-between sm:gap-3 sm:pt-4">
                     <div className="mb-3 flex min-w-0 items-center gap-2 sm:mb-0"><div className="flex size-7 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#edf4f8] text-[10px] font-bold text-[#688198]">{itinerary.owner.avatar ? <img src={itinerary.owner.avatar} alt="" className="size-full object-cover" /> : itinerary.owner.name.slice(0, 1)}</div><span className="truncate text-xs font-medium text-[#688198]">{itinerary.owner.name}</span></div>
@@ -761,11 +705,6 @@ export default function DestinationsPage() {
                   <label className="block text-sm font-bold text-[#4e697e]">公開封面連結 <span className="font-medium text-[#9aafbd]">（選填）</span><input value={publicCoverImage} onChange={(event) => setPublicCoverImage(event.target.value)} type="url" placeholder="https://..." className="mt-2 w-full rounded-xl border border-[#cbdce7] bg-white px-4 py-3 text-sm text-[#365168] outline-none transition focus:border-[#7d9aaf]" /></label>
                   <label className="block text-sm font-bold text-[#4e697e]">行程簡介 <span className="font-medium text-[#9aafbd]">（選填，最多 1000 字）</span><textarea value={publicDescription} onChange={(event) => setPublicDescription(event.target.value)} maxLength={1000} rows={4} placeholder="分享這趟旅行的亮點、適合什麼樣的旅人，或行前注意事項…" className="mt-2 w-full resize-none rounded-xl border border-[#cbdce7] bg-white px-4 py-3 text-sm leading-6 text-[#365168] outline-none transition focus:border-[#7d9aaf]" /><span className="mt-1 block text-right text-xs font-medium text-[#9aafbd]">{publicDescription.length}/1000</span></label>
                   <p className="rounded-xl border border-[#dce8ef] bg-[#f1f7fa] px-4 py-3 text-xs leading-5 text-[#698398]">公開後，其他旅人可以複製行程結構與地點；你的私人功能資料不會被複製。</p>
-                  <div className="rounded-2xl border border-[#dce7ef] bg-white p-4">
-                    <div className="flex items-center justify-between gap-3"><div className="text-sm font-bold text-[#4e697e]">旅遊標籤</div><span className="text-xs font-medium text-[#8da3b3]">{publicTags.length}/5</span></div>
-                    <p className="mt-1 text-xs leading-5 text-[#91a6b7]">選擇能描述這份行程的標籤，讓其他旅人更容易找到它。</p>
-                    <div className="mt-3 flex flex-wrap gap-2">{publicTagOptions.map((tag) => <button type="button" key={tag} onClick={() => togglePublicTag(tag)} className={`rounded-full border px-3 py-1.5 text-xs font-bold transition ${publicTags.includes(tag) ? 'border-[#5e7891] bg-[#5e7891] text-white' : 'border-[#d6e3eb] bg-[#f8fbfd] text-[#668096] hover:border-[#a9bfce]'}`}>#{tag}</button>)}</div>
-                  </div>
                   <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#dce7ef] pt-5">
                     {selectedOwnedItinerary.isPublic ? <button type="button" onClick={unpublish} disabled={isSavingPublic} className="rounded-xl px-4 py-3 text-sm font-bold text-rose-500 transition hover:bg-rose-50 disabled:opacity-50">從旅遊景點下架</button> : <span className="text-xs font-medium text-[#8aa0b2]">這份行程目前尚未公開</span>}
                     <button type="button" onClick={() => void savePublicSettings(true)} disabled={isSavingPublic} className="inline-flex items-center gap-2 rounded-xl bg-[#5e7891] px-5 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-[#4d677f] disabled:cursor-wait disabled:opacity-60"><Upload size={16} />{isSavingPublic ? '儲存中…' : selectedOwnedItinerary.isPublic ? '更新公開內容' : '上傳行程'}</button>
@@ -790,7 +729,7 @@ export default function DestinationsPage() {
                 <div className="min-h-0 flex-1 overflow-y-auto p-6">
                   <div className="overflow-hidden rounded-2xl border border-[#dce7ef] bg-white">
                     <div className="relative h-48 bg-[#edf4f8] sm:h-56"><img src={preview.coverImage || fallbackCover} alt="" className="size-full object-cover" onError={(event) => { event.currentTarget.src = fallbackCover; }} /><div className="absolute inset-0 bg-gradient-to-t from-slate-950/65 via-transparent to-transparent" /><div className="absolute bottom-4 left-5 right-5 text-white"><h3 className="text-2xl font-bold">{preview.title}</h3><p className="mt-1 flex items-center gap-2 text-sm text-white/85"><CalendarDays size={15} />{preview.startDate} 至 {preview.endDate}</p></div></div>
-                    <div className="p-5"><Link href={`/profile/${encodeURIComponent(preview.owner.account)}`} title={`查看 ${preview.owner.name} 的個人主頁`} className="group/author inline-flex items-center gap-2 rounded-xl px-1 py-1 text-sm font-medium text-[#6b8599] transition hover:bg-[#edf4f8] hover:text-[#4f718b] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#6f91aa]"><div className="flex size-8 items-center justify-center overflow-hidden rounded-full bg-[#edf4f8] text-xs font-bold text-[#66839b] ring-1 ring-[#d5e4ec] transition group-hover/author:ring-[#9db6c8]">{preview.owner.avatar ? <img src={preview.owner.avatar} alt="" className="size-full object-cover" /> : preview.owner.name.slice(0, 1)}</div><span>{preview.owner.name}</span><span className="text-xs font-normal text-[#8aa2b2] group-hover/author:text-[#587891]">查看作品</span></Link>{preview.tags.length > 0 && <div className="mt-4 flex flex-wrap gap-1.5">{preview.tags.map((tag) => <span key={tag} className="rounded-full bg-[#edf4f8] px-2.5 py-1 text-[11px] font-bold text-[#5f7c94]">#{tag}</span>)}</div>}{preview.description && <p className="mt-4 whitespace-pre-line text-sm leading-6 text-[#6d8498]">{preview.description}</p>}</div>
+                    <div className="p-5"><Link href={`/profile/${encodeURIComponent(preview.owner.account)}`} title={`查看 ${preview.owner.name} 的個人主頁`} className="group/author inline-flex items-center gap-2 rounded-xl px-1 py-1 text-sm font-medium text-[#6b8599] transition hover:bg-[#edf4f8] hover:text-[#4f718b] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#6f91aa]"><div className="flex size-8 items-center justify-center overflow-hidden rounded-full bg-[#edf4f8] text-xs font-bold text-[#66839b] ring-1 ring-[#d5e4ec] transition group-hover/author:ring-[#9db6c8]">{preview.owner.avatar ? <img src={preview.owner.avatar} alt="" className="size-full object-cover" /> : preview.owner.name.slice(0, 1)}</div><span>{preview.owner.name}</span><span className="text-xs font-normal text-[#8aa2b2] group-hover/author:text-[#587891]">查看作品</span></Link>{preview.description && <p className="mt-4 whitespace-pre-line text-sm leading-6 text-[#6d8498]">{preview.description}</p>}</div>
                   </div>
 
                   <div className="mt-6 rounded-2xl border border-[#dce7ef] bg-white p-5">

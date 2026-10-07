@@ -13,7 +13,6 @@ type PublicItinerary = {
   coverImage: string;
   description?: string | null;
   location?: string | null;
-  tags: string[];
   likeCount: number;
   viewCount: number;
   copyCount: number;
@@ -96,7 +95,6 @@ export default function PublicProfilePage() {
             Account: currentAccount,
             Owner_Account: targetAccount,
             Search: '',
-            Tags: [],
             Duration: 'all',
             Limit: 48,
           }),
@@ -244,7 +242,6 @@ export default function PublicProfilePage() {
                   <div className="flex flex-1 flex-col p-4 bg-white">
                     <h3 className="line-clamp-2 min-h-10 text-sm font-bold leading-5 text-neutral-900">{itinerary.title}</h3>
                     <p className="mt-2 min-h-10 line-clamp-2 break-all text-xs leading-5 text-neutral-500">{itinerary.description || ''}</p>
-                    <div className="mt-3 min-h-6 overflow-hidden">{itinerary.tags.length > 0 && <div className="flex flex-nowrap gap-1.5">{itinerary.tags.slice(0, 3).map((tag) => <span key={tag} className="shrink-0 rounded-full bg-neutral-100 px-2 py-1 text-[10px] font-bold text-neutral-500">#{tag}</span>)}</div>}</div>
                     <div className="mt-auto flex flex-wrap gap-x-2 gap-y-1 border-t border-neutral-100 pt-3 text-[11px] font-medium text-neutral-400"><span className="inline-flex items-center gap-1"><CalendarDays size={12} />{itinerary.dayCount} 天</span><span>{itinerary.itemCount} 個地點</span><span className="inline-flex items-center gap-1"><Heart size={12} />{itinerary.likeCount}</span><span className="inline-flex items-center gap-1"><Copy size={12} />{itinerary.copyCount}</span><span className="inline-flex items-center gap-1"><Eye size={12} />{itinerary.viewCount}</span></div>
                   </div>
                 </div>

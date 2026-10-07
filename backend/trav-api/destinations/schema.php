@@ -28,18 +28,6 @@ function ensure_destinations_schema(mysqli $conn): void {
 
     try {
         $conn->query(
-            "CREATE TABLE IF NOT EXISTS `Public_Itinerary_Tag` (
-                `Itinerary_ID` INT NOT NULL,
-                `Tag` VARCHAR(50) NOT NULL,
-                `Created_At` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                PRIMARY KEY (`Itinerary_ID`, `Tag`),
-                INDEX `idx_public_itinerary_tag` (`Tag`)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
-        );
-    } catch (Throwable $ignored) {}
-
-    try {
-        $conn->query(
             "CREATE TABLE IF NOT EXISTS `Public_Itinerary_Like` (
                 `Itinerary_ID` INT NOT NULL,
                 `Account` VARCHAR(100) NOT NULL,
@@ -66,24 +54,6 @@ function ensure_destinations_schema(mysqli $conn): void {
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
         );
     } catch (Throwable $ignored) {}
-}
-
-function public_itinerary_tag_options(): array {
-    return ['獨旅', '慢遊', '美食', '咖啡', '自然景點', '文化歷史', '親子', '寵物友善', '低預算'];
-}
-
-function normalize_public_itinerary_tags($rawTags): array {
-    if (!is_array($rawTags)) return [];
-
-    $allowed = array_flip(public_itinerary_tag_options());
-    $tags = [];
-    foreach ($rawTags as $tag) {
-        if (!is_string($tag)) continue;
-        $tag = trim($tag);
-        if ($tag !== '' && isset($allowed[$tag])) $tags[$tag] = true;
-    }
-
-    return array_slice(array_keys($tags), 0, 5);
 }
 
 function normalize_public_itinerary_location($rawLocation): string {

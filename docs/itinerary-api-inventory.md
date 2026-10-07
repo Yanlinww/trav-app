@@ -1,6 +1,6 @@
 # Itinerary PHP API 盤點
 
-> 2026-09-30 更新：本文件記錄 9/28 的歷史盤點；其中旅伴、聊天、邀請碼、共用行程、舊行李資料表，以及記帳分攤與結清的端點及程式連結已失效。請以 [行程簡化紀錄](planner-simplification-2026-09-30.md) 與目前程式碼為準。
+> 2026-10-07 更新：本文件記錄 9/28 的歷史盤點；其中旅伴、聊天、邀請碼、共用行程、舊行李資料表、記帳分攤與結清，以及地圖地點標籤的端點及程式連結已失效。請以 [行程簡化紀錄](planner-simplification-2026-09-30.md) 與目前程式碼為準。
 
 盤點日期：2026-09-28。範圍：合併前工作區 `backend/trav-api/itinerary` 的全部 PHP，以及專案內對這些端點和共用 helper 的引用。
 
@@ -74,7 +74,7 @@
 
 - 細項 `data[]`：`id`（字串）、`dayNumber`（整數）、`title`、`startTime`、`endTime`、`sortOrder`（整數）、`Latitude`、`Longitude`。
 - 時間讀取轉為 HH:mm，未設定回空字串；時間寫入接受 HH:mm 或 HH:mm:ss，再截成 HH:mm。未見禁止結束早於開始的檢查。
-- 舊 `Place` 表及 `Itinerary_Item.Place_ID` 已移除；標題和座標直接取自 `Itinerary_Item`。地點標籤仍使用獨立的 `Itinerary_Places`。
+- 舊 `Place` 表及 `Itinerary_Item.Place_ID` 已移除；標題和座標直接取自 `Itinerary_Item`。地圖地點標籤及其獨立資料表也已移除。
 - 前端拖曳排序會另行呼叫時間更新；合併排序入口時不能遺漏這個流程，見 [排序與時間呼叫](F:/trav-app/app/planner/[id]/page.tsx:2368)。
 
 ## 5. Expenses：5 個端點
@@ -127,17 +127,9 @@
 - 擁有者沒有成員關聯時，讀取回 null，儲存會建立關聯。
 - 前端每 5 秒讀取，修改後延遲 1 秒儲存。
 
-## 8. Places：2 個端點
+## 8. Places：已移除
 
-| 原始端點（資料來源） | 用途 | JSON 輸入 | 成功回應 | 目前權限與特殊行為 |
-| --- | --- | --- | --- | --- |
-| [get_place_tags.php](F:/trav-app/backend/trav-api/itinerary/places.php:17) | 批次讀取地點標籤 | `Itinerary_ID*`、`Account*`；`PlaceIds` 為 Google Place ID 陣列 | `S + data: Google Place ID → 標籤[]`；無資料為 `[]` | 擁有者／成員；trim／濾空 ID；沒有有效 ID 直接回空資料；嚴格 POST |
-| [update_place_tags.php](F:/trav-app/backend/trav-api/itinerary/places.php:53) | 更新地點與標籤 | `Itinerary_ID*`、`Account*`、`Place*` 物件，內含 `GooglePlaceID*`、`Name*`；選用 `Address`、`Latitude`、`Longitude`；`Tags` 陣列 | `S + data: {GooglePlaceID, Tags}` | 擁有者／成員；標籤限單人友善、寵物友善、餐廳、咖啡廳；濾掉不允許值並去重；嚴格 POST；使用交易 |
-
-- 標籤隸屬「某個行程中的某個 Google 地點」，不是全站 Place 共用標籤。
-- 更新會 UPSERT Itinerary_Places、刪除舊標籤，再重建 Itinerary_Place_Tags；整組取代，不是追加。
-- Tags 未傳、非陣列、空陣列或全部不在允許清單內時，會清空目前標籤。
-- Place.Address 預設空字串，非數值座標預設 null；整個 Place 物件還會存成 Place_Data。
+地圖地點標籤的讀取與更新端點、`Itinerary_Places` 及 `Itinerary_Place_Tags` 已移除。地圖搜尋與選點仍由 Google 地點服務提供。
 
 ## 9. 共用 helper 與跨模組依賴
 
@@ -170,7 +162,7 @@
 4. 封面與截圖可暫時維持獨立端點。若採 6 個 JSON 模組入口 + 2 個上傳入口 + 1 個 helper，會是 9 個 PHP；若再拆邀請、服務或共用函式，總數會增加。減少入口數與減少全部檔案數需分開計算。
 5. 進入實作時才讀適用的 `node_modules/next/dist/docs/` 指南、修改前端呼叫並驗證。此輪未編寫 Next.js 或 PHP 程式。
 
-合併前要帶著本文件驗證：行李個人隔離與字串格式、地點標籤清空、費用分攤與結清、細項缺欄位處理、拖曳時間更新、成員／訊息／在線回傳、擁有者刪除與成員退出、公開快取、邀請碼、兩種上傳。
+合併前要帶著本文件驗證：行李個人隔離與字串格式、費用分攤與結清、細項缺欄位處理、拖曳時間更新、成員／訊息／在線回傳、擁有者刪除與成員退出、公開快取、邀請碼、兩種上傳。
 
 ## 11. 資料來源與驗證範圍
 
@@ -215,8 +207,6 @@
 | [/itinerary/items/update_sort_order.php](F:/trav-app/backend/trav-api/itinerary/items.php:284) | 1 | [app/planner/[id]/page.tsx:2368](F:/trav-app/app/planner/[id]/page.tsx:2368) |
 | [/itinerary/luggage/get_luggage.php](F:/trav-app/backend/trav-api/itinerary/luggage.php:41) | 1 | [app/planner/[id]/page.tsx:1169](F:/trav-app/app/planner/[id]/page.tsx:1169) |
 | [/itinerary/luggage/update_luggage.php](F:/trav-app/backend/trav-api/itinerary/luggage.php:58) | 1 | [app/planner/[id]/page.tsx:1196](F:/trav-app/app/planner/[id]/page.tsx:1196) |
-| [/itinerary/places/get_place_tags.php](F:/trav-app/backend/trav-api/itinerary/places.php:17) | 1 | [app/planner/[id]/page.tsx:1760](F:/trav-app/app/planner/[id]/page.tsx:1760) |
-| [/itinerary/places/update_place_tags.php](F:/trav-app/backend/trav-api/itinerary/places.php:53) | 1 | [app/planner/[id]/page.tsx:1776](F:/trav-app/app/planner/[id]/page.tsx:1776) |
 
 ## 13. Helper 的外部引用（目前檔案）
 
@@ -300,14 +290,12 @@ F:\trav-app\backend\trav-api\itinerary\
 | `/itinerary/items/update_sort_order.php` | `/itinerary/items.php?action=sort` | [items.php:284](F:/trav-app/backend/trav-api/itinerary/items.php:284) |
 | `/itinerary/luggage/get_luggage.php` | `/itinerary/luggage.php?action=get` | [luggage.php:41](F:/trav-app/backend/trav-api/itinerary/luggage.php:41) |
 | `/itinerary/luggage/update_luggage.php` | `/itinerary/luggage.php?action=update` | [luggage.php:58](F:/trav-app/backend/trav-api/itinerary/luggage.php:58) |
-| `/itinerary/places/get_place_tags.php` | `/itinerary/places.php?action=get` | [places.php:17](F:/trav-app/backend/trav-api/itinerary/places.php:17) |
-| `/itinerary/places/update_place_tags.php` | `/itinerary/places.php?action=update` | [places.php:53](F:/trav-app/backend/trav-api/itinerary/places.php:53) |
 
 ### 保留與調整
 
 - 前端 43 處呼叫已遷移；涉及 Planner 列表、行程編輯、個人頁面。公開狀態操作雖無直接前端呼叫，仍保留為 core 的 visibility action。
 - 各操作輸入欄位、成功 payload、資料排序、個人行李格式、輪詢頻率與資料存取規則沿用盤點中的邏輯。
-- 保留地點標籤交易、費用分攤、排序時另更新時間、聊天最新 100 筆、公開快取失效，以及擁有者刪除／成員退出。
+- 排序時另更新時間、公開快取失效等其他功能仍由各自模組處理。
 - 費用與聊天的重複建表 SQL 各集中成模組函式，仍在原本操作中執行；沒有另外做 schema migration 或效能重構。
 - 全部新入口明確拒絕非 POST（405）；OPTIONS 由既有 db_connect.php 回 200。無效／缺少 action、無效 JSON 或 JSON 根節點陣列回 400。其他操作層錯誤狀態碼維持既有邏輯；luggage 缺欄位的調整另見第 14 節。
 - 原建立細項的字面值 `\vert{}\vert{}` 修正為 PHP 邏輯 OR `||`，normalize_time_value 集中成 items 內唯一共用函式。

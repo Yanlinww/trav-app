@@ -22,7 +22,6 @@ function destinations_list_public_itineraries(): void
     $duration = (string)($data->Duration ?? 'all');
     $savedOnly = !empty($data->Saved_Only);
     $limit = min(max((int)($data->Limit ?? 24), 1), 48);
-    $tags = normalize_public_itinerary_tags($data->Tags ?? []);
     $location = normalize_public_itinerary_location($data->Location ?? '');
     $sort = (string)($data->Sort ?? 'popular');
     if (!in_array($sort, ['popular', 'newest', 'copied'], true)) $sort = 'popular';
@@ -36,7 +35,7 @@ function destinations_list_public_itineraries(): void
     ];
     [$durationMin, $durationMax] = $durationRanges[$duration] ?? [0, 0];
     $searchLike = '%' . $search . '%';
-    $cacheKey = hash('sha256', json_encode([$account, $ownerAccount, $search, $tags, $duration, $location, $savedOnly, $sort, $limit], JSON_UNESCAPED_UNICODE));
+    $cacheKey = hash('sha256', json_encode([$account, $ownerAccount, $search, $duration, $location, $savedOnly, $sort, $limit], JSON_UNESCAPED_UNICODE));
     $cachedPayload = public_itinerary_cache_read($cacheKey);
     if ($cachedPayload !== null) api_json($cachedPayload);
 
@@ -55,9 +54,6 @@ function destinations_list_public_itineraries(): void
         m.Avatar AS Owner_Avatar,
         COUNT(ii.Item_ID) AS Item_Count,
         MAX(ii.Day_Number) AS Day_Count,
-        (SELECT GROUP_CONCAT(pt.Tag ORDER BY pt.Tag SEPARATOR '|')
-           FROM Public_Itinerary_Tag pt
-          WHERE pt.Itinerary_ID = i.Itinerary_ID) AS Tags,
         EXISTS(
           SELECT 1 FROM Public_Itinerary_Interaction current_like
            WHERE current_like.Itinerary_ID = i.Itinerary_ID 
@@ -100,12 +96,6 @@ function destinations_list_public_itineraries(): void
         $params[] = $account;
     }
 
-    foreach ($tags as $tag) {
-        $sql .= " AND EXISTS (SELECT 1 FROM Public_Itinerary_Tag tag_filter WHERE tag_filter.Itinerary_ID = i.Itinerary_ID AND tag_filter.Tag = ?)";
-        $types .= 's';
-        $params[] = $tag;
-    }
-
     $orderBy = [
         'popular' => 'i.Like_Count DESC, i.View_Count DESC, i.Copy_Count DESC, i.Public_Updated_At DESC, i.Itinerary_ID DESC',
         'newest' => 'i.Public_Updated_At DESC, i.Itinerary_ID DESC',
@@ -136,7 +126,6 @@ function destinations_list_public_itineraries(): void
             'coverImage' => $row['Cover_Image'] ?: 'https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?q=80&w=1200&auto=format&fit=crop',
             'description' => $row['Public_Description'],
             'location' => $row['Public_Location'],
-            'tags' => $row['Tags'] ? explode('|', $row['Tags']) : [],
             'copyCount' => (int)$row['Copy_Count'],
             'likeCount' => (int)$row['Like_Count'],
             'viewCount' => (int)$row['View_Count'],
@@ -177,9 +166,6 @@ function destinations_get_public_itinerary_preview(): void
                 i.Start_Date, i.End_Date, COALESCE(NULLIF(i.Public_Cover_Image, \'\'), i.Cover_Image) AS Cover_Image,
                 i.Public_Description, i.Public_Location, i.Copy_Count, i.Like_Count, i.View_Count, i.Account AS Owner_Account,
                 COALESCE(NULLIF(m.Name, \'\'), i.Account) AS Owner_Name, m.Avatar AS Owner_Avatar
-                ,(SELECT GROUP_CONCAT(pt.Tag ORDER BY pt.Tag SEPARATOR \'|\')
-                    FROM Public_Itinerary_Tag pt
-                   WHERE pt.Itinerary_ID = i.Itinerary_ID) AS Tags
          FROM Itinerary i
          LEFT JOIN Member m ON m.Account = i.Account
          WHERE i.Itinerary_ID = ? AND i.Is_Public = 1
@@ -227,7 +213,6 @@ function destinations_get_public_itinerary_preview(): void
         'coverImage' => $itinerary['Cover_Image'],
         'description' => $itinerary['Public_Description'],
         'location' => $itinerary['Public_Location'],
-        'tags' => $itinerary['Tags'] ? explode('|', $itinerary['Tags']) : [],
         'copyCount' => (int)$itinerary['Copy_Count'],
         'likeCount' => (int)$itinerary['Like_Count'],
         'viewCount' => (int)$itinerary['View_Count'],
@@ -254,10 +239,7 @@ function destinations_get_publishable_itineraries(): void
 
     $stmt = $conn->prepare(
         "SELECT i.Itinerary_ID, i.Title, i.Start_Date, i.End_Date, i.Cover_Image, i.Is_Public,
-                i.Public_Title, i.Public_Cover_Image, i.Public_Description, i.Public_Location, COUNT(ii.Item_ID) AS Item_Count, MAX(ii.Day_Number) AS Day_Count,
-                (SELECT GROUP_CONCAT(pt.Tag ORDER BY pt.Tag SEPARATOR '|')
-                   FROM Public_Itinerary_Tag pt
-                  WHERE pt.Itinerary_ID = i.Itinerary_ID) AS Tags
+                i.Public_Title, i.Public_Cover_Image, i.Public_Description, i.Public_Location, COUNT(ii.Item_ID) AS Item_Count, MAX(ii.Day_Number) AS Day_Count
          FROM Itinerary i
          LEFT JOIN Itinerary_Item ii ON ii.Itinerary_ID = i.Itinerary_ID
          WHERE i.Account = ?
@@ -282,7 +264,6 @@ function destinations_get_publishable_itineraries(): void
             'publicCoverImage' => $row['Public_Cover_Image'],
             'publicDescription' => $row['Public_Description'],
             'publicLocation' => $row['Public_Location'],
-            'tags' => $row['Tags'] ? explode('|', $row['Tags']) : [],
             'itemCount' => (int)$row['Item_Count'],
             'dayCount' => max((int)$row['Day_Count'], 1),
         ];
@@ -294,7 +275,7 @@ function destinations_get_publishable_itineraries(): void
 }
 
 /**
- * action=publish：設定公開資訊與標籤，或將行程下架；成功後清除公開列表快取。
+ * action=publish：設定公開資訊，或將行程下架；成功後清除公開列表快取。
  * 來源：save_public_itinerary.php；保留原本輸入欄位、交易與 JSON 回應格式。
  */
 function destinations_save_public_itinerary(): void
@@ -309,22 +290,12 @@ function destinations_save_public_itinerary(): void
     $publicCoverImage = trim((string)($data->Public_Cover_Image ?? ''));
     $publicDescription = trim((string)($data->Public_Description ?? ''));
     $publicLocation = normalize_public_itinerary_location($data->Public_Location ?? '');
-    $rawTags = $data->Tags ?? [];
 
     if ($account === '' || $itineraryId <= 0) api_error('缺少行程或使用者資料。', 400);
-    if (!is_array($rawTags)) api_error('標籤格式錯誤。', 422);
     if (mb_strlen($publicTitle) > 255) api_error('公開標題最多 255 個字。', 422);
     if (mb_strlen($publicCoverImage) > 2000) api_error('封面連結過長。', 422);
     if (mb_strlen($publicDescription) > 1000) api_error('行程簡介最多 1000 個字。', 422);
-    if (mb_strlen($publicLocation) > 150) api_error('公開地點標籤最多 150 個字。', 422);
-
-    $tags = normalize_public_itinerary_tags($rawTags);
-    $submittedTags = [];
-    foreach ($rawTags as $tag) {
-        if (is_string($tag) && trim($tag) !== '') $submittedTags[trim($tag)] = true;
-    }
-    if (count($submittedTags) > 5) api_error('最多選擇 5 個標籤。', 422);
-    if (count($tags) !== count($submittedTags)) api_error('包含不支援的標籤。', 422);
+    if (mb_strlen($publicLocation) > 150) api_error('公開目的地最多 150 個字。', 422);
 
     $conn->begin_transaction();
     try {
@@ -345,22 +316,6 @@ function destinations_save_public_itinerary(): void
         $stmt->bind_param('issssiis', $isPublic, $publicTitle, $publicCoverImage, $publicDescription, $publicLocation, $isPublic, $itineraryId, $account);
         if (!$stmt->execute()) throw new RuntimeException('無法儲存公開設定。');
         $stmt->close();
-
-        $deleteTags = $conn->prepare('DELETE FROM Public_Itinerary_Tag WHERE Itinerary_ID = ?');
-        if (!$deleteTags) throw new RuntimeException('無法更新行程標籤。');
-        $deleteTags->bind_param('i', $itineraryId);
-        if (!$deleteTags->execute()) throw new RuntimeException('無法更新行程標籤。');
-        $deleteTags->close();
-
-        if (count($tags) > 0) {
-            $insertTag = $conn->prepare('INSERT INTO Public_Itinerary_Tag (Itinerary_ID, Tag) VALUES (?, ?)');
-            if (!$insertTag) throw new RuntimeException('無法儲存行程標籤。');
-            foreach ($tags as $tag) {
-                $insertTag->bind_param('is', $itineraryId, $tag);
-                if (!$insertTag->execute()) throw new RuntimeException('無法儲存行程標籤。');
-            }
-            $insertTag->close();
-        }
 
         $conn->commit();
     } catch (Throwable $error) {
@@ -600,7 +555,7 @@ $handlers = [
     'list' => 'destinations_list_public_itineraries', // 搜尋、篩選、排序公開行程；優先讀取快取，未命中才連資料庫。
     'preview' => 'destinations_get_public_itinerary_preview', // 讀取單一公開行程及每日地點，供公開預覽頁顯示。
     'mine' => 'destinations_get_publishable_itineraries', // 讀取指定帳號擁有、可管理公開設定的行程。
-    'publish' => 'destinations_save_public_itinerary', // 設定公開資訊與標籤，或將行程下架；成功後清除公開列表快取。
+    'publish' => 'destinations_save_public_itinerary', // 設定公開資訊，或將行程下架；成功後清除公開列表快取。
     'view' => 'destinations_record_public_itinerary_view', // 以 Viewer_Key 去重後記錄瀏覽，必要時更新瀏覽數與快取。
     'like' => 'destinations_toggle_public_itinerary_like', // 切換公開行程按讚，更新按讚數及公開列表快取。
     'bookmark' => 'destinations_toggle_public_itinerary_save', // 切換指定帳號對公開行程的收藏狀態並清除快取。
