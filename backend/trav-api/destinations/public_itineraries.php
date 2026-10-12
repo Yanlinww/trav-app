@@ -520,9 +520,9 @@ function destinations_copy_public_itinerary(): void
     $conn->begin_transaction();
     try {
         $title = trim((string)($data->Title ?? '')) ?: $source['Title'] . '（複製）';
-        $insertItinerary = $conn->prepare('INSERT INTO Itinerary (Account, Title, Start_Date, End_Date, Cover_Image, Dest_Lat, Dest_Lng, Is_Public, Copied_From_Itinerary_ID) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)');
+        $insertItinerary = $conn->prepare('INSERT INTO Itinerary (Account, Title, Start_Date, End_Date, Cover_Image, Dest_Lat, Dest_Lng, Is_Public) VALUES (?, ?, ?, ?, ?, ?, ?, 0)');
         if (!$insertItinerary) throw new Exception('建立新行程失敗');
-        $insertItinerary->bind_param('sssssddi', $account, $title, $source['Start_Date'], $source['End_Date'], $source['Cover_Image'], $source['Dest_Lat'], $source['Dest_Lng'], $sourceId);
+        $insertItinerary->bind_param('sssssdd', $account, $title, $source['Start_Date'], $source['End_Date'], $source['Cover_Image'], $source['Dest_Lat'], $source['Dest_Lng']);
         if (!$insertItinerary->execute()) throw new Exception('建立新行程失敗');
         $newItineraryId = $conn->insert_id;
         $insertItinerary->close();

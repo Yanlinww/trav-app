@@ -1,14 +1,15 @@
 'use client';
 
 /**
- * 模組匯入說明：
- * - React 核心 Hook：用於狀態管理 (useState)、副作用處理 (useEffect)、DOM 引用 (useRef)
- * - Next.js 路由：useRouter 用於頁面跳轉
- * - 驗證 Context：useAuth 取得使用者登入狀態與資訊
- * - Lucide React 圖示庫：提供 UI 所需的向量圖示
+ * /planner 是「我的行程」列表頁。這裡有表單、下拉選單和按鈕事件，
+ * 需要 React 狀態與瀏覽器端互動，因此檔案開頭使用 'use client'。
+ * 頁面只處理列表與建立入口；單一行程的詳細編輯放在 /planner/[id]。
  */
+// useState 保存畫面狀態；useEffect 在登入狀態確定後載入資料。
 import { useState, useEffect } from "react";
+// 按鈕點擊後才決定目的地，所以使用客戶端路由切換。
 import { useRouter } from "next/navigation";
+// 從共用 Context 取得目前登入者，讓此頁知道要查哪個帳號的行程。
 import { useAuth } from "../context/AuthContext";
 import { 
   Plus, X, Calendar, MapPin, Loader2, User, Pin, Trash2, MoreVertical, ChevronLeft,
@@ -16,16 +17,7 @@ import {
 } from "lucide-react";
 
 /**
- * @interface Itinerary
- * @description 定義單一行程資料結構
- * @property {string} id - 行程的唯一識別碼
- * @property {string} title - 行程標題
- * @property {string} startDate - 開始日期 (格式通常為 YYYY-MM-DD)
- * @property {string} endDate - 結束日期 (格式通常為 YYYY-MM-DD)
- * @property {string} coverImage - 封面圖片 URL
- * @property {string} isPinned - 是否被釘選至頂部
- * @property {boolean} isPublic - 是否公開行程 (true: 公開, false: 私密)
- * @property {string} Account - 行程建立者的帳號識別碼 (用於判斷權限 Owner/Member)
+ * 列表 API 回傳的卡片資料；型別寫在此頁，方便檢查排序與卡片會用到的欄位。
  */
 interface Itinerary {
   id: string;
@@ -34,12 +26,12 @@ interface Itinerary {
   endDate: string;
   coverImage: string;
   isPinned: boolean;
-  isPublic: boolean; // 🌟 擴充 isPublic 型別
-  Account: string;
+  isPublic: boolean; // 決定卡片顯示公開或私密圖示。
+  Account: string; // 行程擁有者帳號，用於卡片上的身分標示。
 }
 
 export default function PlannerDashboard() {
-  // 取得使用者驗證狀態與路由控制器
+  // 本頁的資料以登入者為範圍；loading 結束前不能判定使用者未登入。
   const { user, loading } = useAuth();
   const router = useRouter();
 
@@ -47,27 +39,29 @@ export default function PlannerDashboard() {
   // 狀態管理 (State Management)
   // ---------------------------------------------------------------------------
   
-  /** @type {boolean} 新增行程彈窗開關狀態 */
+  // 這些狀態只影響本頁畫面，放在頁面元件即可，不必交給全站 Context。
+  // 是否顯示「建立新行程」表單。
   const [isModalOpen, setIsModalOpen] = useState(false);
   
-  /** @type {string | null} 當前展開下拉選單的行程 ID，null 代表無選單展開 */
+  // 只允許一張卡片的選單展開；null 表示全部關閉。
   const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
   
-  /** @type {boolean} 資料載入中狀態 (頁面初始化抓取) */
+  // 分開記錄「驗證中」與「行程載入中」，避免資料回來前閃出空列表。
   const [isFetching, setIsFetching] = useState(true);
   
-  /** @type {boolean} 建立行程表單提交中狀態 */
+  // 送出期間停用按鈕，避免重複建立行程。
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // 表單輸入狀態
+  // 表單輸入由 React 狀態管理，送出時可直接組成後端需要的資料。
   const [title, setTitle] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [destination, setDestination] = useState("taipei");
 
   /**
-   * @constant CITY_COORDINATES
-   * @description 台灣各縣市及海外主要城市之經緯度對照表，用於建立行程時帶入目的地座標
+   * 下拉選單的城市代碼會在建立行程時換成地圖初始座標。
+   * 這是城市的代表位置，不是使用者選定的精確景點座標。
+   * 目前只有本頁表單會使用，所以對照表放在這個元件內。
    */
   const CITY_COORDINATES: Record<string, { lat: number, lng: number }> = {
     "keelung": { lat: 25.1276, lng: 121.7392 },
@@ -96,7 +90,7 @@ export default function PlannerDashboard() {
     "osaka": { lat: 34.6937, lng: 135.5023 },
   };
 
-  /** @type {Itinerary[]} 使用者擁有的所有行程清單 */
+  // 後端列表回應保存在此，建立／刪除／釘選後可立即更新畫面。
   const [itineraries, setItineraries] = useState<Itinerary[]>([]);
   
   // ---------------------------------------------------------------------------
@@ -104,9 +98,8 @@ export default function PlannerDashboard() {
   // ---------------------------------------------------------------------------
 
   /**
-   * @function fetchItineraries
-   * @async
-   * @description 向後端 API 取得該使用者相關的所有行程列表
+   * 此頁負責顯示行程卡片，因此在這裡向列表 API 取得登入者的行程。
+   * 建立成功後也會重用此函式，取得後端產生的行程 ID 與完整卡片資料。
    */
   const fetchItineraries = async () => {
     if (!user) return;
@@ -117,20 +110,22 @@ export default function PlannerDashboard() {
         body: JSON.stringify({ Account: user.id || (user as any).Account, Viewer_Account: user.id || (user as any).Account }),
       });
       const data = await res.json();
+      // 只在後端確認成功時更新列表，避免錯誤回應蓋掉原有卡片。
       if (data.status === 'success') {
         setItineraries(data.data);
       }
     } catch (error) {
       console.error("載入行程失敗", error);
     } finally {
+      // 成功或失敗都結束載入畫面，否則使用者會一直看到轉圈。
       setIsFetching(false);
     }
   };
 
   /**
-   * 驗證與初始化 Effect：
-   * 1. 若驗證結束後使用者未登入，重定向至登入頁面
-   * 2. 若使用者已登入，開始抓取行程列表
+   * 登入資料由 AuthContext 從瀏覽器儲存空間恢復，所以要等 loading 結束，
+   * 才能判斷是否真的未登入；已有使用者時才發出行程列表請求。
+   * 這是頁面載入後要做的事，放在 useEffect 而不是渲染 JSX 時執行。
    */
   useEffect(() => {
     if (!loading && !user) {
@@ -140,17 +135,13 @@ export default function PlannerDashboard() {
     }
   }, [user, loading, router]);
 
-  /**
-   * @constant sortedItineraries
-   * @description 排序後的行程列表（已釘選的行程會排在最前面）
-   */
+  // sort 會直接修改陣列，因此先複製；只改畫面的顯示順序，不改原始 state。
+  // 釘選的行程排前面；兩筆狀態相同時保留原本的相對順序。
   const sortedItineraries = [...itineraries].sort((a, b) => (a.isPinned === b.isPinned ? 0 : a.isPinned ? -1 : 1));
 
   /**
-   * @function openPublicSettings
-   * @description 導向至景點/公開設定頁面以調整行程公開資訊
-   * @param {string} id - 行程 ID
-   * @param {React.MouseEvent} e - 滑鼠點擊事件
+   * 公開資訊在 /destinations 頁管理，所以這裡只傳行程 ID 並導過去。
+   * 按鈕位於可點擊的卡片內；stopPropagation 避免同時進入行程詳細頁。
    */
   const openPublicSettings = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -159,11 +150,8 @@ export default function PlannerDashboard() {
   };
 
   /**
-   * @function handleDelete
-   * @async
-   * @description 刪除指定行程
-   * @param {string} id - 行程 ID
-   * @param {React.MouseEvent} e - 滑鼠點擊事件
+   * 刪除操作從卡片選單發起；先請使用者確認，再呼叫後端刪除。
+   * 只有後端回報成功才從本頁列表移除卡片，避免畫面與資料庫不同步。
    */
   const handleDelete = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -182,17 +170,13 @@ export default function PlannerDashboard() {
   };
 
   /**
-   * @function handlePin
-   * @async
-   * @description 切換行程的釘選狀態（採用 Optimistic UI 更新策略）
-   * @param {string} id - 行程 ID
-   * @param {boolean} isCurrentlyPinned - 當前是否已釘選
-   * @param {React.MouseEvent} e - 滑鼠點擊事件
+   * 釘選只影響本頁卡片的排序，因此先改本地列表，讓點擊後立刻看到結果。
+   * 若後端儲存失敗，再還原原本狀態；這種做法稱為樂觀更新。
    */
   const handlePin = async (id: string, isCurrentlyPinned: boolean, e: React.MouseEvent) => {
     e.stopPropagation();
     const targetPinStatus = !isCurrentlyPinned;
-    // 樂觀更新：先更新畫面狀態
+    // 先更新畫面，sortedItineraries 會在重新渲染時把卡片移到對應位置。
     setItineraries(itineraries.map(it => it.id === id ? { ...it, isPinned: targetPinStatus } : it));
     setActiveDropdown(null);
     try {
@@ -202,22 +186,20 @@ export default function PlannerDashboard() {
       });
       const data = await res.json();
       if (data.status !== 'success') {
-        // 若伺服器回應失敗，回滾狀態
+        // 後端拒絕更新時，還原原本的釘選狀態。
         setItineraries(itineraries.map(it => it.id === id ? { ...it, isPinned: isCurrentlyPinned } : it));
         alert(data.message);
       }
     } catch (error) {
-      // 發生例外時，回滾狀態
+      // 網路或程式例外也要還原，避免只改到前端。
       setItineraries(itineraries.map(it => it.id === id ? { ...it, isPinned: isCurrentlyPinned } : it));
       alert("釘選狀態更新失敗");
     }
   };
 
   /**
-   * @function handleCreateItinerary
-   * @async
-   * @description 表單送出：建立全新的行程
-   * @param {React.FormEvent} e - 表單送出事件
+   * 建立表單就在此頁的彈窗內，所以送出邏輯也放在此頁。
+   * preventDefault 避免瀏覽器重新整理；城市代碼換成座標後送給後端。
    */
   const handleCreateItinerary = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -237,6 +219,7 @@ export default function PlannerDashboard() {
       });
       const data = await res.json();
       if (data.status === 'success') {
+        // 重新讀取列表，比自行拼接卡片更能反映後端實際儲存的資料。
         await fetchItineraries();
         setIsModalOpen(false);
         setTitle("");
@@ -248,7 +231,7 @@ export default function PlannerDashboard() {
     } catch (error) { alert("發生錯誤"); } finally { setIsSubmitting(false); }
   };
 
-  // 渲染全螢幕加載狀態
+  // 登入與列表資料尚未準備好時先顯示載入畫面，避免短暫顯示「沒有行程」。
   if (loading || isFetching) return <div className="min-h-screen flex items-center justify-center bg-[#FAFAFA]"><Loader2 className="animate-spin size-8 text-slate-300" /></div>;
 
   // ---------------------------------------------------------------------------
@@ -256,7 +239,7 @@ export default function PlannerDashboard() {
   // ---------------------------------------------------------------------------
   return (
     <div className="min-h-screen bg-[#FAFAFA] relative">
-      {/* 點擊空白處關閉選單之透明遮罩 */}
+      {/* 選單開啟時蓋一層透明區域，點卡片外面即可關閉選單。 */}
       {activeDropdown && <div className="fixed inset-0 z-10" onClick={() => setActiveDropdown(null)} />}
       
       <div className="max-w-7xl mx-auto px-6 py-12">
@@ -270,7 +253,7 @@ export default function PlannerDashboard() {
           </div>
         </div>
 
-        {/* 行程列表區域：無資料狀態 vs 卡片網格 */}
+        {/* 同一塊列表位置依資料數量切換提示或卡片，不另建一個頁面。 */}
         {itineraries.length === 0 ? (
           <div className="text-center py-28 bg-white border border-slate-100 rounded-2xl shadow-sm">
             <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-6"><MapPin className="text-slate-300" size={28} /></div>
@@ -281,7 +264,7 @@ export default function PlannerDashboard() {
           <div className="grid grid-cols-2 gap-3 md:grid-cols-3 md:gap-6 lg:grid-cols-4">
           {sortedItineraries.map((itinerary) => (
               <div key={itinerary.id} onClick={() => router.push(`/planner/${itinerary.id}`)} className="bg-white border border-slate-100 rounded-xl group cursor-pointer hover:shadow-xl relative">
-                {/* 行程封面圖與更多功能按鈕 */}
+                {/* 整張卡片可進入詳細頁；內部選單按鈕會阻止事件往卡片傳遞。 */}
                 <div className="relative aspect-[4/3] overflow-hidden bg-slate-100 rounded-t-xl">
                   <img src={itinerary.coverImage} className="w-full h-full object-cover grayscale-[40%] group-hover:grayscale-0 transition-all" />
                   {itinerary.isPinned && <div className="absolute top-3 left-3 bg-slate-900/90 text-white p-1.5 rounded-full"><Pin className="size-3.5" /></div>}
@@ -295,7 +278,7 @@ export default function PlannerDashboard() {
                   </button>
                 </div>
                 
-                {/* 卡片下拉操作選單 */}
+                {/* 只有 activeDropdown 對應的卡片顯示選單，避免多個選單一起開啟。 */}
                 {activeDropdown === itinerary.id && (
                   <div onClick={(e) => e.stopPropagation()} className="absolute right-3 top-14 w-36 bg-white border border-gray-100 shadow-xl rounded-lg py-1.5 z-50">
                     <button onClick={(e) => handlePin(itinerary.id, itinerary.isPinned, e)} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-100"><Pin className="size-4" /> {itinerary.isPinned ? '取消釘選' : '釘選行程'}</button>
@@ -318,7 +301,7 @@ export default function PlannerDashboard() {
                       <span className="whitespace-nowrap">{itinerary.endDate}</span>
                     </p>
                     
-                    {/* 🌟 狀態標示區塊 (公開性與擁有者身分) 🌟 */}
+                    {/* 公開圖示來自 isPublic；目前列表只查本人行程，所以身分通常是 Owner。 */}
                     <div className="flex shrink-0 items-center gap-1.5 pb-0.5">
                       <span title={itinerary.isPublic ? '公開行程' : '私密行程'}>
                         {itinerary.isPublic ? <Globe size={12} className="text-emerald-500" /> : <Lock size={12} className="text-slate-300" />}
@@ -333,13 +316,12 @@ export default function PlannerDashboard() {
         )}
       </div>
 
-      {/* ----------------------------------------------------------------------- */
-      /* 彈窗 1：建立新行程 Modal                                                */
-      /* ----------------------------------------------------------------------- */}
+      {/* 彈窗和列表共用本頁的表單狀態；關閉後不用離開 /planner。 */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-[60]">
           <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95">
             <div className="p-6 border-b border-slate-100 flex justify-between items-center"><h2 className="text-sm font-bold tracking-widest uppercase">Start Planning</h2><button onClick={() => setIsModalOpen(false)}><X size={20} /></button></div>
+            {/* 受控輸入欄位的 value 與上方 state 同步，送出時讀取同一份資料。 */}
             <form onSubmit={handleCreateItinerary} className="p-8 space-y-6">
                 <input type="text" required value={title} onChange={(e) => setTitle(e.target.value)} placeholder="為你的旅程取個名字" className="w-full p-4 bg-slate-50 border rounded-xl" />
                 <select value={destination} onChange={(e) => setDestination(e.target.value)} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl text-slate-700 outline-none focus:border-[#F04D79]">

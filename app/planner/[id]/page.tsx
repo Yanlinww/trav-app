@@ -1,5 +1,6 @@
 'use client';
 
+// 這頁會讀取登入狀態、操作地圖和表單，也會使用瀏覽器的 localStorage，因此必須是 Client Component。
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useAuth } from "../../context/AuthContext";
@@ -26,6 +27,7 @@ const MAX_COVER_SOURCE_BYTES = 15 * 1024 * 1024;
 const MAX_COVER_DIMENSION = 1920;
 const FALLBACK_COVER_IMAGE = "https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?q=80&w=800&auto=format&fit=crop";
 
+// 替封面網址加版本，讓上傳後的圖片不會被瀏覽器舊快取蓋住；本機上傳檔透過 /api/cover 讀取。
 function coverImageWithVersion(imageUrl: string, version: number) {
   if (!imageUrl || imageUrl.startsWith("blob:") || imageUrl.startsWith("data:")) return imageUrl || FALLBACK_COVER_IMAGE;
   const localCoverMatch = imageUrl.match(/\/uploads\/covers\/([^/?#]+)/i);
@@ -33,6 +35,7 @@ function coverImageWithVersion(imageUrl: string, version: number) {
   return `${imageUrl}${imageUrl.includes("?") ? "&" : "?"}v=${version}`;
 }
 
+// 上傳前先在瀏覽器縮圖並轉成 WebP，減少傳輸大小；finally 保證暫存的 blob URL 會釋放。
 async function optimizeCoverImage(file: File): Promise<File> {
   if (!file.type.startsWith('image/')) throw new Error('請選擇圖片檔案。');
   if (file.size > MAX_COVER_SOURCE_BYTES) throw new Error('原始圖片超過 15MB，請選擇較小的圖片。');
@@ -72,6 +75,7 @@ type PersonalExpense = {
   date: string;
 };
 
+// 個人記帳獨立成面板：用行程 ID 和目前帳號向 PHP 讀寫，避免與主編輯器的地圖狀態混在一起。
 function BudgetPanel({ itineraryId, currentUserId }: { itineraryId: string; currentUserId: string }) {
   const categories = [
     { value: 'food', label: '餐飲' },
@@ -94,6 +98,7 @@ function BudgetPanel({ itineraryId, currentUserId }: { itineraryId: string; curr
   const [category, setCategory] = useState('food');
   const [location, setLocation] = useState('');
 
+  // useCallback 讓讀取函式只在行程或帳號變動時更新，下面的 effect 才不會每次 render 都重新請求。
   const loadExpenses = useCallback(async () => {
     try {
       setError('');
@@ -187,6 +192,7 @@ function BudgetPanel({ itineraryId, currentUserId }: { itineraryId: string; curr
     }
   };
 
+  // 搜尋只影響畫面；總計仍從完整的個人記帳資料計算，且不同幣別分開加總。
   const shownExpenses = expenses.filter((expense) =>
     `${expense.title} ${expense.location || ''}`.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase())
   );
@@ -248,6 +254,7 @@ function BudgetPanel({ itineraryId, currentUserId }: { itineraryId: string; curr
 }
 
 // ================= 行李清單獨立模組 =================
+// 行李分類是一份可編輯的清單資料；留在獨立面板，主頁只需傳入行程和帳號。
 function LuggagePanel({ itineraryId, currentUserId }: { itineraryId: string; currentUserId: string }) {
   const [categories, setCategories] = useState<any[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
@@ -265,6 +272,7 @@ function LuggagePanel({ itineraryId, currentUserId }: { itineraryId: string; cur
     { id: 'c5', title: '其他物品', isExpanded: true, items: [{ id: 'i21', name: '水瓶或保溫瓶', isChecked: false }, { id: 'i22', name: '筆', isChecked: false }, { id: 'i23', name: '塑膠袋', isChecked: false }, { id: 'i24', name: '雨傘', isChecked: false }, { id: 'i25', name: '環保餐具', isChecked: false }] }
   ];
 
+  // 定時讀取可帶回其他地方的修改；正在儲存時先跳過，避免把尚未送出的勾選覆蓋掉。
   const refreshLuggage = useCallback(async () => {
     if (syncStatusRef.current === 'saving') return;
     try {
@@ -292,6 +300,7 @@ function LuggagePanel({ itineraryId, currentUserId }: { itineraryId: string; cur
     return () => window.clearInterval(refreshTimer);
   }, [refreshLuggage]);
 
+  // 等初次讀取完成後才儲存；延遲一秒可將連續勾選合併成一次請求。
   useEffect(() => {
     if (!isLoaded) return; setSyncStatus('saving');
     const timer = setTimeout(() => {
@@ -350,11 +359,13 @@ function LuggagePanel({ itineraryId, currentUserId }: { itineraryId: string; cur
 }
 
 // ================= 單一可拖曳卡片組件 =================
+// 輸入時補上冒號；真正的 24 小時制合法性留給儲存前的檢查。
 const formatTimeInput = (value: string) => {
   const digits = value.replace(/\D/g, '').slice(0, 4);
   return digits.length >= 2 ? `${digits.slice(0, 2)}:${digits.slice(2)}` : digits;
 };
 
+// PHP 可能回傳 HH:mm:ss，畫面統一成 HH:mm；不合法的時間保留為空並另行標記。
 const normalizeLoadedTime = (value: unknown) => {
   const text = String(value ?? '').trim();
   const match = text.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
@@ -365,6 +376,7 @@ const normalizeLoadedTime = (value: unknown) => {
   return `${String(hours).padStart(2, '0')}:${match[2]}`;
 };
 
+// 清單顯示用的時間提示：跨午夜時把隔日分鐘數加 1440，才可和前一項比較。
 const getTimeFlags = (items: any[], index: number) => {
   const current = items[index];
   const currentStart = normalizeLoadedTime(current?.startTime);
@@ -402,6 +414,7 @@ const getMarkerStatusOption = (status: MarkerStatus) => (
   markerStatusOptions.find((option) => option.value === status) || markerStatusOptions[0]
 );
 
+// 單筆卡片同時支援拖曳、標題與時間編輯；拖曳只綁在握把，避免點擊表單時誤觸。
 function SortableItem({ 
   item, editingItemId, editingTitle, setEditingItemId, setEditingTitle, handleUpdateTitle,
   editingTimeId, editStartTime, editEndTime, setEditingTimeId, setEditStartTime, setEditEndTime, handleUpdateTime, handleDeleteItem, handleDuplicateItem, onFocusItem, isMapItemSelected, savingTimeId, timeFlags, markerStatus, onMarkerStatusChange
@@ -462,12 +475,14 @@ function SortableItem({
 }
 
 // ================= 主編輯器組件 =================
+// [id] 是網址中的行程 ID；頁面以它讀取詳情、每日項目與各面板資料。
 export default function ItineraryEditor() {
   const router = useRouter();
   const params = useParams(); 
   const { user, loading: authLoading } = useAuth();
   const currentAccount = String(user?.id || (user as any)?.Account || '');
   
+  // Google Maps 需要在瀏覽器載入，載入成功後才渲染地圖與標記。
   const { isLoaded, loadError } = useJsApiLoader({
     id: 'google-map-script',
     googleMapsApiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY as string,
@@ -498,6 +513,7 @@ export default function ItineraryEditor() {
   const [isMobilePanelOpen, setIsMobilePanelOpen] = useState(false);
   const preferencesHydratedRef = useRef(false);
 
+  // 目前天數與右側面板是本機畫面偏好；依行程 ID 分開保存，避免切換行程互相干擾。
   useEffect(() => {
     const savedTab = window.localStorage.getItem(`trav-app:right-panel:${params.id}`);
     if (savedTab === 'budget' || savedTab === 'luggage') setRightPanelTab(savedTab);
@@ -547,6 +563,7 @@ export default function ItineraryEditor() {
   const lastAutoFitDayRef = useRef<number | null>(null);
   const [markerStatuses, setMarkerStatuses] = useState<Record<string, MarkerStatus>>({});
 
+  // 地圖標記狀態目前存在此瀏覽器的 localStorage，沒有寫入資料庫。
   useEffect(() => {
     try {
       const saved = window.localStorage.getItem(`trav-app:marker-statuses:${params.id}`);
@@ -569,6 +586,7 @@ export default function ItineraryEditor() {
     return markerStatuses[String(item.id)] || 'added';
   }, [markerStatuses]);
 
+  // 同一地點先查快取；若請求還在進行就共用 Promise，避免重複呼叫地點詳情 API。
   const fetchPlaceDetailsOnce = useCallback(async (placeId: string) => {
     const normalizedPlaceId = String(placeId || '');
     if (!normalizedPlaceId) throw new Error('Missing place id');
@@ -614,6 +632,7 @@ export default function ItineraryEditor() {
     }
   }, [fetchPlaceDetailsOnce]);
 
+  // 點清單項目時，同步地圖中心、縮放和清單捲動，讓兩種視圖指向同一地點。
   const focusMapOnItem = useCallback((item: any) => {
     const lat = Number(item.Latitude);
     const lng = Number(item.Longitude);
@@ -649,6 +668,7 @@ export default function ItineraryEditor() {
     setMapZoom(12);
   }, [itineraryData]);
 
+  // 依當天有效座標調整地圖範圍；沒有座標時退回行程目的地。
   const fitCurrentDayPlaces = useCallback(() => {
     if (!mapRef.current || !window.google) return;
     const points = itineraryItems
@@ -673,6 +693,7 @@ export default function ItineraryEditor() {
     mapRef.current.fitBounds(bounds, 64);
   }, [activeDay, itineraryItems, resetMapView]);
 
+  // 手機切到地圖後，等容器真正顯示再觸發 resize 與範圍計算，避免地圖尺寸算錯。
   const switchMobilePlannerView = useCallback((view: 'list' | 'map') => {
     setMobilePlannerView(view);
     if (view !== 'map') return;
@@ -686,6 +707,7 @@ export default function ItineraryEditor() {
     });
   }, [fitCurrentDayPlaces]);
 
+  // 每次切換天數或順序，先移除舊線，再依當天 sortOrder 重畫各地點間的連線。
   useEffect(() => {
     routePolylineRef.current?.setMap(null);
     routePolylineRef.current = null;
@@ -729,6 +751,7 @@ export default function ItineraryEditor() {
     }
   }, [itineraryData?.destLat, itineraryData?.destLng]);
 
+  // 首次載入某一天時才自動縮放；之後使用者手動移動地圖，不會被輪詢重置視角。
   useEffect(() => {
     if (!mapReady || !window.google || !mapRef.current || !itineraryData) return;
     if (!itemsLoaded || lastAutoFitDayRef.current === activeDay) return;
@@ -766,6 +789,7 @@ export default function ItineraryEditor() {
     lastAutoFitDayRef.current = activeDay;
   }, [activeDay, itineraryData, itineraryItems, itemsLoaded, mapReady]);
 
+// 文字搜尋透過本專案的 API 取得候選地點；結果只先顯示在地圖，尚未建立行程項目。
 const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) => {
     if (!keyword.trim()) return;
     setNewItemLat(null);
@@ -831,6 +855,8 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
     }
   };
 
+  // 使用遞增序號忽略較早返回的搜尋結果，避免快速連點後顯示錯誤地點。
+  // 若正在修改舊項目的位置，就更新該筆；否則只把選取資料帶入新增表單。
   const handlePlaceSelect = async (placeId: string) => {
     const selectionRequestId = placeSelectionRequestRef.current + 1;
     placeSelectionRequestRef.current = selectionRequestId;
@@ -894,6 +920,7 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
     }
   };
 
+  // 使用者改寫搜尋名稱後清空原座標，避免把新名稱配上上一個搜尋結果的位置。
   const handleNewItemTitleChange = (value: string) => {
     setNewItemTitle(value);
     if (addItemMode === 'search') {
@@ -919,6 +946,7 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
     }
   };
 
+  // Google 地點和既有行程項目沒有共同 ID，這裡用接近的座標判斷是否已加入。
   const findItineraryItemForPlace = (place: any) => {
     const latitude = Number(place?.location?.latitude);
     const longitude = Number(place?.location?.longitude);
@@ -934,11 +962,13 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
     }) || null;
   };
 
+  // 滑鼠需移動 5px 才啟動拖曳；鍵盤感測器讓排序也能用鍵盤操作。
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
+  // PHP 回傳的 ID、時間和座標先轉成畫面一致的格式；資料沒變就沿用原 state，減少輪詢造成的重繪。
   const fetchItems = useCallback(async (id: string) => {
     try {
       const res = await fetch("http://localhost:8080/itinerary/items.php?action=list", {
@@ -967,6 +997,7 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
     } catch (error) { console.error(error); }
   }, []);
 
+  // 等登入狀態確認後，依網址中的 ID 分別載入行程主資料與每日項目。
   useEffect(() => {
     if (authLoading) return;
     if (!user) { router.push("/auth/login"); return; }
@@ -989,12 +1020,14 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
     if (params.id) { fetchDetail(); fetchItems(params.id as string); }
   }, [params.id, user, authLoading, router, fetchItems]);
 
+  // 每五秒同步項目清單；卸載或切換行程時清除計時器，避免持續讀取舊行程。
   useEffect(() => {
     if (authLoading || !user || !params.id) return;
     const refreshTimer = window.setInterval(() => fetchItems(params.id as string), 5000);
     return () => window.clearInterval(refreshTimer);
   }, [params.id, user, authLoading, fetchItems]);
 
+  // 先顯示本機預覽，再壓縮上傳；失敗則恢復舊封面，最後釋放預覽網址。
   const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]; if (!file) return;
     const previousCoverImage = coverImage;
@@ -1008,6 +1041,7 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
     finally { URL.revokeObjectURL(previewUrl); setIsUploading(false); if (fileInputRef.current) fileInputRef.current.value = ""; }
   };
 
+  // 行程名稱與日期屬於 Itinerary 主資料，交由 core.php 更新，不走每日項目的 API。
   const handleUpdateItineraryInfo = async () => {
     if (!editInfoTitle.trim() || !editInfoStart || !editInfoEnd) { alert("請完整填寫標題與日期"); return; }
     if (new Date(editInfoStart) > new Date(editInfoEnd)) { alert("結束日期不能早於開始日期"); return; }
@@ -1027,6 +1061,7 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
     return hours * 60 + minutes;
   };
 
+  // 儲存前把當天項目依順序排好，檢查時間重疊；跨午夜的結束時間換算成隔日分鐘。
   const getScheduleError = (dayNumber: number, start: string, end: string, itemId?: string, sortOrder?: number) => {
     const startMinutes = timeToMinutes(start);
     const endMinutes = timeToMinutes(end);
@@ -1060,6 +1095,7 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
     return null;
   };
 
+  // 新項目預填當天最後一個有時間項目的結束時間，使用者仍可自行修改。
   const getSuggestedStartTime = (dayNumber: number) => {
     const lastTimedItem = itineraryItems
       .filter((item) => item.dayNumber === dayNumber && timeToMinutes(item.endTime || '') !== null)
@@ -1075,6 +1111,7 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
     setIsAddItemOpen(true);
   };
 
+  // 搜尋地點必須先取得座標；自訂地點可沒有座標。檢查通過後才寫入 items.php。
   const handleCreateItem = async () => {
     if (!newItemTitle.trim()) {
       alert("請先選擇或輸入地點");
@@ -1136,6 +1173,7 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
     } catch(error) { alert("更新失敗"); } finally { setEditingItemId(null); }
   };
 
+  // 修改時間與新增時共用同一套格式和重疊檢查，避免編輯後出現衝突。
   const handleUpdateTime = async (itemId: string) => {
     if (savingTimeId === itemId) return;
     const startMinutes = timeToMinutes(editStartTime);
@@ -1163,6 +1201,7 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
     setEditingTimeId(null);
   };
 
+  // 先從畫面移除讓操作立即有回應；若後端刪除失敗，再重新抓取清單恢復資料。
   const handleDeleteItem = async (itemId: string) => {
     if (!window.confirm("確定要刪除此行程嗎？")) return;
     setSelectedMapItem((current: any) => current?.id === itemId ? null : current);
@@ -1179,6 +1218,7 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
     } catch(error) { alert("刪除失敗"); fetchItems(params.id as string); }
   };
 
+  // 複製項目時保留地點，刻意清空時間，避免複製後立刻與原項目重疊。
   const handleDuplicateItem = async (item: any) => {
     try {
       const res = await fetch("http://localhost:8080/itinerary/items.php?action=create", {
@@ -1202,6 +1242,7 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
     }
   };
 
+  // 拖曳改的是排列順序；原本的時間區段留在同一位置，再把新順序和需要變更的時間送往 PHP。
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
     if (over && active.id !== over.id) {
@@ -1246,6 +1287,7 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
     );
   }
 
+  // 畫面只顯示選取天數的項目；完整清單仍保留在 itineraryItems 供切天與時間檢查使用。
   const currentDayItems = itineraryItems.filter((item) => item.dayNumber === activeDay);
 
   return (
@@ -1267,6 +1309,7 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
         </div>
       </header>
 
+      {/* 左側是行程資料與每日清單，中央是地圖，右側是個人記帳或行李。 */}
       <div className="flex flex-1 overflow-visible xl:overflow-hidden">
         <div className={`${mobilePlannerView === 'list' ? 'flex' : 'hidden'} w-full md:flex md:w-[380px] shrink-0 bg-white border-r border-slate-100 flex-col z-10 shadow-[4px_0_24px_rgba(0,0,0,0.01)] relative`}>
           <div className="relative aspect-video w-full shrink-0 overflow-hidden bg-slate-100 group md:h-40 md:aspect-auto">
@@ -1326,6 +1369,7 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
             <button type="button" onClick={() => switchMobilePlannerView('map')} className={`flex flex-1 items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-bold transition-colors ${mobilePlannerView === 'map' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-400 hover:bg-slate-50 hover:text-slate-600'}`}><MapIcon size={16} />地圖</button>
           </div>
 
+          {/* Day 分頁由行程起迄日期算出，不需要另外儲存每日分頁資料。 */}
           <div className="flex overflow-x-auto hide-scrollbar px-6 border-b border-slate-100 gap-6">
             {(() => {
               const start = new Date(itineraryData.startDate); const end = new Date(itineraryData.endDate);
@@ -1345,6 +1389,7 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
             <span className="text-slate-500">Day {activeDay} 行程摘要</span>
           </div>
 
+          {/* DndContext 管理拖曳事件；SortableContext 只接收當天 ID，避免跨天排序。 */}
           <div className="flex-1 overflow-y-auto p-5 space-y-3.5 bg-slate-50/30">
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
               <SortableContext items={currentDayItems.map(item => item.id)} strategy={verticalListSortingStrategy}>
@@ -1372,6 +1417,7 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
           </div>
         </div>
 
+        {/* 手機以清單／地圖切換，桌面則同時顯示；地圖載入失敗時改顯示提示。 */}
         <div className={`${mobilePlannerView === 'map' && !isMobilePanelOpen ? 'flex' : 'hidden'} md:flex flex-1 relative items-center justify-center overflow-hidden bg-slate-100`}>
           {loadError ? (
             <div className="max-w-sm px-6 text-center text-sm text-slate-500">
@@ -1439,6 +1485,7 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
                     {mapStatusMessage}
                   </div>
                 )}
+                {/* 當天行程標記與暫時搜尋結果共用群聚，但搜尋結果不會因此寫進行程。 */}
                 <MarkerClustererF options={{ gridSize: 48, minimumClusterSize: 2, maxZoom: 15, zoomOnClick: true }}>
                   {(clusterer) => (
                     <>
@@ -1628,6 +1675,7 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
             )}
           </div>
 
+          {/* 面板只在選取對應分頁時掛載，記帳與行李各自處理自己的讀寫。 */}
           <div className={`${isMobilePanelOpen ? 'flex' : 'hidden'} xl:flex absolute xl:static inset-0 xl:inset-auto z-[70] xl:z-auto h-full xl:h-auto w-full xl:w-[340px] shrink-0 flex-col bg-white border-0 xl:border-l xl:border-slate-100 shadow-2xl xl:shadow-[-4px_0_24px_rgba(0,0,0,0.01)]`}>
             <div className="xl:hidden flex h-16 shrink-0 items-center gap-3 border-b border-slate-100 bg-white px-4">
               <button type="button" onClick={() => setIsMobilePanelOpen(false)} className="flex size-9 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-600" aria-label="返回行程"><ChevronLeft size={20} /></button>
@@ -1662,6 +1710,7 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
           })}
         </nav>
 
+        {/* 新增視窗先選搜尋或自訂，再共用標題與時間表單。 */}
         {isAddItemOpen && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
             <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => setIsAddItemOpen(false)}></div>

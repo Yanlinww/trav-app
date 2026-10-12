@@ -3,7 +3,6 @@
 function ensure_destinations_schema(mysqli $conn): void {
     $statements = [
         "ALTER TABLE `Itinerary` ADD COLUMN `Is_Public` TINYINT(1) NOT NULL DEFAULT 0",
-        "ALTER TABLE `Itinerary` ADD COLUMN `Copied_From_Itinerary_ID` INT NULL",
         "ALTER TABLE `Itinerary` ADD COLUMN `Copy_Count` INT NOT NULL DEFAULT 0",
         "ALTER TABLE `Itinerary` ADD COLUMN `Public_Title` VARCHAR(255) NULL",
         "ALTER TABLE `Itinerary` ADD COLUMN `Public_Cover_Image` TEXT NULL",
@@ -14,7 +13,6 @@ function ensure_destinations_schema(mysqli $conn): void {
         "ALTER TABLE `Itinerary` ADD COLUMN `View_Count` INT NOT NULL DEFAULT 0",
         "ALTER TABLE `Itinerary` ADD INDEX `idx_itinerary_public_start` (`Is_Public`, `Start_Date`)",
         "ALTER TABLE `Itinerary` ADD INDEX `idx_itinerary_public_updated` (`Is_Public`, `Public_Updated_At`)",
-        "ALTER TABLE `Itinerary` ADD INDEX `idx_itinerary_copied_from` (`Copied_From_Itinerary_ID`)",
         "ALTER TABLE `Itinerary_Item` ADD INDEX `idx_itinerary_item_public_lookup` (`Itinerary_ID`, `Day_Number`, `Sort_Order`)",
     ];
 
