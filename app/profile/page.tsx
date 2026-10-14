@@ -32,11 +32,9 @@ export default function ProfilePage() {
   const [socialLinks, setSocialLinks] = useState({
     instagram: '', twitter: '', xiaohongshu: '', tiktok: '', youtube: '', facebook: ''
   });
-  const [followStats, setFollowStats] = useState<{ followersCount: number; followingCount: number } | null>(null);
 
   const displayName = user?.nickname || 'TRAVELER';
   const avatarUrl = (user as any)?.avatar;
-  const currentAccount = user ? String(user.id || (user as any).Account || '') : '';
 
   // 1. 抓取照片檔案
   const fetchUserFiles = async () => {
@@ -98,35 +96,6 @@ export default function ProfilePage() {
   }, [user, activeTab]);
 
   useEffect(() => { if (user) fetchSocialLinks(); }, [user]);
-
-  useEffect(() => {
-    let isCancelled = false;
-    if (!currentAccount) {
-      setFollowStats(null);
-      return;
-    }
-
-    const fetchFollowStats = async () => {
-      try {
-        const res = await fetch("http://localhost:8080/social.php?action=profile", {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ Account: currentAccount }),
-        });
-        const data = await res.json();
-        if (!isCancelled && data.status === 'success' && data.data) {
-          setFollowStats({
-            followersCount: Number(data.data.followersCount) || 0,
-            followingCount: Number(data.data.followingCount) || 0,
-          });
-        }
-      } catch (error) {
-        console.error("無法取得追蹤統計", error);
-      }
-    };
-
-    void fetchFollowStats();
-    return () => { isCancelled = true; };
-  }, [currentAccount]);
 
   // 儲存社群連結
   const handleSaveLinks = async () => {
@@ -216,10 +185,6 @@ export default function ProfilePage() {
           </div>
           <div className="flex flex-col items-center md:items-end gap-5 mt-2 md:mt-0">
             <div className="flex items-center gap-6 text-neutral-800">
-              <div className="text-center flex items-baseline gap-1.5 px-1"><span className="text-2xl font-bold">{followStats?.followersCount ?? '—'}</span> <span className="text-sm text-neutral-500 font-medium">粉絲</span></div>
-              <div className="w-px h-6 bg-neutral-200"></div>
-              <div className="text-center flex items-baseline gap-1.5 px-1"><span className="text-2xl font-bold">{followStats?.followingCount ?? '—'}</span> <span className="text-sm text-neutral-500 font-medium">追蹤中</span></div>
-              <div className="w-px h-6 bg-neutral-200"></div>
               <div className="text-center flex items-baseline gap-1.5"><span className="text-2xl font-bold">0</span> <span className="text-sm text-neutral-500 font-medium">影音</span></div>
             </div>
             <div className="flex items-center gap-2">

@@ -14,17 +14,8 @@ $actions = ['profile' => 'social_profile', 'links' => 'social_links', 'update_li
 if (!isset($actions[$action])) api_error('無效的個人社交操作', 400);
 $actions[$action]($conn);
 
-/** get_user_profile 原本的操作內容。 */
+/** 讀取會員基本資料，供公開個人頁使用。 */
 function social_profile(mysqli $conn): void {
-    // 🌟 自動建表防呆機制
-    $conn->query("CREATE TABLE IF NOT EXISTS `User_Follows` (
-        `Follow_ID` INT AUTO_INCREMENT PRIMARY KEY,
-        `Follower_Account` VARCHAR(50) NOT NULL COMMENT '按下追蹤的人',
-        `Target_Account` VARCHAR(50) NOT NULL COMMENT '被追蹤的對象',
-        `Created_At` DATETIME DEFAULT CURRENT_TIMESTAMP,
-        UNIQUE KEY `unique_follow` (`Follower_Account`, `Target_Account`)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci");
-
     $data = json_decode(file_get_contents("php://input"));
 
     $account = $data->Account ?? '';
@@ -39,28 +30,12 @@ function social_profile(mysqli $conn): void {
             $user = $result->fetch_assoc();
             $stmt->close(); // 關閉連線
 
-            // 取得粉絲數
-            $stmtFollowers = $conn->prepare("SELECT COUNT(*) as count FROM User_Follows WHERE Target_Account = ?");
-            $stmtFollowers->bind_param("s", $account);
-            $stmtFollowers->execute();
-            $followersCount = $stmtFollowers->get_result()->fetch_assoc()['count'];
-            $stmtFollowers->close();
-
-            // 取得追蹤中
-            $stmtFollowing = $conn->prepare("SELECT COUNT(*) as count FROM User_Follows WHERE Follower_Account = ?");
-            $stmtFollowing->bind_param("s", $account);
-            $stmtFollowing->execute();
-            $followingCount = $stmtFollowing->get_result()->fetch_assoc()['count'];
-            $stmtFollowing->close();
-
             echo json_encode([
                 "status" => "success", 
                 "data" => [
                     "account" => $user['Account'],
                     "name" => $user['Name'],
-                    "avatar" => $user['Avatar'],
-                    "followersCount" => (int)$followersCount,
-                    "followingCount" => (int)$followingCount
+                    "avatar" => $user['Avatar']
                 ]
             ]);
         } else {

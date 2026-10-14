@@ -31,7 +31,7 @@ export default function PublicProfilePage() {
   const [activeTab, setActiveTab] = useState('photos');
   
   const [profileUser, setProfileUser] = useState<{
-    account: string; name: string; avatar: string; followersCount: number; followingCount: number;
+    account: string; name: string; avatar: string;
   } | null>(null);
   const [isLoadingProfile, setIsLoadingProfile] = useState(true);
   
@@ -172,13 +172,9 @@ export default function PublicProfilePage() {
             </div>
           </div>
           
-          {/* 右側：粉絲數據與社群連結 */}
+          {/* 右側：公開行程統計與社群連結 */}
           <div className="flex flex-col items-center md:items-end gap-5 mt-4 md:mt-0">
             <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-3 text-neutral-800 md:justify-end">
-              <div className="text-center flex items-baseline gap-1.5 px-1"><span className="text-2xl font-bold">{profileUser.followersCount}</span> <span className="text-sm text-neutral-500 font-medium">粉絲</span></div>
-              <div className="w-px h-6 bg-neutral-200"></div>
-              <div className="text-center flex items-baseline gap-1.5 px-1"><span className="text-2xl font-bold">{profileUser.followingCount}</span> <span className="text-sm text-neutral-500 font-medium">追蹤中</span></div>
-              <div className="w-px h-6 bg-neutral-200"></div>
               <div className="text-center flex items-baseline gap-1.5"><span className="text-2xl font-bold">{publicStats.likes}</span> <span className="text-sm text-neutral-500 font-medium">獲得喜歡</span></div>
               <div className="w-px h-6 bg-neutral-200"></div>
               <div className="text-center flex items-baseline gap-1.5"><span className="text-2xl font-bold">{publicStats.copies}</span> <span className="text-sm text-neutral-500 font-medium">被複製</span></div>

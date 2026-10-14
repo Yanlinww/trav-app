@@ -25,7 +25,7 @@ function upload_itinerary_cover(mysqli $conn): void {
             exit();
         }
         if ($file['size'] > 10 * 1024 * 1024) {
-            echo json_encode(["status" => "error", "message" => "圖片最佳化後仍超過 10MB，請換一張較小的圖片。"]);
+            echo json_encode(["status" => "error", "message" => "圖片超過 10MB，請換一張較小的圖片。"]);
             exit();
         }
 
