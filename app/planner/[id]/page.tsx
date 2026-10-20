@@ -38,8 +38,11 @@ const MAX_COVER_SOURCE_BYTES = 10 * 1024 * 1024;
 // 無封面或載入失敗時的備用圖片，仍需網路。
 const FALLBACK_COVER_IMAGE = "https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?q=80&w=800&auto=format&fit=crop";
 
-// 替封面網址加版本，讓上傳後的圖片不會被瀏覽器舊快取蓋住；本機上傳檔透過 /api/cover 讀取。
-// blob/data 不改網址；後端 covers 走同源代理，其餘網址加版本避開舊快取。
+/**
+ * 將儲存的封面來源轉成實際顯示網址，不修改資料庫中的原始網址。
+ * blob/data 已指向當次內容，直接保留；uploads/covers 則只抽出檔名交給同源 /api/cover。
+ * 一般網址依是否已有查詢參數選擇 ? 或 & 加上版本；空來源回傳備用圖。
+ */
 function coverImageWithVersion(imageUrl: string, version: number) {
   if (!imageUrl || imageUrl.startsWith("blob:") || imageUrl.startsWith("data:")) return imageUrl || FALLBACK_COVER_IMAGE;
   const localCoverMatch = imageUrl.match(/\/uploads\/covers\/([^/?#]+)/i);
@@ -57,7 +60,11 @@ type PersonalExpense = {
 };
 
 // 個人記帳獨立成面板：用行程 ID 和目前帳號向 PHP 讀寫，避免與主編輯器的地圖狀態混在一起。
-// 記帳元件：清單、草稿與金額總計；由外層傳行程 ID 和帳號。
+/**
+ * 個人記帳面板的資料流：掛載讀清單 → 新增／修改草稿 → 驗證後送出 → 重讀清單。
+ * editingId 決定同一表單要新增還是修改，列表本身不會隨草稿輸入而變動。
+ * API 同時檢查 HTTP 狀態與 JSON 的 status；錯誤留在面板或表單中顯示。
+ */
 function BudgetPanel({ itineraryId, currentUserId }: { itineraryId: string; currentUserId: string }) {
   const categories = [
     { value: 'food', label: '餐飲' },
@@ -67,25 +74,25 @@ function BudgetPanel({ itineraryId, currentUserId }: { itineraryId: string; curr
     { value: 'shopping', label: '購物' },
     { value: 'other', label: '其他' },
   ];
-  // 畫面狀態 expenses：初始值由 useState 設定，使用 setter 更新後 React 重新渲染。
+  // 後端回傳的花費清單；列表與總金額都以這份資料為準。
   const [expenses, setExpenses] = useState<PersonalExpense[]>([]);
-  // 畫面狀態 loading：初始值由 useState 設定，使用 setter 更新後 React 重新渲染。
+  // 記帳首次讀取是否尚未結束；與主頁及 Google Maps 的載入狀態分開管理。
   const [loading, setLoading] = useState(true);
-  // 畫面狀態 saving：初始值由 useState 設定，使用 setter 更新後 React 重新渲染。
+  // 記帳表單是否正在送出；期間停用儲存與取消按鈕，避免重複操作。
   const [saving, setSaving] = useState(false);
-  // 畫面狀態 error：初始值由 useState 設定，使用 setter 更新後 React 重新渲染。
+  // 記帳讀寫或欄位驗證的錯誤訊息；空字串表示沒有要顯示的錯誤。
   const [error, setError] = useState('');
-  // 畫面狀態 formOpen：初始值由 useState 設定，使用 setter 更新後 React 重新渲染。
+  // 新增／修改花費共用視窗的開關；切換模式時會另外初始化草稿。
   const [formOpen, setFormOpen] = useState(false);
-  // 畫面狀態 editingId：初始值由 useState 設定，使用 setter 更新後 React 重新渲染。
+  // 正在修改的花費 ID；null 代表新增，送出時據此選擇 create 或 update。
   const [editingId, setEditingId] = useState<number | null>(null);
-  // 畫面狀態 title：初始值由 useState 設定，使用 setter 更新後 React 重新渲染。
+  // 花費名稱草稿；編輯時先複製原資料，只有儲存成功才重新讀取清單。
   const [title, setTitle] = useState('');
-  // 畫面狀態 amount：初始值由 useState 設定，使用 setter 更新後 React 重新渲染。
+  // 金額輸入草稿以字串保存，允許使用者輸入中間狀態；送出時再轉數字驗證。
   const [amount, setAmount] = useState('');
-  // 畫面狀態 category：初始值由 useState 設定，使用 setter 更新後 React 重新渲染。
+  // 花費分類代碼，對應上方 categories 的 value；新增預設為餐飲 food。
   const [category, setCategory] = useState('food');
-  // 畫面狀態 location：初始值由 useState 設定，使用 setter 更新後 React 重新渲染。
+  // 選填的消費地點草稿；送出前會移除首尾空白。
   const [location, setLocation] = useState('');
 
   // useCallback 讓讀取函式只在行程或帳號變動時更新，下面的 effect 才不會每次 render 都重新請求。
@@ -238,15 +245,21 @@ function BudgetPanel({ itineraryId, currentUserId }: { itineraryId: string; curr
 
 // ================= 行李清單獨立模組 =================
 // 行李分類是一份可編輯的清單資料；留在獨立面板，主頁只需傳入行程和帳號。
-// 分類與物品組成 JSON 清單；勾選、增刪、改名由 Effect 自動同步。
+// 分類與物品組成 JSON 清單；勾選、新增分類及增刪物品由 Effect 自動儲存。
+/**
+ * 行李面板以分類陣列作為單一資料來源；各操作只更新 categories，由 Effect 統一儲存。
+ * 讀取回應的 data 是 JSON 字串，因此外層 res.json() 之後仍需再 JSON.parse。
+ * 更新時相反：先將陣列序列化成 LuggageData 字串，再包進整份請求的 JSON。
+ * 沒有清單或讀取失敗時使用預設模板；儲存錯誤只寫入主控台，沒有儲存狀態提示。
+ */
 function LuggagePanel({ itineraryId, currentUserId }: { itineraryId: string; currentUserId: string }) {
-  // 畫面狀態 categories：初始值由 useState 設定，使用 setter 更新後 React 重新渲染。
+  // 整份行李資料：每個分類包含 id、title 與 items；物品包含 id、name、isChecked。
   const [categories, setCategories] = useState<any[]>([]);
-  // 畫面狀態 isLoaded：初始值由 useState 設定，使用 setter 更新後 React 重新渲染。
+  // 行李首次讀取完成的旗標，避免初始空陣列直接觸發自動儲存；讀取失敗也會設為 true。
   const [isLoaded, setIsLoaded] = useState(false);
-  // 畫面狀態 addingToCategory：初始值由 useState 設定，使用 setter 更新後 React 重新渲染。
+  // 目前顯示新增物品輸入框的分類 ID；null 表示所有分類都顯示新增按鈕。
   const [addingToCategory, setAddingToCategory] = useState<string | null>(null);
-  // 畫面狀態 newItemName：初始值由 useState 設定，使用 setter 更新後 React 重新渲染。
+  // 目前新增物品的文字草稿；各分類共用同一份輸入狀態。
   const [newItemName, setNewItemName] = useState("");
 
   // 沒有已存清單時用預設分類，首次讀取失敗也可能使用模板。
@@ -280,6 +293,7 @@ function LuggagePanel({ itineraryId, currentUserId }: { itineraryId: string; cur
 
   useEffect(() => { refreshLuggage(); }, [refreshLuggage]);
 
+  // 載入 categories 並設 isLoaded 後也會觸發此 Effect，並非只有使用者修改才會儲存。
   // 等初次讀取完成後才儲存；延遲一秒可將連續勾選合併成一次請求。
   useEffect(() => {
     if (!isLoaded) return;
@@ -290,6 +304,8 @@ function LuggagePanel({ itineraryId, currentUserId }: { itineraryId: string; cur
         if (!res.ok || data.status !== 'success') throw new Error(data.message || '行李儲存失敗');
       }).catch((error) => console.error('行李儲存失敗:', error));
     }, 1000);
+    // 下一次變更或卸載時取消尚未發出的計時器；已送出的 fetch 不會因此取消。
+    // 若切換分頁時仍在等待一秒，最後一批修改不會在卸載時額外補送。
     return () => clearTimeout(timer);
   }, [categories, isLoaded, itineraryId, currentUserId]);
 
@@ -337,14 +353,12 @@ function LuggagePanel({ itineraryId, currentUserId }: { itineraryId: string; cur
 
 // ================= 單一可拖曳卡片組件 =================
 // 輸入時補上冒號；真正的 24 小時制合法性留給儲存前的檢查。
-// 移除非數字、最多四碼並補冒號；合法範圍在儲存前檢查。
 const formatTimeInput = (value: string) => {
   const digits = value.replace(/\D/g, '').slice(0, 4);
   return digits.length >= 2 ? `${digits.slice(0, 2)}:${digits.slice(2)}` : digits;
 };
 
 // PHP 可能回傳 HH:mm:ss，畫面統一成 HH:mm；不合法的時間保留為空並另行標記。
-// 接受含秒時間，檢查範圍後統一 HH:mm；非法回空字串。
 const normalizeLoadedTime = (value: unknown) => {
   const text = String(value ?? '').trim();
   const match = text.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
@@ -356,7 +370,11 @@ const normalizeLoadedTime = (value: unknown) => {
 };
 
 // 清單顯示用的時間提示：跨午夜時把隔日分鐘數加 1440，才可和前一項比較。
-// 比對前面最近一筆完整時間，跨午夜加分鐘，沒有估算交通時間。
+/**
+ * 只產生卡片上的「跨日／時間重疊」提示，不參與新增或修改時間的儲存阻擋。
+ * 例如前一筆為 23:00–01:00，會把其結束時間視為隔日 01:00（1500 分鐘）。
+ * 比較對象是顯示順序中最近一筆具有完整合法時間的項目，不是逐一檢查所有項目。
+ */
 const getTimeFlags = (items: any[], index: number) => {
   const current = items[index];
   const currentStart = normalizeLoadedTime(current?.startTime);
@@ -382,7 +400,11 @@ const getTimeFlags = (items: any[], index: number) => {
 };
 
 // 單筆卡片同時支援拖曳、標題與時間編輯；拖曳只綁在握把，避免點擊表單時誤觸。
-// 拖曳握把與名稱/時間編輯，事件由父元件處理；stopPropagation 避免操作冒泡。
+/**
+ * 卡片只負責顯示與觸發事件；項目資料、編輯草稿及儲存請求由主編輯器管理。
+ * setNodeRef 綁定整張卡片以計算位置，attributes/listeners 只放在拖曳握把。
+ * 名稱／時間輸入區阻止事件冒泡，避免編輯時同時觸發卡片的地圖定位。
+ */
 function SortableItem({ 
   item, editingItemId, editingTitle, setEditingItemId, setEditingTitle, handleUpdateTitle,
   editingTimeId, editStartTime, editEndTime, setEditingTimeId, setEditStartTime, setEditEndTime, handleUpdateTime, handleDeleteItem, onFocusItem, isMapItemSelected, savingTimeId, timeFlags
@@ -438,7 +460,6 @@ function SortableItem({
 
 // ================= 主編輯器組件 =================
 // [id] 是網址中的行程 ID；頁面以它讀取詳情、每日項目與各面板資料。
-// 主編輯器依 params.id 取得行程，整合清單、地圖與面板。
 export default function ItineraryEditor() {
   const router = useRouter();
   const params = useParams(); 
@@ -452,42 +473,43 @@ export default function ItineraryEditor() {
     region: 'TW',
   });
 
-  // 畫面狀態 isLoading：初始值由 useState 設定，使用 setter 更新後 React 重新渲染。
+  // 行程主資料首次載入的旗標；每日項目及地圖 SDK 另有各自的讀取流程。
   const [isLoading, setIsLoading] = useState(true);
-  // 畫面狀態 itineraryData：初始值由 useState 設定，使用 setter 更新後 React 重新渲染。
+  // 行程主資料，如名稱、起訖日期與目的地座標；每日景點另存於 itineraryItems。
   const [itineraryData, setItineraryData] = useState<any>(null);
   
-  // 畫面狀態 coverImage：初始值由 useState 設定，使用 setter 更新後 React 重新渲染。
+  // 目前封面的來源：可為後端網址、本機 blob 預覽網址或備用圖片網址。
   const [coverImage, setCoverImage] = useState("");
-  // 畫面狀態 coverImageVersion：初始值由 useState 設定，使用 setter 更新後 React 重新渲染。
+  // 附在封面網址上的版本值；載入、上傳或重試時更新，讓瀏覽器重新取圖。
   const [coverImageVersion, setCoverImageVersion] = useState(0);
-  // 畫面狀態 hasRetriedCoverImage：初始值由 useState 設定，使用 setter 更新後 React 重新渲染。
+  // 目前封面是否已用新版本重試過；限制原圖重試次數，之後才改用備用圖。
   const [hasRetriedCoverImage, setHasRetriedCoverImage] = useState(false);
-  // 畫面狀態 isUploading：初始值由 useState 設定，使用 setter 更新後 React 重新渲染。
+  // 封面上傳中的旗標；控制按鈕停用、轉圈，以及封面的模糊與透明效果。
   const [isUploading, setIsUploading] = useState(false);
+  // 取得隱藏檔案欄位的 DOM，讓封面按鈕能開啟選檔器，並在上傳結束後清空選取值。
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // 畫面狀態 isEditingInfo：初始值由 useState 設定，使用 setter 更新後 React 重新渲染。
+  // 是否顯示行程名稱／日期編輯區；取消只關閉編輯區，不送出 API。
   const [isEditingInfo, setIsEditingInfo] = useState(false);
-  // 畫面狀態 editInfoTitle：初始值由 useState 設定，使用 setter 更新後 React 重新渲染。
+  // 行程名稱草稿；開啟編輯時從 itineraryData 複製，儲存成功後才回寫主資料。
   const [editInfoTitle, setEditInfoTitle] = useState("");
-  // 畫面狀態 editInfoStart：初始值由 useState 設定，使用 setter 更新後 React 重新渲染。
+  // 開始日期草稿，配合 date 輸入欄使用 YYYY-MM-DD 格式。
   const [editInfoStart, setEditInfoStart] = useState("");
-  // 畫面狀態 editInfoEnd：初始值由 useState 設定，使用 setter 更新後 React 重新渲染。
+  // 結束日期草稿；送出時與開始日期比較，避免結束早於開始。
   const [editInfoEnd, setEditInfoEnd] = useState("");
 
-  // 畫面狀態 activeDay：初始值由 useState 設定，使用 setter 更新後 React 重新渲染。
+  // 目前選取的行程天數，從 1 開始；同時控制左側清單、地圖標記與路線折線。
   const [activeDay, setActiveDay] = useState(1);
-  // 畫面狀態 mobilePlannerView：初始值由 useState 設定，使用 setter 更新後 React 重新渲染。
+  // 手機目前顯示清單或地圖；桌面透過響應式樣式同時呈現兩者。
   const [mobilePlannerView, setMobilePlannerView] = useState<'list' | 'map'>('list');
-  // 畫面狀態 isAddItemOpen：初始值由 useState 設定，使用 setter 更新後 React 重新渲染。
+  // 新增行程項目視窗的開關；關閉視窗本身不等於清空所有草稿。
   const [isAddItemOpen, setIsAddItemOpen] = useState(false);
-  // 畫面狀態 addItemMode：初始值由 useState 設定，使用 setter 更新後 React 重新渲染。
+  // 新增流程的模式：choose 選入口、search 選有座標的地點、custom 輸入自訂名稱。
   const [addItemMode, setAddItemMode] = useState<'choose' | 'search' | 'custom'>('choose');
   
-  // 畫面狀態 rightPanelTab：初始值由 useState 設定，使用 setter 更新後 React 重新渲染。
+  // 目前掛載的輔助面板：budget 記帳或 luggage 行李；切換會卸載前一個面板。
   const [rightPanelTab, setRightPanelTab] = useState<'budget' | 'luggage'>('budget');
-  // 畫面狀態 isMobilePanelOpen：初始值由 useState 設定，使用 setter 更新後 React 重新渲染。
+  // 小螢幕是否以覆蓋方式顯示輔助面板；超寬桌面則由樣式固定顯示側欄。
   const [isMobilePanelOpen, setIsMobilePanelOpen] = useState(false);
   // 切換行程時回到第一天與記帳面板，不再讀寫本機畫面偏好。
   useEffect(() => {
@@ -495,59 +517,59 @@ export default function ItineraryEditor() {
     setRightPanelTab('budget');
   }, [params.id]);
 
-  // 畫面狀態 newItemTitle：初始值由 useState 設定，使用 setter 更新後 React 重新渲染。
+  // 新增地點名稱草稿，也供地圖搜尋欄共用；搜尋結果選取後會帶入地點名稱。
   const [newItemTitle, setNewItemTitle] = useState("");
-  // 畫面狀態 newItemStartTime：初始值由 useState 設定，使用 setter 更新後 React 重新渲染。
+  // 新增項目的開始時間草稿；開啟視窗時預填當天最後一筆合法結束時間。
   const [newItemStartTime, setNewItemStartTime] = useState("");
-  // 畫面狀態 newItemEndTime：初始值由 useState 設定，使用 setter 更新後 React 重新渲染。
+  // 新增項目的結束時間草稿；開啟視窗先清空，允許留空。
   const [newItemEndTime, setNewItemEndTime] = useState("");
-  // 畫面狀態 newItemLat：初始值由 useState 設定，使用 setter 更新後 React 重新渲染。
+  // 新增地點的緯度；null 表示尚未取得位置，搜尋模式送出前必須有有效座標。
   const [newItemLat, setNewItemLat] = useState<number | null>(null);
-  // 畫面狀態 newItemLng：初始值由 useState 設定，使用 setter 更新後 React 重新渲染。
+  // 新增地點的經度，須與緯度一起使用；自訂模式允許沒有座標。
   const [newItemLng, setNewItemLng] = useState<number | null>(null);
 
-  // 畫面狀態 isSubmittingItem：初始值由 useState 設定，使用 setter 更新後 React 重新渲染。
+  // 新增項目請求的進行狀態，用來停用視窗按鈕並顯示處理中圖示。
   const [isSubmittingItem, setIsSubmittingItem] = useState(false);
 
-  // 畫面狀態 itineraryItems：初始值由 useState 設定，使用 setter 更新後 React 重新渲染。
+  // 整份行程所有天數的項目；載入時統一 ID、時間與座標格式，再按 activeDay 篩選。
   const [itineraryItems, setItineraryItems] = useState<any[]>([]);
   
-  // 畫面狀態 editingItemId：初始值由 useState 設定，使用 setter 更新後 React 重新渲染。
+  // 目前編輯名稱的項目 ID；null 代表所有卡片都以文字呈現名稱。
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
-  // 畫面狀態 editingTitle：初始值由 useState 設定，使用 setter 更新後 React 重新渲染。
+  // 卡片名稱的編輯草稿；與新增視窗的 newItemTitle 分開，避免互相影響。
   const [editingTitle, setEditingTitle] = useState("");
-  // 畫面狀態 editingTimeId：初始值由 useState 設定，使用 setter 更新後 React 重新渲染。
+  // 目前編輯時間的項目 ID；配合共用時間草稿，只開啟對應卡片的輸入欄。
   const [editingTimeId, setEditingTimeId] = useState<string | null>(null);
-  // 畫面狀態 editStartTime：初始值由 useState 設定，使用 setter 更新後 React 重新渲染。
+  // 既有項目的開始時間草稿；進入卡片時間編輯時由該項目帶入。
   const [editStartTime, setEditStartTime] = useState("");
-  // 畫面狀態 editEndTime：初始值由 useState 設定，使用 setter 更新後 React 重新渲染。
+  // 既有項目的結束時間草稿；與開始時間一同驗證並送出 update_time。
   const [editEndTime, setEditEndTime] = useState("");
-  // 畫面狀態 savingTimeId：初始值由 useState 設定，使用 setter 更新後 React 重新渲染。
+  // 正在儲存時間的項目 ID，用來略過同筆重複送出並停用對應卡片的儲存操作。
   const [savingTimeId, setSavingTimeId] = useState<string | null>(null);
 
-  // 畫面狀態 selectedPlace：初始值由 useState 設定，使用 setter 更新後 React 重新渲染。
+  // 目前預覽的候選地點，可能來自搜尋、內建景點或空白地圖；尚未因此寫入行程。
   const [selectedPlace, setSelectedPlace] = useState<any | null>(null);
   // 遞增序號只保護選地點詳情，沒有保護文字搜尋。
   const placeSelectionRequestRef = useRef(0);
-  // 畫面狀態 placeDetailsLoading：初始值由 useState 設定，使用 setter 更新後 React 重新渲染。
+  // 正在補齊詳細資訊的候選地點 ID；只讓對應資訊框顯示載入提示。
   const [placeDetailsLoading, setPlaceDetailsLoading] = useState<string | null>(null);
-  // 畫面狀態 selectedMapItem：初始值由 useState 設定，使用 setter 更新後 React 重新渲染。
+  // 目前選中的既有行程項目；供地圖資訊框與清單卡片的選取樣式共用。
   const [selectedMapItem, setSelectedMapItem] = useState<any | null>(null);
-  // 畫面狀態 editingLocationItemId：初始值由 useState 設定，使用 setter 更新後 React 重新渲染。
+  // 等待重新指定位置的既有項目 ID；選取地點後改走 update_location。
   const [editingLocationItemId, setEditingLocationItemId] = useState<string | null>(null);
-  // 畫面狀態 searchMarkers：初始值由 useState 設定，使用 setter 更新後 React 重新渲染。
+  // 文字搜尋的候選標記，與已儲存行程標記分開；清除候選不會刪除行程。
   const [searchMarkers, setSearchMarkers] = useState<any[]>([]);
   // 保存 Google Maps 實例，供移動、縮放、fitBounds 等命令操作。
   const mapRef = useRef<google.maps.Map | null>(null);
-  // 畫面狀態 mapCenter：初始值由 useState 設定，使用 setter 更新後 React 重新渲染。
+  // 受控的地圖中心；載入目的地、選地點及地圖閒置時都可能更新。
   const [mapCenter, setMapCenter] = useState({ lat: 25.0478, lng: 121.5170 });
-  // 畫面狀態 mapZoom：初始值由 useState 設定，使用 setter 更新後 React 重新渲染。
+  // 程式指定的縮放級別；選景點時放大，載入行程目的地時回到城市尺度。
   const [mapZoom, setMapZoom] = useState(12);
   // 保存折線，重畫或卸載時 setMap(null) 移除。
   const routePolylineRef = useRef<google.maps.Polyline | null>(null);
-  // 畫面狀態 mapReady：初始值由 useState 設定，使用 setter 更新後 React 重新渲染。
+  // GoogleMap 實例是否已掛載；SDK 載入成功不代表實例已可供折線綁定。
   const [mapReady, setMapReady] = useState(false);
-  // 畫面狀態 mapStatusMessage：初始值由 useState 設定，使用 setter 更新後 React 重新渲染。
+  // 搜尋或地點詳情的地圖提示；null 表示不顯示提示浮層。
   const [mapStatusMessage, setMapStatusMessage] = useState<string | null>(null);
   // 每次呼叫都直接請求地點詳情，不保存快取或共用進行中的請求。
   const fetchPlaceDetails = useCallback(async (placeId: string) => {
@@ -564,7 +586,11 @@ export default function ItineraryEditor() {
     return data;
   }, []);
 
-  // 候選基本資料先顯示，再補詳情；只更新仍選中的同一 ID。
+  /**
+   * 先使用候選資料顯示資訊框，再非同步補照片、地址、營業時間等詳情。
+   * 以函式型 setter 檢查目前候選 ID，避免 A 地點的回應覆蓋已切換到 B 的資訊框。
+   * finally 也比對 ID，避免較舊請求關閉另一個地點的載入提示。
+   */
   const loadPlaceDetails = useCallback(async (place: any) => {
     const placeId = String(place?.id || '');
     if (!placeId || place?.isMapPoint) return;
@@ -603,6 +629,7 @@ export default function ItineraryEditor() {
   }, [itineraryItems, selectedMapItem]);
 
   // 手機切到地圖後，等容器顯示再觸發 resize，避免地圖尺寸算錯；不自動調整地點範圍。
+  // 兩層 requestAnimationFrame 留出畫面更新的機會，再通知地圖重新計算可見容器尺寸。
   const switchMobilePlannerView = useCallback((view: 'list' | 'map') => {
     setMobilePlannerView(view);
     if (view !== 'map') return;
@@ -630,6 +657,7 @@ export default function ItineraryEditor() {
 
     if (routeItems.length < 2) return;
 
+    // 篩選後至少保留兩個位置才建立線段；此處沿用 Number 轉型後的有限值檢查。
     const path = routeItems.map((item) => ({
       lat: Number(item.Latitude),
       lng: Number(item.Longitude),
@@ -727,9 +755,11 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
     }
   };
 
-  // 選地點詳情時忽略較舊回應，不涵蓋文字搜尋。
-  // 若正在修改舊項目的位置，就更新該筆；否則只把選取資料帶入新增表單。
-  // 選詳情後比對序號；改位置更新既有項目，一般選取只填新增草稿。
+  /**
+   * 自動完成選單的地點選取入口：先取得完整座標，再區分新增草稿或修改既有位置。
+   * 每次呼叫增加請求序號，回應回來時僅接受最新一次選取；這個保護不涵蓋其他搜尋入口。
+   * editingLocationItemId 有值時立即送出位置更新並重讀項目；一般選取只填草稿，仍須按新增。
+   */
   const handlePlaceSelect = async (placeId: string) => {
     const selectionRequestId = placeSelectionRequestRef.current + 1;
     placeSelectionRequestRef.current = selectionRequestId;
@@ -794,7 +824,6 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
   };
 
   // 使用者改寫搜尋名稱後清空原座標，避免把新名稱配上上一個搜尋結果的位置。
-  // 搜尋名稱改動清空座標，避免新名稱沿用前一個地點。
   const handleNewItemTitleChange = (value: string) => {
     setNewItemTitle(value);
     if (addItemMode === 'search') {
@@ -839,14 +868,17 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
   };
 
   // 滑鼠需移動 5px 才啟動拖曳；鍵盤感測器讓排序也能用鍵盤操作。
-  // 滑鼠移 5px 才拖曳，鍵盤也能排序，避免點輸入欄誤觸。
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
-  // PHP 回傳的 ID、時間和座標先轉成畫面一致的格式，再直接更新項目資料。
-  // 統一字串 ID、HH:mm、number/null。檢查注意：沒有過期回應保護。
+  // 檢查注意：項目讀取沒有過期回應保護。
+  /**
+   * 把 PHP 回應轉成卡片、拖曳及地圖共用的資料格式，成功後取代完整項目清單。
+   * ID 轉字串以配合拖曳 ID 比較；HH:mm:ss 轉 HH:mm；原始非法時間另存 hasInvalidTime。
+   * 座標保留 null，其餘轉數字；這裡只正規化資料，並未檢查所有座標使用處的 null 處理。
+   */
   const fetchItems = useCallback(async (id: string) => {
     try {
       const res = await fetch("http://localhost:8080/itinerary/items.php?action=list", {
@@ -893,10 +925,15 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
         } else { alert(data.message); router.push("/planner"); }
       } catch { alert("資料讀取失敗"); } finally { setIsLoading(false); }
     };
+    // 兩個非同步函式各自啟動，不互相等待；主資料轉圈結束時，項目仍可能尚未回來。
     if (params.id) { fetchDetail(); fetchItems(params.id as string); }
   }, [params.id, user, authLoading, router, fetchItems]);
 
-  // 檢查原圖後顯示本機預覽，直接用 FormData 上傳；失敗恢復舊圖，最後釋放網址並清空 input。
+  /**
+   * 封面生命週期：驗證檔案 → 建立 blob 預覽 → 上傳原檔 → 換成後端回傳網址。
+   * MIME、附檔名與 10 MiB 上限是前端檢查；使用 FormData，讓瀏覽器自動產生 multipart 邊界。
+   * 失敗時恢復先前封面；finally 釋放預覽網址、結束上傳狀態並清空 input，方便重選同一檔。
+   */
   const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]; if (!file) return;
     if (!file.type.startsWith('image/') || !/\.(jpe?g|png|webp)$/i.test(file.name)) {
@@ -920,7 +957,6 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
   };
 
   // 行程名稱與日期屬於 Itinerary 主資料，交由 core.php 更新，不走每日項目的 API。
-  // 主資料走 core.php，驗證名稱與日期順序，成功再更新畫面。
   const handleUpdateItineraryInfo = async () => {
     if (!editInfoTitle.trim() || !editInfoStart || !editInfoEnd) { alert("請完整填寫標題與日期"); return; }
     if (new Date(editInfoStart) > new Date(editInfoEnd)) { alert("結束日期不能早於開始日期"); return; }
@@ -942,7 +978,6 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
   };
 
   // 新項目預填當天最後一個有時間項目的結束時間，使用者仍可自行修改。
-  // 找當天排序最後一筆合法結束時間，預填新項目起始時間。
   const getSuggestedStartTime = (dayNumber: number) => {
     const lastTimedItem = itineraryItems
       .filter((item) => item.dayNumber === dayNumber && timeToMinutes(item.endTime || '') !== null)
@@ -959,8 +994,11 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
     setIsAddItemOpen(true);
   };
 
-  // 搜尋地點必須先取得座標；自訂地點可沒有座標。檢查通過後才寫入 items.php。
-  // 驗證名稱、搜尋座標與時間格式，再 create；允許時間重疊，成功清草稿並重讀項目。
+  /**
+   * 新增只使用目前 activeDay；搜尋模式必須選到座標，自訂模式可先建立無座標項目。
+   * 起訖時間都可留空，有輸入就檢查 24 小時格式；兩者相同會阻擋，跨午夜與重疊則允許。
+   * 成功後清空名稱、時間、座標及候選預覽，再重新讀取後端產生的項目 ID 與排序。
+   */
   const handleCreateItem = async () => {
     if (!newItemTitle.trim()) {
       alert("請先選擇或輸入地點");
@@ -1052,8 +1090,12 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
     } catch { alert("刪除失敗"); fetchItems(params.id as string); }
   };
 
-  // 拖曳改的是排列順序；原本的時間區段留在同一位置，再把新順序和需要變更的時間送往 PHP。
-  // 時間保留原排列位置，項目改順序；多個排序/時間請求不是單一交易。
+  /**
+   * 拖曳時把「項目順序」與「時間位置」分開：項目移位，但每個排列位置保留原本時段。
+   * 例如 A 09:00、B 10:00 對調後，B 取得 09:00 的時段，A 取得 10:00 的時段。
+   * arrayMove 操作所有天數的陣列，再只替當天項目套用時段；其他天數的時間維持原值。
+   * state 更新函式內同時產生新陣列並送出排序與時間請求；沒有整批成功／失敗的交易保證。
+   */
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
     if (over && active.id !== over.id) {
@@ -1287,6 +1329,7 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
                   });
                 }}
                 onLoad={(map) => { mapRef.current = map; setMapReady(true); }}
+                // 使用者拖動地圖後，將最終中心同步回 state；微小差異沿用舊物件，減少重繪。
                 onIdle={() => {
                   const center = mapRef.current?.getCenter();
                   if (!center) return;
@@ -1297,6 +1340,7 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
                       : nextCenter
                   ));
                 }}
+                // GoogleMap 卸載時一起移除命令式建立的折線，並清空實例參照。
                 onUnmount={() => { routePolylineRef.current?.setMap(null); routePolylineRef.current = null; mapRef.current = null; setMapReady(false); }}
               >
                 {mapStatusMessage && (
