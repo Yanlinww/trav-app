@@ -3,12 +3,12 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useRouter } from 'next/navigation';
-import { Bell, Heart, MessageCircle, CheckCircle2, Loader2, Info } from 'lucide-react';
+import { Bell, Heart, MessageCircle, CheckCircle2, Loader2, Info, UserPlus } from 'lucide-react';
 
 
 type Notification = {
   id: number;
-  type: 'like' | 'comment' | 'system';
+  type: 'like' | 'comment' | 'follow' | 'system';
   referenceId: string | null;
   message: string;
   isRead: boolean;
@@ -81,6 +81,8 @@ export default function NotificationsPage() {
   const handleNotificationClick = (notif: Notification) => {
     if (notif.type === 'like' || notif.type === 'comment') {
       router.push(`/community`);
+    } else if (notif.type === 'follow' && notif.sender.account) {
+      router.push(`/profile/${encodeURIComponent(notif.sender.account)}`);
     }
   };
 
@@ -88,6 +90,7 @@ export default function NotificationsPage() {
     switch (type) {
       case 'like': return { icon: Heart, bg: 'bg-rose-100', text: 'text-rose-500' };
       case 'comment': return { icon: MessageCircle, bg: 'bg-blue-100', text: 'text-blue-500' };
+      case 'follow': return { icon: UserPlus, bg: 'bg-pink-100', text: 'text-pink-500' };
       default: return { icon: Info, bg: 'bg-neutral-100', text: 'text-neutral-500' };
     }
   };

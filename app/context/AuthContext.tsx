@@ -35,7 +35,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const checkLoginStatus = () => {
       try {
         const savedUser = localStorage.getItem('user_info');
-        localStorage.removeItem('auth_token');
         if (savedUser) {
           setUser(JSON.parse(savedUser));
         }
@@ -61,7 +60,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = () => {
     setUser(null);
     localStorage.removeItem('user_info');
-    localStorage.removeItem('auth_token');
     
     // 登出後將畫面導回首頁。
     if (typeof window !== 'undefined') {
