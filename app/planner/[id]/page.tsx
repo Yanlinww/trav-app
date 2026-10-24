@@ -299,7 +299,11 @@ function LuggagePanel({ itineraryId, currentUserId }: { itineraryId: string; cur
     if (!isLoaded) return;
     const timer = setTimeout(() => {
       fetch("http://localhost:8080/itinerary/luggage.php?action=update", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ Itinerary_ID: itineraryId, Account: currentUserId, LuggageData: JSON.stringify(categories) }) })
-      .then(res => res.json()).then(data => { if (data.status === 'success') setSyncStatus('saved'); else setSyncStatus('error'); }).catch(() => setSyncStatus('error'));
+      .then(res => res.json())
+      .then(data => {
+        if (data.status !== 'success') console.error('行李清單儲存失敗', data);
+      })
+      .catch((error) => console.error('行李清單儲存失敗', error));
     }, 1000);
     // 下一次變更或卸載時取消尚未發出的計時器；已送出的 fetch 不會因此取消。
     // 若切換分頁時仍在等待一秒，最後一批修改不會在卸載時額外補送。
@@ -946,8 +950,7 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
     const previousCoverImage = coverImage;
     const previewUrl = URL.createObjectURL(file); setCoverImage(previewUrl); setIsUploading(true);
     try {
-      const optimizedFile = await optimizeCoverImage(file);
-      const formData = new FormData(); formData.append("cover_image", optimizedFile); formData.append("Itinerary_ID", params.id as string); formData.append("Account", user?.id || (user as any)?.Account);
+      const formData = new FormData(); formData.append("cover_image", file); formData.append("Itinerary_ID", params.id as string); formData.append("Account", user?.id || (user as any)?.Account);
       const res = await fetch("http://localhost:8080/itinerary/uploads/upload.php?action=cover", { method: "POST", body: formData });
       const data = await res.json(); if (data.status === 'success') { setCoverImage(data.new_image_url); setCoverImageVersion(Date.now()); setHasRetriedCoverImage(false); } else { alert(data.message); setCoverImage(previousCoverImage); }
     } catch (error) { alert(error instanceof Error ? error.message : "圖片上傳失敗"); setCoverImage(previousCoverImage); } 

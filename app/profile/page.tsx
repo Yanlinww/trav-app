@@ -120,7 +120,7 @@ export default function ProfilePage() {
   useEffect(() => {
     let isCancelled = false;
     if (!currentAccount) {
-      setFollowStats(null);
+      setFollowStats({ followersCount: 0, followingCount: 0 });
       return;
     }
 
