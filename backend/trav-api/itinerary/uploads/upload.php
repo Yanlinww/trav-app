@@ -66,7 +66,7 @@ function upload_itinerary_cover(mysqli $conn): void {
         if (move_uploaded_file($file['tmp_name'], $target_path)) {
 
             // 5. 組合對外網址 (依據你的 Docker 伺服器 Port 8080)
-            $image_url = "http://localhost:8080/uploads/covers/" . $new_filename;
+            $image_url = "/backend/uploads/covers/" . $new_filename;
 
             // 6. Itinerary.Cover_Image 只存圖片網址；實體圖片已寫入上面的目錄。
             $update_stmt = $conn->prepare("UPDATE `Itinerary` SET `Cover_Image` = ? WHERE `Itinerary_ID` = ?");

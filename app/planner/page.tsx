@@ -104,7 +104,7 @@ export default function PlannerDashboard() {
   const fetchItineraries = async () => {
     if (!user) return;
     try {
-      const res = await fetch("http://localhost:8080/itinerary/core.php?action=list", {
+      const res = await fetch("/backend/itinerary/core.php?action=list", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ Account: user.id || (user as any).Account, Viewer_Account: user.id || (user as any).Account }),
@@ -157,7 +157,7 @@ export default function PlannerDashboard() {
     e.stopPropagation();
     if (confirm("確定要刪除這個行程嗎？此動作無法復原。")) {
       try {
-        const res = await fetch("http://localhost:8080/itinerary/core.php?action=delete", {
+        const res = await fetch("/backend/itinerary/core.php?action=delete", {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ Account: user?.id || (user as any)?.Account, Itinerary_ID: id }),
         });
@@ -180,7 +180,7 @@ export default function PlannerDashboard() {
     setItineraries(itineraries.map(it => it.id === id ? { ...it, isPinned: targetPinStatus } : it));
     setActiveDropdown(null);
     try {
-      const res = await fetch("http://localhost:8080/itinerary/core.php?action=pin", {
+      const res = await fetch("/backend/itinerary/core.php?action=pin", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ Account: user?.id || (user as any)?.Account, Itinerary_ID: id, Is_Pinned: targetPinStatus }),
       });
@@ -206,7 +206,7 @@ export default function PlannerDashboard() {
     setIsSubmitting(true);
     const coords = CITY_COORDINATES[destination];
     try {
-      const res = await fetch("http://localhost:8080/itinerary/core.php?action=create", {
+      const res = await fetch("/backend/itinerary/core.php?action=create", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
           Account: user?.id || (user as any)?.Account, 

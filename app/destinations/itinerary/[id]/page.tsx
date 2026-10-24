@@ -74,7 +74,7 @@ export default function PublicItineraryPage({ params }: { params: Promise<{ id: 
         // Itinerary_ID 必須與 PHP 讀取的欄位同名；JSON.stringify 將物件轉成 JSON 字串。
         // 後端讀取 Itinerary、Member、Itinerary_Item，再將資料組成 JSON 回傳。
         // localhost:8080 是目前的開發位置，部署時需改成使用者可連線的後端位置。
-        const response = await fetch('http://localhost:8080/destinations/public_itineraries.php?action=preview', {
+        const response = await fetch('/backend/destinations/public_itineraries.php?action=preview', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ Itinerary_ID: id })

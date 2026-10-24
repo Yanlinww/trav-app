@@ -11,6 +11,7 @@ services:
             - frontend_next_cache:/app/.next
         environment:
             - NODE_ENV=development
+            - INTERNAL_API_ORIGIN=http://backend
             - WATCHPACK_POLLING=true
             - CHOKIDAR_USEPOLLING=true
         command: sh -c "if [ ! -x node_modules/.bin/next ]; then npm ci; fi; npm run dev:docker"

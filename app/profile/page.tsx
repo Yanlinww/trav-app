@@ -43,7 +43,7 @@ export default function ProfilePage() {
     if (!user) return;
     setIsLoadingFiles(true);
     try {
-      const res = await fetch("http://localhost:8080/files.php?action=get", {
+      const res = await fetch("/backend/files.php?action=get", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ Account: user.id || (user as any).Account, Tab_Type: 'photos' }),
       });
@@ -59,7 +59,7 @@ export default function ProfilePage() {
     if (!user) return;
     setIsLoadingItineraries(true);
     try {
-      const res = await fetch("http://localhost:8080/itinerary/core.php?action=list", {
+      const res = await fetch("/backend/itinerary/core.php?action=list", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ Account: user.id || (user as any).Account }),
       });
@@ -74,7 +74,7 @@ export default function ProfilePage() {
   const fetchSocialLinks = async () => {
     if (!user) return;
     try {
-      const res = await fetch("http://localhost:8080/social.php?action=links", {
+      const res = await fetch("/backend/social.php?action=links", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ Account: user.id || (user as any).Account }),
       });
@@ -108,7 +108,7 @@ export default function ProfilePage() {
 
     const fetchFollowStats = async () => {
       try {
-        const res = await fetch("http://localhost:8080/social.php?action=profile", {
+        const res = await fetch("/backend/social.php?action=profile", {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ Account: currentAccount }),
         });
@@ -133,7 +133,7 @@ export default function ProfilePage() {
     if (!user) return;
     setIsSavingLinks(true);
     try {
-      const res = await fetch("http://localhost:8080/social.php?action=update_links", {
+      const res = await fetch("/backend/social.php?action=update_links", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ Account: user.id || (user as any).Account, ...socialLinks }),
       });
@@ -164,7 +164,7 @@ export default function ProfilePage() {
     formData.append('type', 'photos'); 
 
     try {
-      const res = await fetch("http://localhost:8080/files.php?action=upload", { method: "POST", body: formData });
+      const res = await fetch("/backend/files.php?action=upload", { method: "POST", body: formData });
       const data = await res.json();
       if (data.status === 'success') fetchUserFiles(); 
       else alert(`❌ 上傳失敗：${data.message}`);

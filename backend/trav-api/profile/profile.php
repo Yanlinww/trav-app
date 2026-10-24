@@ -51,7 +51,7 @@ function profile_update_details(mysqli $conn): void
         
         // 將檔案移動到指定資料夾
         if (move_uploaded_file($file["tmp_name"], $target_file)) {
-            $avatarUrl = "http://localhost:8080/uploads/avatars/" . $filename;
+            $avatarUrl = "/backend/uploads/avatars/" . $filename;
         }
     }
 

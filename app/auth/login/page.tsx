@@ -140,7 +140,7 @@ export default function LoginPage() {
         setIsLoading(true);
         
         // 將 Code 發送到後端 PHP API 換取 Access Token 及使用者資料
-        fetch("http://localhost:8080/auth.php?action=facebook", {
+        fetch("/backend/auth.php?action=facebook", {
           method: "POST", 
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ Code: code, RedirectUri: REDIRECT_URI }),
@@ -193,7 +193,7 @@ export default function LoginPage() {
     setIsLoading(true);
     try {
       // 將 Google access_token 發送到後端進行二次驗證與帳號建立/比對
-      const res = await fetch("http://localhost:8080/auth.php?action=google", {
+      const res = await fetch("/backend/auth.php?action=google", {
         method: "POST", 
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ AccessToken: tokenResponse.access_token }),
@@ -232,7 +232,7 @@ export default function LoginPage() {
     setIsLoading(true);
     try {
       // 發送傳統帳密登入 Request 至後端 API
-      const res = await fetch("http://localhost:8080/auth.php?action=login", {
+      const res = await fetch("/backend/auth.php?action=login", {
         method: "POST", 
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ Account: email, Password: password }),

@@ -211,7 +211,7 @@ export default function DestinationsPage() {
     else setIsRefreshing(true);
     setError('');
     try {
-      const response = await fetch('http://localhost:8080/destinations/public_itineraries.php?action=list', {
+      const response = await fetch('/backend/destinations/public_itineraries.php?action=list', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ Account: currentAccount, Search: keyword, Duration: duration, Sort: sort, Location: location, Limit: limit, Saved_Only: savedOnly }),
@@ -250,7 +250,7 @@ export default function DestinationsPage() {
 
   const fetchOwnedItineraries = async () => {
     if (!currentAccount) return [] as OwnedItinerary[];
-    const response = await fetch('http://localhost:8080/destinations/public_itineraries.php?action=mine', {
+    const response = await fetch('/backend/destinations/public_itineraries.php?action=mine', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ Account: currentAccount }),
@@ -322,7 +322,7 @@ export default function DestinationsPage() {
     setIsSavingPublic(true);
     setManageError('');
     try {
-      const response = await fetch('http://localhost:8080/destinations/public_itineraries.php?action=publish', {
+      const response = await fetch('/backend/destinations/public_itineraries.php?action=publish', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -388,7 +388,7 @@ export default function DestinationsPage() {
 
   const recordPublicView = async (itineraryId: string) => {
     try {
-      const response = await fetch('http://localhost:8080/destinations/public_itineraries.php?action=view', {
+      const response = await fetch('/backend/destinations/public_itineraries.php?action=view', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ Itinerary_ID: itineraryId, Viewer_Key: getViewerKey() }),
@@ -409,7 +409,7 @@ export default function DestinationsPage() {
     }
     setLikingId(itinerary.id);
     try {
-      const response = await fetch('http://localhost:8080/destinations/public_itineraries.php?action=like', {
+      const response = await fetch('/backend/destinations/public_itineraries.php?action=like', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ Itinerary_ID: itinerary.id, Account: currentAccount }),
@@ -431,7 +431,7 @@ export default function DestinationsPage() {
     }
     setSavingId(itinerary.id);
     try {
-      const response = await fetch('http://localhost:8080/destinations/public_itineraries.php?action=bookmark', {
+      const response = await fetch('/backend/destinations/public_itineraries.php?action=bookmark', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ Itinerary_ID: itinerary.id, Account: currentAccount }),
@@ -528,7 +528,7 @@ export default function DestinationsPage() {
     setPreviewTab('schedule');
     setIsPreviewLoading(true);
     try {
-      const response = await fetch('http://localhost:8080/destinations/public_itineraries.php?action=preview', {
+      const response = await fetch('/backend/destinations/public_itineraries.php?action=preview', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ Itinerary_ID: itineraryId }),
@@ -559,7 +559,7 @@ export default function DestinationsPage() {
 
     setCopyingId(itinerary.id);
     try {
-      const response = await fetch('http://localhost:8080/destinations/public_itineraries.php?action=copy', {
+      const response = await fetch('/backend/destinations/public_itineraries.php?action=copy', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ Itinerary_ID: itinerary.id, Account: currentAccount }),

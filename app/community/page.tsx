@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 // 引用 React 核心 Hooks 與相關型別
 import { ChangeEvent, FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -88,7 +88,7 @@ type ApiResponse<T> = {
  *  ========================================== */
 
 // 後端 API 基礎路徑（優先使用環境變數，若無則降級回本地端測試位址）
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080";
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "/backend";
 // 社群模組專用 API 端點
 const COMMUNITY_API = `${API_BASE}/community`;
 

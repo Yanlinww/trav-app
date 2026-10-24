@@ -66,7 +66,7 @@ function files_upload(mysqli $conn): void {
         
         // 移動檔案
         if (move_uploaded_file($file["tmp_name"], $target_file)) {
-            $file_url = "http://localhost:8080/" . $target_file;
+            $file_url = "/backend/" . $target_file;
             
             // 🌟 核心新增：將檔案資訊寫入資料庫 🌟
             $stmt = $conn->prepare("INSERT INTO `UserFiles` (`Account`, `Tab_Type`, `File_URL`) VALUES (?, ?, ?)");

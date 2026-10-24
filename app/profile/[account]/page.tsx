@@ -53,7 +53,7 @@ export default function PublicProfilePage() {
     if (!targetAccount) return;
     const fetchProfile = async () => {
       try {
-        const res = await fetch("http://localhost:8080/social.php?action=profile", {
+        const res = await fetch("/backend/social.php?action=profile", {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ Account: targetAccount })
         });
@@ -71,7 +71,7 @@ export default function PublicProfilePage() {
     const fetchFiles = async () => {
       setIsLoadingFiles(true);
       try {
-        const res = await fetch("http://localhost:8080/files.php?action=get", {
+        const res = await fetch("/backend/files.php?action=get", {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ Account: targetAccount, Tab_Type: 'photos' }),
         });
@@ -89,7 +89,7 @@ export default function PublicProfilePage() {
     const fetchItins = async () => {
       setIsLoadingItineraries(true);
       try {
-        const res = await fetch("http://localhost:8080/destinations/public_itineraries.php?action=list", {
+        const res = await fetch("/backend/destinations/public_itineraries.php?action=list", {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ 
             Account: currentAccount,
@@ -112,7 +112,7 @@ export default function PublicProfilePage() {
     if (!targetAccount) return;
     const fetchSocials = async () => {
       try {
-        const res = await fetch("http://localhost:8080/social.php?action=links", {
+        const res = await fetch("/backend/social.php?action=links", {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ Account: targetAccount }),
         });

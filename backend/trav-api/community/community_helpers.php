@@ -212,7 +212,7 @@ function community_public_url(?string $path): ?string
         return $path;
     }
 
-    return 'http://localhost:8080/' . ltrim($path, '/');
+    return '/backend/' . ltrim($path, '/');
 }
 
 function community_avatar_url(?string $path): string
