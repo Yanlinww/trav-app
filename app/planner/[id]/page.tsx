@@ -572,19 +572,48 @@ export default function ItineraryEditor() {
   const [mapReady, setMapReady] = useState(false);
   // 搜尋或地點詳情的地圖提示；null 表示不顯示提示浮層。
   const [mapStatusMessage, setMapStatusMessage] = useState<string | null>(null);
-  // 每次呼叫都直接請求地點詳情，不保存快取或共用進行中的請求。
-  const fetchPlaceDetails = useCallback(async (placeId: string) => {
-    const normalizedPlaceId = String(placeId || '');
-    if (!normalizedPlaceId) throw new Error('Missing place id');
-
-    const response = await fetch('/api/placedetails', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ placeId: normalizedPlaceId }),
-    });
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error || 'Place details request failed');
-    return data;
+  // 照片失敗時顯示中文提示，不自動重試或換網址再次消耗配額。
+  const [photoErrorName, setPhotoErrorName] = useState<string | null>(null);
+  // 僅保存尚未完成的 Promise，同一地點連點共用一次查詢；完成後立即刪除。
+  // Map 的鍵是 placeId，值是 Promise；多個入口查同一地點時，等待同一份非同步結果。
+  // 這是瀏覽器端減少重複呼叫，伺服器仍保有另一層全站保護，防止繞過前端限制。
+  const detailRequestsRef = useRef(new Map<string, Promise<any>>());
+  // 文字搜尋一次只處理一筆，避免連按 Enter 送出多份相同請求。
+  // ref 改變不會重新繪製，但可在第一次 await 前立即鎖住第二次 Enter，避免 state 更新延遲。
+  const keywordBusyRef = useRef(false);
+  // 最近一次送出時間：擋住一秒內連點；與後端回報的較長冷卻期限分開保存。
+  const keywordLastSentRef = useRef(0);
+  // HTTP 429 的 Retry-After 轉成截止毫秒；時間到後仍要由使用者手動搜尋，不自動重送。
+  const keywordCooldownRef = useRef(0);
+  const keywordControllerRef = useRef<AbortController | null>(null);
+  // 卸載行程頁時停止等待文字搜尋，避免離開頁面後還處理該回應。
+  // 這裡取消的是瀏覽器請求，無法保證已送往 Google 的請求沒有計入次數。
+  useEffect(() => () => { keywordControllerRef.current?.abort(); }, []);
+  /**
+   * 各種地點選取入口共用的詳情讀取函式；只回資料，不直接改地圖或寫入行程。
+   * 將同一地點的 Promise 暫存到 Map，讓候選標記、選單、內建景點可共用進行中請求。
+   * finally 一律刪除暫存；因此完成後再讀同一 ID，仍會建立新的後端查詢。
+   */
+  const fetchPlaceDetails = useCallback((placeId: string): Promise<any> => {
+    const id = String(placeId || '').trim();
+    if (!id) return Promise.reject(new Error('請先選取地點。'));
+    const existing = detailRequestsRef.current.get(id);
+    // 只有尚未完成的查詢才會出現在 Map；存在時不再呼叫 fetch。
+    if (existing) return existing;
+    const pending = (async () => {
+      try {
+        const response = await fetch('/api/placedetails', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ placeId: id }),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.message || data.error || '地點詳細資料載入失敗，請稍後再試。');
+        return data;
+      } finally { detailRequestsRef.current.delete(id); }
+    })();
+    // 在回傳 Promise 前立即登記；下一個同步發生的選取事件就能看見這份工作。
+    detailRequestsRef.current.set(id, pending);
+    return pending;
   }, []);
 
   /**
@@ -594,15 +623,17 @@ export default function ItineraryEditor() {
    */
   const loadPlaceDetails = useCallback(async (place: any) => {
     const placeId = String(place?.id || '');
-    if (!placeId || place?.isMapPoint) return;
+    // 空白地圖點沒有 Google 地點詳情；detailsLoaded 則表示這份畫面資料已補齊。
+    // 這個旗標跟著目前選取物件存在，不是永久保存的資料庫欄位。
+    if (!placeId || place?.isMapPoint || place?.detailsLoaded) return;
 
     setPlaceDetailsLoading(placeId);
     try {
       const data = await fetchPlaceDetails(placeId);
-      setSelectedPlace((current: any) => current?.id === placeId ? { ...current, ...data } : current);
+      setSelectedPlace((current: any) => current?.id === placeId ? { ...current, ...data, detailsLoaded: true } : current);
     } catch (error) {
       console.error('Place details error:', error);
-      setMapStatusMessage('地點詳細資料載入失敗，請稍後再試。');
+      setMapStatusMessage(error instanceof Error && !(error instanceof SyntaxError) && !(error instanceof TypeError) ? error.message : '地點詳細資料載入失敗，請稍後再試。');
     } finally {
       setPlaceDetailsLoading((current) => current === placeId ? null : current);
     }
@@ -690,15 +721,31 @@ export default function ItineraryEditor() {
   }, [itineraryData?.destLat, itineraryData?.destLng]);
 
 // 文字搜尋透過本專案的 API 取得候選地點；結果只先顯示在地圖，尚未建立行程項目。
-// 候選只顯示地圖，未存行程。檢查注意：沒有過期回應保護，舊結果可能覆蓋新結果。
+// 同時只允許一筆文字搜尋；送出後一秒內不再接受連點，後端另有全站頻率限制。
 const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) => {
-    if (!keyword.trim()) return;
+    if (keyword.trim().length < 2 || keyword.trim().length > 100) {
+      setMapStatusMessage('請輸入 2 至 100 個字搜尋地點。');
+      return;
+    }
+    // 三種拒絕條件：上一筆還在等待、一秒內再次送出、後端指定的冷卻期限尚未到。
+    // 這只是前端節省請求；真正是否允許呼叫 Google，仍由 API 的共用工具判斷。
+    if (keywordBusyRef.current || Date.now() - keywordLastSentRef.current < 1000 || Date.now() < keywordCooldownRef.current) {
+      setMapStatusMessage('地點查詢進行中或過於頻繁，請稍候再試。');
+      return;
+    }
+    // 先鎖定，再開始非同步查詢；finally 會在成功與失敗兩種情況下解除鎖定。
+    keywordBusyRef.current = true;
+    keywordLastSentRef.current = Date.now();
+    const controller = new AbortController();
+    keywordControllerRef.current = controller;
+    setMapStatusMessage('正在搜尋地點…');
     setNewItemLat(null);
     setNewItemLng(null);
     setIsAddItemOpen(false);
 
     try {
       const res = await fetch('/api/textsearch', {
+        signal: controller.signal,
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
@@ -708,7 +755,13 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
         }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Text search failed');
+      // 後端使用秒為單位告知何時可再試；只記錄期限，不安排自動重試計時器。
+      if (res.status === 429) {
+        keywordCooldownRef.current = Date.now() + (Number(res.headers.get('Retry-After')) || 60) * 1000;
+      }
+      if (!res.ok) throw new Error(data.message || data.error || '地點搜尋服務暫時無法使用，請稍後再試。');
+      // 卸載／取消後忽略回應；候選標記與地圖視野不再由這份結果更新。
+      if (controller.signal.aborted) return;
       
       setSelectedPlace(null);
       setSelectedMapItem(null);
@@ -750,9 +803,12 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
         setMapStatusMessage('找不到符合條件的地點，請換個關鍵字。');
       }
     } catch (error) {
+      if (controller.signal.aborted) return;
       console.error("Text search error:", error);
       setSearchMarkers([]);
-      setMapStatusMessage('地點搜尋服務暫時無法使用，請稍後再試。');
+      setMapStatusMessage(error instanceof Error && !(error instanceof SyntaxError) && !(error instanceof TypeError) ? error.message : '地點搜尋服務暫時無法使用，請稍後再試。');
+    } finally {
+      keywordBusyRef.current = false;
     }
   };
 
@@ -820,7 +876,7 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
       }
     } catch (error) {
       console.error("Fetch place details error:", error);
-      setMapStatusMessage('地點詳細資料載入失敗，請稍後再試。');
+      setMapStatusMessage(error instanceof Error && !(error instanceof SyntaxError) && !(error instanceof TypeError) ? error.message : '地點詳細資料載入失敗，請稍後再試。');
     }
   };
 
@@ -836,18 +892,20 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
 
   // 內建景點以 placeId 查詳情，空白地圖位置由 JSX 建立臨時點。
   const handleMapPoiClick = async (placeId: string) => {
+    // 同一個已補齊詳情的資訊框仍開啟時，重點該景點只保留目前畫面，不再查一次。
+    if (selectedPlace?.id === placeId && selectedPlace?.detailsLoaded) return;
     try {
       const data = await fetchPlaceDetails(placeId);
-      if (!data.location) throw new Error('Place details request did not include a location');
+      if (!data.location) throw new Error('這個地點沒有可用的座標，請選擇其他地點。');
 
       setSelectedMapItem(null);
       setSearchMarkers([]);
-      setSelectedPlace({ ...data, isMapPoint: false });
+      setSelectedPlace({ ...data, isMapPoint: false, detailsLoaded: true });
       setMapCenter({ lat: data.location.latitude, lng: data.location.longitude });
       setMapZoom(17);
     } catch (error) {
       console.error('Map POI details error:', error);
-      setMapStatusMessage('地圖地點資料載入失敗，請稍後再試。');
+      setMapStatusMessage(error instanceof Error && !(error instanceof SyntaxError) && !(error instanceof TypeError) ? error.message : '地圖地點資料載入失敗，請稍後再試。');
     }
   };
 
@@ -1403,7 +1461,12 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
                           icon={{
                             url: "http://maps.google.com/mapfiles/ms/icons/blue-dot.png"
                           }}
-                          onClick={() => { setSelectedMapItem(null); setSelectedPlace(place); void loadPlaceDetails(place); }}
+                          onClick={() => {
+                            setSelectedMapItem(null);
+                            if (selectedPlace?.id === place.id && selectedPlace?.detailsLoaded) return;
+                            setSelectedPlace(place);
+                            void loadPlaceDetails(place);
+                          }}
                         />
                       ))}
 
@@ -1458,13 +1521,17 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
                         <p className="mb-2 text-[10px] font-semibold text-slate-400">載入地點詳細資料…</p>
                       )}
                       {/* 照片走同源代理，encodeURIComponent 防止資源名稱破壞網址參數。 */}
-                      {selectedPlace.photos?.[0]?.name && (
+                      {selectedPlace.photos?.[0]?.name && photoErrorName !== selectedPlace.photos[0].name && (
                         <img
                           src={`/api/placephoto?name=${encodeURIComponent(selectedPlace.photos[0].name)}`}
                           alt={`${selectedPlace.displayName?.text || '地點'}圖片`}
+                          onError={() => setPhotoErrorName(selectedPlace.photos[0].name)}
                           className="mb-2 h-24 w-full rounded-lg object-cover"
                           loading="lazy"
                         />
+                      )}
+                      {selectedPlace.photos?.[0]?.name === photoErrorName && (
+                        <p role="status" className="mb-2 text-xs text-slate-500">照片暫時無法載入或查詢已達限制，仍可查看地點資訊。</p>
                       )}
                       {typeof selectedPlace.currentOpeningHours?.openNow === 'boolean' && (
                         <p className={`mb-1 text-xs font-bold ${selectedPlace.currentOpeningHours.openNow ? 'text-emerald-600' : 'text-red-500'}`}>
