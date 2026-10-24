@@ -3,6 +3,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { AvatarImage } from '../components/AvatarImage';
+import FollowListModal from '../components/FollowListModal';
 import { useRouter } from 'next/navigation';
 import { 
   Camera, MapPin, Bookmark,
@@ -32,11 +33,28 @@ export default function ProfilePage() {
   const [socialLinks, setSocialLinks] = useState({
     instagram: '', twitter: '', xiaohongshu: '', tiktok: '', youtube: '', facebook: ''
   });
-  const [followStats, setFollowStats] = useState<{ followersCount: number; followingCount: number } | null>(null);
 
   const displayName = user?.nickname || 'TRAVELER';
   const avatarUrl = (user as any)?.avatar;
   const currentAccount = user ? String(user.id || (user as any).Account || '') : '';
+  const [followStats, setFollowStats] = useState({ followersCount: 0, followingCount: 0 });
+  const [followListType, setFollowListType] = useState<'followers' | 'following' | null>(null);
+
+  useEffect(() => {
+    if (!currentAccount) return;
+    const loadFollowStats = async () => {
+      try {
+        const response = await fetch('http://localhost:8080/social.php?action=profile', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ Account: currentAccount, Viewer_Account: currentAccount }),
+        });
+        const result = await response.json();
+        if (result.status === 'success') setFollowStats({ followersCount: result.data.followersCount, followingCount: result.data.followingCount });
+      } catch (error) { console.error('無法取得追蹤統計', error); }
+    };
+    void loadFollowStats();
+  }, [currentAccount, followListType]);
 
   // 1. 抓取照片檔案
   const fetchUserFiles = async () => {
@@ -216,11 +234,8 @@ export default function ProfilePage() {
           </div>
           <div className="flex flex-col items-center md:items-end gap-5 mt-2 md:mt-0">
             <div className="flex items-center gap-6 text-neutral-800">
-              <div className="text-center flex items-baseline gap-1.5 px-1"><span className="text-2xl font-bold">{followStats?.followersCount ?? '—'}</span> <span className="text-sm text-neutral-500 font-medium">粉絲</span></div>
-              <div className="w-px h-6 bg-neutral-200"></div>
-              <div className="text-center flex items-baseline gap-1.5 px-1"><span className="text-2xl font-bold">{followStats?.followingCount ?? '—'}</span> <span className="text-sm text-neutral-500 font-medium">追蹤中</span></div>
-              <div className="w-px h-6 bg-neutral-200"></div>
-              <div className="text-center flex items-baseline gap-1.5"><span className="text-2xl font-bold">0</span> <span className="text-sm text-neutral-500 font-medium">影音</span></div>
+              <button type="button" onClick={() => setFollowListType('followers')} className="text-center flex items-baseline gap-1.5 hover:text-[#F04D79]"><span className="text-2xl font-bold">{followStats.followersCount}</span> <span className="text-sm font-medium">粉絲</span></button>
+              <button type="button" onClick={() => setFollowListType('following')} className="text-center flex items-baseline gap-1.5 hover:text-[#F04D79]"><span className="text-2xl font-bold">{followStats.followingCount}</span> <span className="text-sm font-medium">追蹤中</span></button>
             </div>
             <div className="flex items-center gap-2">
               <SocialIconBtn network="facebook" link={socialLinks.facebook} icon={FaFacebook} />
@@ -313,6 +328,8 @@ export default function ProfilePage() {
           )
         )}
       </div>
+
+      {followListType && currentAccount && <FollowListModal account={currentAccount} viewerAccount={currentAccount} listType={followListType} isOwnList onClose={() => setFollowListType(null)} onOwnFollowingChanged={() => setFollowStats((stats) => ({ ...stats, followingCount: Math.max(0, stats.followingCount - 1) }))} />}
 
       {/* ================= 社群連結設定 Modal ================= */}
       {isLinkModalOpen && (

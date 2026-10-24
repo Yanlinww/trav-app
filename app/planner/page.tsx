@@ -101,6 +101,8 @@ export default function PlannerDashboard() {
    * 此頁負責顯示行程卡片，因此在這裡向列表 API 取得登入者的行程。
    * 建立成功後也會重用此函式，取得後端產生的行程 ID 與完整卡片資料。
    */
+  // Account 指定要查詢的帳號，Viewer_Account 指定目前觀看者；本頁兩者都傳登入者。
+  // 列表讀取失敗只記錄錯誤並結束轉圈，畫面不會額外顯示失敗訊息。
   const fetchItineraries = async () => {
     if (!user) return;
     try {
@@ -173,6 +175,7 @@ export default function PlannerDashboard() {
    * 釘選只影響本頁卡片的排序，因此先改本地列表，讓點擊後立刻看到結果。
    * 若後端儲存失敗，再還原原本狀態；這種做法稱為樂觀更新。
    */
+  // 只有 API 確認成功才算完成儲存；本地排序會先變動，失敗再還原目標卡片。
   const handlePin = async (id: string, isCurrentlyPinned: boolean, e: React.MouseEvent) => {
     e.stopPropagation();
     const targetPinStatus = !isCurrentlyPinned;
@@ -201,6 +204,8 @@ export default function PlannerDashboard() {
    * 建立表單就在此頁的彈窗內，所以送出邏輯也放在此頁。
    * preventDefault 避免瀏覽器重新整理；城市代碼換成座標後送給後端。
    */
+  // destination 的值必須對應 CITY_COORDINATES 的 key；送出的是城市座標而非代碼。
+  // 此處 required 由表單檢查必填，日期順序沒有另外在這個函式中驗證。
   const handleCreateItinerary = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
@@ -221,6 +226,7 @@ export default function PlannerDashboard() {
       if (data.status === 'success') {
         // 重新讀取列表，比自行拼接卡片更能反映後端實際儲存的資料。
         await fetchItineraries();
+        // 只有建立成功才清空草稿；按右上角關閉視窗時，輸入內容仍保留在本頁 state。
         setIsModalOpen(false);
         setTitle("");
         setStartDate("");

@@ -1,18 +1,28 @@
 'use client';
 
-// 這頁會讀取登入狀態、操作地圖和表單，也會使用瀏覽器的 localStorage，因此必須是 Client Component。
+/**
+ * 中文閱讀導覽：封面工具 → 記帳 → 行李 → 時間與標記 → 可拖曳卡片 → 主編輯器 → JSX。
+ * [id] 是動態路由行程 ID，useParams 讀取，useRouter 導航。
+ * core.php 管主資料；items.php 管項目；expenses.php 管花費；luggage.php 管行李。
+ * 天數與面板使用預設值，行程標點統一顏色，不保存本機畫面偏好或標記狀態。
+ * state 更新畫面，ref 保存物件但不重繪，Effect 負責外部同步及清理。
+ * 檢查注意標示仍待處理的既有風險。
+ * 依據：此檔與對應 API、專案 Next.js use-client/use-params 文件。
+ */
+
+// 這頁會讀取登入狀態、操作地圖和表單，因此必須是 Client Component。
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useAuth } from "../../context/AuthContext";
 import { 
   Map as MapIcon, Calendar, BaggageClaim,
-  GripVertical, Plus, Train, Hotel, Coffee, Camera, Search,
-  ChevronLeft, Wallet, Loader2, MapPin, Trash2, Check, Edit2,Copy,
+  GripVertical, Plus, Camera,
+  ChevronLeft, Wallet, Loader2, MapPin, Trash2, Check, Edit2,
   LayoutGrid,
-  ChevronUp, ChevronDown, XCircle, Save,
-  Receipt, TrainFront, Bed, X, User
+  XCircle,
+  X, User
 } from "lucide-react";
-import { GoogleMap, useJsApiLoader, Marker, InfoWindow, MarkerClustererF } from '@react-google-maps/api';
+import { GoogleMap, useJsApiLoader, Marker, InfoWindow } from '@react-google-maps/api';
 import PlaceAutocomplete from '../../components/PlaceAutocomplete';
 
 import { 
@@ -23,11 +33,16 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 
-const MAX_COVER_SOURCE_BYTES = 15 * 1024 * 1024;
-const MAX_COVER_DIMENSION = 1920;
+// 原圖直接上傳，大小限制與後端一致，最多 10 MiB。
+const MAX_COVER_SOURCE_BYTES = 10 * 1024 * 1024;
+// 無封面或載入失敗時的備用圖片，仍需網路。
 const FALLBACK_COVER_IMAGE = "https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?q=80&w=800&auto=format&fit=crop";
 
-// 替封面網址加版本，讓上傳後的圖片不會被瀏覽器舊快取蓋住；本機上傳檔透過 /api/cover 讀取。
+/**
+ * 將儲存的封面來源轉成實際顯示網址，不修改資料庫中的原始網址。
+ * blob/data 已指向當次內容，直接保留；uploads/covers 則只抽出檔名交給同源 /api/cover。
+ * 一般網址依是否已有查詢參數選擇 ? 或 & 加上版本；空來源回傳備用圖。
+ */
 function coverImageWithVersion(imageUrl: string, version: number) {
   if (!imageUrl || imageUrl.startsWith("blob:") || imageUrl.startsWith("data:")) return imageUrl || FALLBACK_COVER_IMAGE;
   const localCoverMatch = imageUrl.match(/\/uploads\/covers\/([^/?#]+)/i);
@@ -35,47 +50,21 @@ function coverImageWithVersion(imageUrl: string, version: number) {
   return `${imageUrl}${imageUrl.includes("?") ? "&" : "?"}v=${version}`;
 }
 
-// 上傳前先在瀏覽器縮圖並轉成 WebP，減少傳輸大小；finally 保證暫存的 blob URL 會釋放。
-async function optimizeCoverImage(file: File): Promise<File> {
-  if (!file.type.startsWith('image/')) throw new Error('請選擇圖片檔案。');
-  if (file.size > MAX_COVER_SOURCE_BYTES) throw new Error('原始圖片超過 15MB，請選擇較小的圖片。');
-
-  const sourceUrl = URL.createObjectURL(file);
-  try {
-    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
-      const nextImage = new Image();
-      nextImage.onload = () => resolve(nextImage);
-      nextImage.onerror = () => reject(new Error('無法讀取這張圖片。'));
-      nextImage.src = sourceUrl;
-    });
-    const scale = Math.min(1, MAX_COVER_DIMENSION / Math.max(image.naturalWidth, image.naturalHeight));
-    const width = Math.max(1, Math.round(image.naturalWidth * scale));
-    const height = Math.max(1, Math.round(image.naturalHeight * scale));
-    const canvas = document.createElement('canvas');
-    canvas.width = width;
-    canvas.height = height;
-    const context = canvas.getContext('2d');
-    if (!context) throw new Error('圖片最佳化暫時無法使用。');
-    context.drawImage(image, 0, 0, width, height);
-    const optimizedBlob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/webp', 0.84));
-    if (!optimizedBlob) throw new Error('圖片最佳化失敗，請再試一次。');
-    return new File([optimizedBlob], `${file.name.replace(/\.[^.]+$/, '') || 'cover'}.webp`, { type: 'image/webp' });
-  } finally {
-    URL.revokeObjectURL(sourceUrl);
-  }
-}
-
 type PersonalExpense = {
   id: number;
   title: string;
   amount: number | string;
-  currency: string;
   category: string;
   location: string | null;
   date: string;
 };
 
 // 個人記帳獨立成面板：用行程 ID 和目前帳號向 PHP 讀寫，避免與主編輯器的地圖狀態混在一起。
+/**
+ * 個人記帳面板的資料流：掛載讀清單 → 新增／修改草稿 → 驗證後送出 → 重讀清單。
+ * editingId 決定同一表單要新增還是修改，列表本身不會隨草稿輸入而變動。
+ * API 同時檢查 HTTP 狀態與 JSON 的 status；錯誤留在面板或表單中顯示。
+ */
 function BudgetPanel({ itineraryId, currentUserId }: { itineraryId: string; currentUserId: string }) {
   const categories = [
     { value: 'food', label: '餐飲' },
@@ -85,20 +74,29 @@ function BudgetPanel({ itineraryId, currentUserId }: { itineraryId: string; curr
     { value: 'shopping', label: '購物' },
     { value: 'other', label: '其他' },
   ];
+  // 後端回傳的花費清單；列表與總金額都以這份資料為準。
   const [expenses, setExpenses] = useState<PersonalExpense[]>([]);
-  const [search, setSearch] = useState('');
+  // 記帳首次讀取是否尚未結束；與主頁及 Google Maps 的載入狀態分開管理。
   const [loading, setLoading] = useState(true);
+  // 記帳表單是否正在送出；期間停用儲存與取消按鈕，避免重複操作。
   const [saving, setSaving] = useState(false);
+  // 記帳讀寫或欄位驗證的錯誤訊息；空字串表示沒有要顯示的錯誤。
   const [error, setError] = useState('');
+  // 新增／修改花費共用視窗的開關；切換模式時會另外初始化草稿。
   const [formOpen, setFormOpen] = useState(false);
+  // 正在修改的花費 ID；null 代表新增，送出時據此選擇 create 或 update。
   const [editingId, setEditingId] = useState<number | null>(null);
+  // 花費名稱草稿；編輯時先複製原資料，只有儲存成功才重新讀取清單。
   const [title, setTitle] = useState('');
+  // 金額輸入草稿以字串保存，允許使用者輸入中間狀態；送出時再轉數字驗證。
   const [amount, setAmount] = useState('');
-  const [currency, setCurrency] = useState('TWD');
+  // 花費分類代碼，對應上方 categories 的 value；新增預設為餐飲 food。
   const [category, setCategory] = useState('food');
+  // 選填的消費地點草稿；送出前會移除首尾空白。
   const [location, setLocation] = useState('');
 
   // useCallback 讓讀取函式只在行程或帳號變動時更新，下面的 effect 才不會每次 render 都重新請求。
+  // 讀費用 API，HTTP 與 status 都成功才更新；useCallback 依行程和帳號穩定函式參考。
   const loadExpenses = useCallback(async () => {
     try {
       setError('');
@@ -119,28 +117,29 @@ function BudgetPanel({ itineraryId, currentUserId }: { itineraryId: string; curr
 
   useEffect(() => { void loadExpenses(); }, [loadExpenses]);
 
+  // 清空舊草稿和修改 ID，設定預設值，再開新增表單。
   const openNew = () => {
     setEditingId(null);
     setTitle('');
     setAmount('');
-    setCurrency('TWD');
     setCategory('food');
     setLocation('');
     setError('');
     setFormOpen(true);
   };
 
+  // 既有費用帶入草稿，金額轉字串配合 input；保留 ID 以執行修改。
   const openEdit = (expense: PersonalExpense) => {
     setEditingId(expense.id);
     setTitle(expense.title);
     setAmount(String(expense.amount));
-    setCurrency(expense.currency);
     setCategory(expense.category);
     setLocation(expense.location || '');
     setError('');
     setFormOpen(true);
   };
 
+  // 驗證名稱與正數金額，選 create/update，成功後重讀清單與總額。
   const saveExpense = async () => {
     const numericAmount = Number(amount);
     if (!title.trim() || !Number.isFinite(numericAmount) || numericAmount <= 0) {
@@ -159,7 +158,6 @@ function BudgetPanel({ itineraryId, currentUserId }: { itineraryId: string; curr
           Expense_ID: editingId,
           Title: title.trim(),
           Amount: numericAmount,
-          Currency: currency,
           Category: category,
           Location: location.trim(),
         }),
@@ -175,6 +173,7 @@ function BudgetPanel({ itineraryId, currentUserId }: { itineraryId: string; curr
     }
   };
 
+  // 確認後刪費用，成功再重讀，失敗只顯示錯誤。
   const deleteExpense = async (expense: PersonalExpense) => {
     if (!window.confirm(`確定刪除「${expense.title}」？`)) return;
     try {
@@ -192,14 +191,8 @@ function BudgetPanel({ itineraryId, currentUserId }: { itineraryId: string; curr
     }
   };
 
-  // 搜尋只影響畫面；總計仍從完整的個人記帳資料計算，且不同幣別分開加總。
-  const shownExpenses = expenses.filter((expense) =>
-    `${expense.title} ${expense.location || ''}`.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase())
-  );
-  const totals = expenses.reduce<Record<string, number>>((result, expense) => {
-    result[expense.currency] = (result[expense.currency] || 0) + Number(expense.amount);
-    return result;
-  }, {});
+  // 將全部花費的金額加總。
+  const totalAmount = expenses.reduce((total, expense) => total + Number(expense.amount), 0);
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-[#FAFAFA]">
@@ -208,22 +201,21 @@ function BudgetPanel({ itineraryId, currentUserId }: { itineraryId: string; curr
           <h3 className="text-base font-bold text-slate-800">個人記帳</h3>
           <button type="button" onClick={openNew} className="flex items-center gap-1 rounded-lg bg-[#F04D79] px-3 py-2 text-xs font-bold text-white"><Plus size={15} />新增花費</button>
         </div>
-        <div className="text-xs text-slate-500">共 {expenses.length} 筆{Object.entries(totals).map(([unit, total]) => <span key={unit} className="ml-2 font-bold text-slate-700">{unit} {total.toLocaleString()}</span>)}</div>
-        <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="搜尋花費或地點" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#F04D79]" />
+        <div className="text-xs text-slate-500">共 {expenses.length} 筆<span className="ml-2 font-bold text-slate-700">總計 {totalAmount.toLocaleString()}</span></div>
       </div>
 
       {error && <p className="mx-4 mt-3 rounded-lg bg-red-50 p-3 text-xs text-red-600">{error}</p>}
       <div className="flex-1 space-y-3 overflow-y-auto p-4">
-        {loading ? <div className="py-10 text-center text-sm text-slate-400">載入中...</div> : shownExpenses.length === 0 ? (
-          <div className="py-10 text-center text-sm text-slate-400">{search ? '找不到符合的花費' : '尚未新增個人花費'}</div>
-        ) : shownExpenses.map((expense) => (
+        {loading ? <div className="py-10 text-center text-sm text-slate-400">載入中...</div> : expenses.length === 0 ? (
+          <div className="py-10 text-center text-sm text-slate-400">尚未新增個人花費</div>
+        ) : expenses.map((expense) => (
           <div key={expense.id} className="rounded-xl border border-slate-100 bg-white p-4 shadow-sm">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <div className="truncate text-sm font-bold text-slate-800">{expense.title}</div>
                 <div className="mt-1 text-xs text-slate-400">{categories.find((item) => item.value === expense.category)?.label || expense.category}{expense.location ? ` · ${expense.location}` : ''}{expense.date ? ` · ${expense.date.slice(0, 10)}` : ''}</div>
               </div>
-              <div className="shrink-0 text-right"><div className="font-mono text-sm font-bold text-slate-800">{expense.currency} {Number(expense.amount).toLocaleString()}</div></div>
+              <div className="shrink-0 text-right"><div className="font-mono text-sm font-bold text-slate-800">{Number(expense.amount).toLocaleString()}</div></div>
             </div>
             <div className="mt-3 flex justify-end gap-3 text-xs font-bold">
               <button type="button" onClick={() => openEdit(expense)} className="text-slate-500 hover:text-[#F04D79]">修改</button>
@@ -233,15 +225,13 @@ function BudgetPanel({ itineraryId, currentUserId }: { itineraryId: string; curr
         ))}
       </div>
 
+      {/* 新增與修改共用記帳表單，preventDefault 避免提交後整頁重新整理。 */}
       {formOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 p-4">
           <form onSubmit={(event) => { event.preventDefault(); void saveExpense(); }} className="w-full max-w-md space-y-4 rounded-2xl bg-white p-6 shadow-xl">
             <h3 className="text-lg font-bold text-slate-800">{editingId === null ? '新增個人花費' : '修改個人花費'}</h3>
             <label className="block text-sm text-slate-600">名稱<input required value={title} onChange={(event) => setTitle(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 outline-none focus:border-[#F04D79]" /></label>
-            <div className="grid grid-cols-2 gap-3">
-              <label className="block text-sm text-slate-600">金額<input required type="number" min="0.01" step="0.01" value={amount} onChange={(event) => setAmount(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 outline-none focus:border-[#F04D79]" /></label>
-              <label className="block text-sm text-slate-600">幣別<select value={currency} onChange={(event) => setCurrency(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"><option value="TWD">TWD</option><option value="JPY">JPY</option><option value="AED">AED</option></select></label>
-            </div>
+            <label className="block text-sm text-slate-600">金額<input required type="number" min="0.01" step="0.01" value={amount} onChange={(event) => setAmount(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 outline-none focus:border-[#F04D79]" /></label>
             <label className="block text-sm text-slate-600">類別<select value={category} onChange={(event) => setCategory(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2">{categories.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
             <label className="block text-sm text-slate-600">地點（選填）<input value={location} onChange={(event) => setLocation(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 outline-none focus:border-[#F04D79]" /></label>
             {error && <p role="alert" className="rounded-lg bg-red-50 p-3 text-xs text-red-600">{error}</p>}
@@ -255,26 +245,35 @@ function BudgetPanel({ itineraryId, currentUserId }: { itineraryId: string; curr
 
 // ================= 行李清單獨立模組 =================
 // 行李分類是一份可編輯的清單資料；留在獨立面板，主頁只需傳入行程和帳號。
+// 分類與物品組成 JSON 清單；勾選、新增分類及增刪物品由 Effect 自動儲存。
+/**
+ * 行李面板以分類陣列作為單一資料來源；各操作只更新 categories，由 Effect 統一儲存。
+ * 讀取回應的 data 是 JSON 字串，因此外層 res.json() 之後仍需再 JSON.parse。
+ * 更新時相反：先將陣列序列化成 LuggageData 字串，再包進整份請求的 JSON。
+ * 沒有清單或讀取失敗時使用預設模板；儲存錯誤只寫入主控台，沒有儲存狀態提示。
+ */
 function LuggagePanel({ itineraryId, currentUserId }: { itineraryId: string; currentUserId: string }) {
+  // 整份行李資料：每個分類包含 id、title 與 items；物品包含 id、name、isChecked。
   const [categories, setCategories] = useState<any[]>([]);
+  // 行李首次讀取完成的旗標，避免初始空陣列直接觸發自動儲存；讀取失敗也會設為 true。
   const [isLoaded, setIsLoaded] = useState(false);
-  const [syncStatus, setSyncStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  // 目前顯示新增物品輸入框的分類 ID；null 表示所有分類都顯示新增按鈕。
   const [addingToCategory, setAddingToCategory] = useState<string | null>(null);
+  // 目前新增物品的文字草稿；各分類共用同一份輸入狀態。
   const [newItemName, setNewItemName] = useState("");
-  const syncStatusRef = useRef(syncStatus);
-  useEffect(() => { syncStatusRef.current = syncStatus; }, [syncStatus]);
 
+  // 沒有已存清單時用預設分類，首次讀取失敗也可能使用模板。
   const defaultTemplate = [
-    { id: 'c1', title: '重要證件', isExpanded: true, items: [{ id: 'i1', name: '護照', isChecked: false }, { id: 'i2', name: '信用卡', isChecked: false }, { id: 'i3', name: '外幣', isChecked: false }, { id: 'i4', name: '國際駕照', isChecked: false }, { id: 'i5', name: '線上投保旅平險！再送LINE點數', isChecked: false }] },
-    { id: 'c2', title: '衣物類', isExpanded: true, items: [{ id: 'i6', name: '上服', isChecked: false }, { id: 'i7', name: '褲子', isChecked: false }, { id: 'i8', name: '內衣褲', isChecked: false }, { id: 'i9', name: '睡衣', isChecked: false }, { id: 'i10', name: '鞋子與拖鞋', isChecked: false }, { id: 'i11', name: '襪子', isChecked: false }] },
-    { id: 'c3', title: '3C物品', isExpanded: true, items: [{ id: 'i12', name: '手機', isChecked: false }, { id: 'i13', name: '行動電源', isChecked: false }, { id: 'i14', name: '手機充電器', isChecked: false }, { id: 'i15', name: 'Wi-Fi分享器/上網卡', isChecked: false }, { id: 'i16', name: '耳機', isChecked: false }] },
-    { id: 'c4', title: '日常盥洗用品', isExpanded: true, items: [{ id: 'i17', name: '牙刷/牙膏/毛巾', isChecked: false }, { id: 'i18', name: '洗面乳/沐浴乳', isChecked: false }, { id: 'i19', name: '防曬油', isChecked: false }, { id: 'i20', name: '隨身藥品', isChecked: false }] },
-    { id: 'c5', title: '其他物品', isExpanded: true, items: [{ id: 'i21', name: '水瓶或保溫瓶', isChecked: false }, { id: 'i22', name: '筆', isChecked: false }, { id: 'i23', name: '塑膠袋', isChecked: false }, { id: 'i24', name: '雨傘', isChecked: false }, { id: 'i25', name: '環保餐具', isChecked: false }] }
+    { id: 'c1', title: '重要證件', items: [{ id: 'i1', name: '護照', isChecked: false }, { id: 'i2', name: '信用卡', isChecked: false }, { id: 'i3', name: '外幣', isChecked: false }, { id: 'i4', name: '國際駕照', isChecked: false }, { id: 'i5', name: '線上投保旅平險！再送LINE點數', isChecked: false }] },
+    { id: 'c2', title: '衣物類', items: [{ id: 'i6', name: '上服', isChecked: false }, { id: 'i7', name: '褲子', isChecked: false }, { id: 'i8', name: '內衣褲', isChecked: false }, { id: 'i9', name: '睡衣', isChecked: false }, { id: 'i10', name: '鞋子與拖鞋', isChecked: false }, { id: 'i11', name: '襪子', isChecked: false }] },
+    { id: 'c3', title: '3C物品', items: [{ id: 'i12', name: '手機', isChecked: false }, { id: 'i13', name: '行動電源', isChecked: false }, { id: 'i14', name: '手機充電器', isChecked: false }, { id: 'i15', name: 'Wi-Fi分享器/上網卡', isChecked: false }, { id: 'i16', name: '耳機', isChecked: false }] },
+    { id: 'c4', title: '日常盥洗用品', items: [{ id: 'i17', name: '牙刷/牙膏/毛巾', isChecked: false }, { id: 'i18', name: '洗面乳/沐浴乳', isChecked: false }, { id: 'i19', name: '防曬油', isChecked: false }, { id: 'i20', name: '隨身藥品', isChecked: false }] },
+    { id: 'c5', title: '其他物品', items: [{ id: 'i21', name: '水瓶或保溫瓶', isChecked: false }, { id: 'i22', name: '筆', isChecked: false }, { id: 'i23', name: '塑膠袋', isChecked: false }, { id: 'i24', name: '雨傘', isChecked: false }, { id: 'i25', name: '環保餐具', isChecked: false }] }
   ];
 
-  // 定時讀取可帶回其他地方的修改；正在儲存時先跳過，避免把尚未送出的勾選覆蓋掉。
+  // 開啟清單或切換行程、使用者時讀取資料，不再定時讀取。
+  // 讀取後解析 JSON 字串，直接更新清單資料。
   const refreshLuggage = useCallback(async () => {
-    if (syncStatusRef.current === 'saving') return;
     try {
       const res = await fetch("/backend/itinerary/luggage.php?action=get", {
         method: "POST",
@@ -282,10 +281,9 @@ function LuggagePanel({ itineraryId, currentUserId }: { itineraryId: string; cur
         body: JSON.stringify({ Itinerary_ID: itineraryId, Account: currentUserId }),
       });
       const data = await res.json();
+      // data 內是 JSON 字串，需再解析；目前沒有驗證分類與物品結構。
       const incomingCategories = data.status === 'success' && data.data ? JSON.parse(data.data) : defaultTemplate;
-      setCategories((currentCategories) => (
-        JSON.stringify(currentCategories) === JSON.stringify(incomingCategories) ? currentCategories : incomingCategories
-      ));
+      setCategories(incomingCategories);
       setIsLoaded(true);
     } catch {
       setCategories((currentCategories) => currentCategories.length ? currentCategories : defaultTemplate);
@@ -295,48 +293,41 @@ function LuggagePanel({ itineraryId, currentUserId }: { itineraryId: string; cur
 
   useEffect(() => { refreshLuggage(); }, [refreshLuggage]);
 
-  useEffect(() => {
-    const refreshTimer = window.setInterval(refreshLuggage, 5000);
-    return () => window.clearInterval(refreshTimer);
-  }, [refreshLuggage]);
-
+  // 載入 categories 並設 isLoaded 後也會觸發此 Effect，並非只有使用者修改才會儲存。
   // 等初次讀取完成後才儲存；延遲一秒可將連續勾選合併成一次請求。
   useEffect(() => {
-    if (!isLoaded) return; setSyncStatus('saving');
+    if (!isLoaded) return;
     const timer = setTimeout(() => {
-      fetch("/backend/itinerary/luggage.php?action=update", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ Itinerary_ID: itineraryId, Account: currentUserId, LuggageData: JSON.stringify(categories) }) })
+      fetch("http://localhost:8080/itinerary/luggage.php?action=update", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ Itinerary_ID: itineraryId, Account: currentUserId, LuggageData: JSON.stringify(categories) }) })
       .then(res => res.json()).then(data => { if (data.status === 'success') setSyncStatus('saved'); else setSyncStatus('error'); }).catch(() => setSyncStatus('error'));
     }, 1000);
+    // 下一次變更或卸載時取消尚未發出的計時器；已送出的 fetch 不會因此取消。
+    // 若切換分頁時仍在等待一秒，最後一批修改不會在卸載時額外補送。
     return () => clearTimeout(timer);
   }, [categories, isLoaded, itineraryId, currentUserId]);
 
+  // 用 map 與展開運算子建立新物件，只反轉指定物品，不能直接改舊 state。
   const toggleCheck = (categoryId: string, itemId: string) => setCategories(cats => cats.map(cat => cat.id === categoryId ? { ...cat, items: cat.items.map((i: any) => i.id === itemId ? { ...i, isChecked: !i.isChecked } : i) } : cat));
-  const toggleCategoryChecks = (categoryId: string) => setCategories(cats => cats.map(cat => cat.id === categoryId ? { ...cat, items: cat.items.map((i: any) => ({ ...i, isChecked: !cat.items.every((item: any) => item.isChecked) })) } : cat));
-  const toggleExpand = (categoryId: string) => setCategories(cats => cats.map(cat => cat.id === categoryId ? { ...cat, isExpanded: !cat.isExpanded } : cat));
+  // filter 移除指定物品，新的分類資料由自動儲存 Effect 同步。
   const deleteItem = (categoryId: string, itemId: string) => setCategories(cats => cats.map(cat => cat.id === categoryId ? { ...cat, items: cat.items.filter((i: any) => i.id !== itemId) } : cat));
-  const deleteCategory = (categoryId: string) => { if(window.confirm("確定要刪除整個類別嗎？")) setCategories(cats => cats.filter(cat => cat.id !== categoryId)); };
-  const renameCategory = (categoryId: string, currentTitle: string) => { const title = window.prompt('請輸入新的分類名稱：', currentTitle); if (title?.trim()) setCategories(cats => cats.map(cat => cat.id === categoryId ? { ...cat, title: title.trim() } : cat)); };
+  // 時間戳作本機 ID，加入分類尾端；失焦與 Enter 都會呼叫。
   const handleAddItem = (categoryId: string) => { if (!newItemName.trim()) { setAddingToCategory(null); return; } setCategories(cats => cats.map(cat => cat.id === categoryId ? { ...cat, items: [...cat.items, { id: `i_${Date.now()}`, name: newItemName, isChecked: false }] } : cat)); setNewItemName(""); setAddingToCategory(null); };
-  const clearChecked = () => setCategories(cats => cats.map(cat => ({ ...cat, items: cat.items.map((i: any) => ({ ...i, isChecked: false })) })));
-  const checkAll = () => setCategories(cats => cats.map(cat => ({ ...cat, items: cat.items.map((i: any) => ({ ...i, isChecked: true })) })));
-  const addNewCategory = () => { const title = window.prompt("請輸入新類別名稱："); if (title && title.trim()) setCategories([...categories, { id: `c_${Date.now()}`, title, isExpanded: true, items: [] }]); };
+  // 新增分類使用時間戳 ID 與空物品陣列；所有分類固定展開。
+  const addNewCategory = () => { const title = window.prompt("請輸入新類別名稱："); if (title && title.trim()) setCategories([...categories, { id: `c_${Date.now()}`, title, items: [] }]); };
 
   if (!isLoaded) return <div className="py-10 flex justify-center"><Loader2 className="animate-spin text-slate-300" /></div>;
 
   return (
     <div className="animate-in fade-in slide-in-from-right-4 duration-200 pb-20 relative px-1">
-      <div className="flex justify-between items-center mb-4 px-1 mt-2">
-        <div className={`text-[10px] font-bold flex items-center gap-1.5 ${syncStatus === 'error' ? 'text-red-500' : 'text-slate-400'}`}>{syncStatus === 'saving' && <><Loader2 size={12} className="animate-spin" /> 儲存中...</>}{syncStatus === 'error' && <>儲存失敗，請稍後再試</>}</div>
-        <div className="flex items-center gap-3"><button onClick={checkAll} className="text-sm font-bold text-[#F04D79] hover:opacity-70 transition-opacity">全部勾選</button><button onClick={clearChecked} className="text-sm font-bold text-slate-400 hover:text-[#F04D79] transition-colors">全部取消</button></div>
-      </div>
       <div className="space-y-4">
         {categories.map((cat) => {
+          // 計算已勾數，配合總數呈現進度；空分類避免除以零。
           const checkedCount = cat.items.filter((i: any) => i.isChecked).length; const totalCount = cat.items.length;
           return (
             <div key={cat.id} className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
-              <div className="p-4 border-b border-slate-50 flex items-center justify-between bg-white"><div className="flex items-center gap-2"><h3 className="text-[15px] font-bold text-slate-800">{cat.title}</h3><span className="text-[11px] font-bold text-slate-400 font-mono mt-0.5">{checkedCount}/{totalCount}</span></div><div className="flex items-center gap-1.5"><button onClick={() => toggleCategoryChecks(cat.id)} className="rounded px-1.5 py-1 text-[10px] font-bold text-[#F04D79] hover:bg-pink-50">{totalCount > 0 && checkedCount === totalCount ? '取消' : '全選'}</button><button onClick={() => renameCategory(cat.id, cat.title)} className="p-1 text-slate-400 hover:bg-pink-50 hover:text-[#F04D79] rounded transition-colors"><Edit2 size={15} /></button><button onClick={() => deleteCategory(cat.id)} className="p-1 text-[#F04D79] hover:bg-pink-50 rounded transition-colors"><Trash2 size={18} /></button><button onClick={() => toggleExpand(cat.id)} className="p-1 text-slate-600 hover:bg-slate-50 rounded transition-colors">{cat.isExpanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}</button></div></div>
+              <div className="p-4 border-b border-slate-50 flex items-center gap-2 bg-white"><h3 className="text-[15px] font-bold text-slate-800">{cat.title}</h3><span className="text-[11px] font-bold text-slate-400 font-mono mt-0.5">{checkedCount}/{totalCount}</span></div>
               <div className="h-1 bg-slate-100"><div className="h-full bg-[#F04D79] transition-all" style={{ width: `${totalCount ? checkedCount / totalCount * 100 : 0}%` }} /></div>
-              {cat.isExpanded && (
+              {/* 分類固定展開；失焦或 Enter 新增物品，Escape 取消。 */}
                 <div className="p-2">
                   {cat.items.map((item: any) => (
                     <div key={item.id} className="flex items-center justify-between group p-2 hover:bg-slate-50/50 rounded-lg transition-colors">
@@ -348,7 +339,6 @@ function LuggagePanel({ itineraryId, currentUserId }: { itineraryId: string; cur
                     <div className="p-2 flex items-center gap-2"><input type="text" autoFocus value={newItemName} onChange={e => setNewItemName(e.target.value)} onBlur={() => handleAddItem(cat.id)} onKeyDown={e => { if(e.key === 'Enter') handleAddItem(cat.id); if(e.key === 'Escape') setAddingToCategory(null); }} className="flex-1 text-sm bg-slate-50 border border-slate-200 rounded px-3 py-1.5 focus:outline-none focus:border-[#F04D79]" placeholder="輸入項目名稱..." /></div>
                   ) : (<button onClick={() => setAddingToCategory(cat.id)} className="flex items-center gap-2 p-2 mt-1 text-[#F04D79] hover:opacity-70 transition-opacity"><Plus size={18} strokeWidth={2.5} /><span className="text-[15px] font-bold text-slate-400">新增項目</span></button>)}
                 </div>
-              )}
             </div>
           );
         })}
@@ -377,6 +367,11 @@ const normalizeLoadedTime = (value: unknown) => {
 };
 
 // 清單顯示用的時間提示：跨午夜時把隔日分鐘數加 1440，才可和前一項比較。
+/**
+ * 只產生卡片上的「跨日／時間重疊」提示，不參與新增或修改時間的儲存阻擋。
+ * 例如前一筆為 23:00–01:00，會把其結束時間視為隔日 01:00（1500 分鐘）。
+ * 比較對象是顯示順序中最近一筆具有完整合法時間的項目，不是逐一檢查所有項目。
+ */
 const getTimeFlags = (items: any[], index: number) => {
   const current = items[index];
   const currentStart = normalizeLoadedTime(current?.startTime);
@@ -401,29 +396,22 @@ const getTimeFlags = (items: any[], index: number) => {
   return { isOvernight, hasConflict: adjustedCurrentStart < adjustedPreviousEnd };
 };
 
-type MarkerStatus = 'added' | 'completed' | 'mustVisit' | 'optional';
-
-const markerStatusOptions: Array<{ value: MarkerStatus; label: string; color: string; fill: string }> = [
-  { value: 'added', label: '已加入行程', color: '#F04D79', fill: '#F04D79' },
-  { value: 'completed', label: '已完成', color: '#16A34A', fill: '#16A34A' },
-  { value: 'mustVisit', label: '必去', color: '#DC2626', fill: '#DC2626' },
-  { value: 'optional', label: '備選', color: '#64748B', fill: '#94A3B8' },
-];
-
-const getMarkerStatusOption = (status: MarkerStatus) => (
-  markerStatusOptions.find((option) => option.value === status) || markerStatusOptions[0]
-);
-
 // 單筆卡片同時支援拖曳、標題與時間編輯；拖曳只綁在握把，避免點擊表單時誤觸。
+/**
+ * 卡片只負責顯示與觸發事件；項目資料、編輯草稿及儲存請求由主編輯器管理。
+ * setNodeRef 綁定整張卡片以計算位置，attributes/listeners 只放在拖曳握把。
+ * 名稱／時間輸入區阻止事件冒泡，避免編輯時同時觸發卡片的地圖定位。
+ */
 function SortableItem({ 
   item, editingItemId, editingTitle, setEditingItemId, setEditingTitle, handleUpdateTitle,
-  editingTimeId, editStartTime, editEndTime, setEditingTimeId, setEditStartTime, setEditEndTime, handleUpdateTime, handleDeleteItem, handleDuplicateItem, onFocusItem, isMapItemSelected, savingTimeId, timeFlags, markerStatus, onMarkerStatusChange
+  editingTimeId, editStartTime, editEndTime, setEditingTimeId, setEditStartTime, setEditEndTime, handleUpdateTime, handleDeleteItem, onFocusItem, isMapItemSelected, savingTimeId, timeFlags
 }: any) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.id });
+  // 套用拖曳位移與動畫，拖曳時提高層級、降低透明度。
   const style = { transform: CSS.Transform.toString(transform), transition, zIndex: isDragging ? 50 : 1, opacity: isDragging ? 0.5 : 1 };
 
   return (
-    <div id={`itinerary-item-${item.id}`} ref={setNodeRef} style={style} className={`group flex bg-white border ${isDragging ? 'border-[#F04D79] shadow-lg scale-[1.02]' : isMapItemSelected ? 'border-[#F04D79] shadow-md ring-2 ring-pink-100' : 'border-slate-100 shadow-sm'} rounded-2xl p-3 transition-all duration-300 hover:shadow-md hover:border-[#F04D79]/30 relative`}>
+    <div ref={setNodeRef} style={style} className={`group flex bg-white border ${isDragging ? 'border-[#F04D79] shadow-lg scale-[1.02]' : isMapItemSelected ? 'border-[#F04D79] shadow-md ring-2 ring-pink-100' : 'border-slate-100 shadow-sm'} rounded-2xl p-3 transition-all duration-300 hover:shadow-md hover:border-[#F04D79]/30 relative`}>
       <div {...attributes} {...listeners} className="flex items-center text-slate-200 group-hover:text-[#F04D79]/50 pr-2 transition-colors cursor-grab active:cursor-grabbing"><GripVertical size={16} /></div>
       <div className="flex-1 min-w-0 flex items-start gap-3.5" onClick={() => onFocusItem?.(item)}>
         <div className="size-11 mt-0.5 rounded-xl bg-slate-50 flex items-center justify-center text-slate-500 shrink-0 group-hover:bg-pink-50 group-hover:text-[#F04D79] transition-colors"><MapPin size={20} /></div>
@@ -431,6 +419,7 @@ function SortableItem({
           {item.hasInvalidTime && (
             <div className="mb-1 text-[10px] font-bold text-amber-500">時間待修正，請雙擊重新輸入</div>
           )}
+          {/* 雙擊編輯時間，儲存時禁用，stopPropagation 避免按鈕操作也選取卡片。 */}
           {editingTimeId === item.id ? (
             <div className="flex items-center gap-1.5 mb-1 w-full" onKeyDown={(e) => e.key === 'Enter' && handleUpdateTime(item.id)}>
               <input disabled={savingTimeId === item.id} type="text" inputMode="numeric" placeholder="HH:mm" maxLength={5} value={editStartTime} onChange={(e) => setEditStartTime(formatTimeInput(e.target.value))} className="w-[4.5rem] shrink-0 text-[10px] font-bold font-mono bg-slate-50 border border-slate-200 rounded px-1 py-1 focus:outline-none focus:border-[#F04D79] disabled:opacity-50" />
@@ -449,21 +438,13 @@ function SortableItem({
             {!item.startTime && !item.endTime && <span className="text-[10px] font-bold text-amber-600 bg-amber-50 rounded-full px-2 py-0.5">未設定時間</span>}
             {(!Number.isFinite(Number(item.Latitude)) || !Number.isFinite(Number(item.Longitude))) && <span className="text-[10px] font-bold text-slate-500 bg-slate-100 rounded-full px-2 py-0.5">自訂地點</span>}
           </div>
+          {/* 雙擊名稱編輯，失焦或 Enter 儲存，Escape 取消。 */}
           {editingItemId === item.id ? (
             <input type="text" autoFocus value={editingTitle} onChange={(e) => setEditingTitle(e.target.value)} onBlur={() => handleUpdateTitle(item.id)} onKeyDown={(e) => { if (e.key === 'Enter') handleUpdateTitle(item.id); if (e.key === 'Escape') setEditingItemId(null); }} className="text-sm font-bold text-slate-700 bg-white border border-pink-300 rounded px-2 py-0.5 w-full focus:outline-none focus:ring-2 focus:ring-[#F04D79]/20 shadow-sm" />
           ) : (
             <div onDoubleClick={() => { setEditingItemId(item.id); setEditingTitle(item.title); }} className="text-[15px] leading-6 font-bold text-slate-700 whitespace-normal break-words tracking-wide cursor-text hover:text-[#F04D79] transition-colors" title="雙擊以編輯名稱">{item.title}</div>
           )}
           
-          <select
-            value={markerStatus}
-            onChange={(event) => { event.stopPropagation(); onMarkerStatusChange?.(item.id, event.target.value as MarkerStatus); }}
-            onClick={(event) => event.stopPropagation()}
-            className="hidden"
-            aria-label="標點狀態"
-          >
-            {markerStatusOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-          </select>
         </div>
         <div className={`flex flex-col gap-1.5 pt-0.5 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity shrink-0 ${editingTimeId === item.id ? 'hidden' : ''}`}>
           <button onClick={(event) => { event.stopPropagation(); setEditingItemId(item.id); setEditingTitle(item.title); }} className="size-8 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 hover:bg-[#F04D79] hover:text-white transition-colors shrink-0 shadow-sm" title="編輯行程名稱" aria-label="編輯行程名稱"><Edit2 size={14} /></button>
@@ -480,7 +461,6 @@ export default function ItineraryEditor() {
   const router = useRouter();
   const params = useParams(); 
   const { user, loading: authLoading } = useAuth();
-  const currentAccount = String(user?.id || (user as any)?.Account || '');
   
   // Google Maps 需要在瀏覽器載入，載入成功後才渲染地圖與標記。
   const { isLoaded, loadError } = useJsApiLoader({
@@ -490,139 +470,131 @@ export default function ItineraryEditor() {
     region: 'TW',
   });
 
+  // 行程主資料首次載入的旗標；每日項目及地圖 SDK 另有各自的讀取流程。
   const [isLoading, setIsLoading] = useState(true);
+  // 行程主資料，如名稱、起訖日期與目的地座標；每日景點另存於 itineraryItems。
   const [itineraryData, setItineraryData] = useState<any>(null);
   
+  // 目前封面的來源：可為後端網址、本機 blob 預覽網址或備用圖片網址。
   const [coverImage, setCoverImage] = useState("");
+  // 附在封面網址上的版本值；載入、上傳或重試時更新，讓瀏覽器重新取圖。
   const [coverImageVersion, setCoverImageVersion] = useState(0);
+  // 目前封面是否已用新版本重試過；限制原圖重試次數，之後才改用備用圖。
   const [hasRetriedCoverImage, setHasRetriedCoverImage] = useState(false);
+  // 封面上傳中的旗標；控制按鈕停用、轉圈，以及封面的模糊與透明效果。
   const [isUploading, setIsUploading] = useState(false);
+  // 取得隱藏檔案欄位的 DOM，讓封面按鈕能開啟選檔器，並在上傳結束後清空選取值。
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // 是否顯示行程名稱／日期編輯區；取消只關閉編輯區，不送出 API。
   const [isEditingInfo, setIsEditingInfo] = useState(false);
+  // 行程名稱草稿；開啟編輯時從 itineraryData 複製，儲存成功後才回寫主資料。
   const [editInfoTitle, setEditInfoTitle] = useState("");
+  // 開始日期草稿，配合 date 輸入欄使用 YYYY-MM-DD 格式。
   const [editInfoStart, setEditInfoStart] = useState("");
+  // 結束日期草稿；送出時與開始日期比較，避免結束早於開始。
   const [editInfoEnd, setEditInfoEnd] = useState("");
 
+  // 目前選取的行程天數，從 1 開始；同時控制左側清單、地圖標記與路線折線。
   const [activeDay, setActiveDay] = useState(1);
+  // 手機目前顯示清單或地圖；桌面透過響應式樣式同時呈現兩者。
   const [mobilePlannerView, setMobilePlannerView] = useState<'list' | 'map'>('list');
+  // 新增行程項目視窗的開關；關閉視窗本身不等於清空所有草稿。
   const [isAddItemOpen, setIsAddItemOpen] = useState(false);
+  // 新增流程的模式：choose 選入口、search 選有座標的地點、custom 輸入自訂名稱。
   const [addItemMode, setAddItemMode] = useState<'choose' | 'search' | 'custom'>('choose');
   
+  // 目前掛載的輔助面板：budget 記帳或 luggage 行李；切換會卸載前一個面板。
   const [rightPanelTab, setRightPanelTab] = useState<'budget' | 'luggage'>('budget');
+  // 小螢幕是否以覆蓋方式顯示輔助面板；超寬桌面則由樣式固定顯示側欄。
   const [isMobilePanelOpen, setIsMobilePanelOpen] = useState(false);
-  const preferencesHydratedRef = useRef(false);
-
-  // 目前天數與右側面板是本機畫面偏好；依行程 ID 分開保存，避免切換行程互相干擾。
+  // 切換行程時回到第一天與記帳面板，不再讀寫本機畫面偏好。
   useEffect(() => {
-    const savedTab = window.localStorage.getItem(`trav-app:right-panel:${params.id}`);
-    if (savedTab === 'budget' || savedTab === 'luggage') setRightPanelTab(savedTab);
-    const savedDay = window.localStorage.getItem(`trav-app:active-day:${params.id}`);
-    if (savedDay) setActiveDay(Math.max(1, Number(savedDay) || 1));
-    preferencesHydratedRef.current = true;
+    setActiveDay(1);
+    setRightPanelTab('budget');
   }, [params.id]);
 
-  useEffect(() => {
-    if (!preferencesHydratedRef.current) return;
-    window.localStorage.setItem(`trav-app:right-panel:${params.id}`, rightPanelTab);
-    window.localStorage.setItem(`trav-app:active-day:${params.id}`, String(activeDay));
-  }, [activeDay, params.id, rightPanelTab]);
-
+  // 新增地點名稱草稿，也供地圖搜尋欄共用；搜尋結果選取後會帶入地點名稱。
   const [newItemTitle, setNewItemTitle] = useState("");
+  // 新增項目的開始時間草稿；開啟視窗時預填當天最後一筆合法結束時間。
   const [newItemStartTime, setNewItemStartTime] = useState("");
+  // 新增項目的結束時間草稿；開啟視窗先清空，允許留空。
   const [newItemEndTime, setNewItemEndTime] = useState("");
+  // 新增地點的緯度；null 表示尚未取得位置，搜尋模式送出前必須有有效座標。
   const [newItemLat, setNewItemLat] = useState<number | null>(null);
+  // 新增地點的經度，須與緯度一起使用；自訂模式允許沒有座標。
   const [newItemLng, setNewItemLng] = useState<number | null>(null);
 
+  // 新增項目請求的進行狀態，用來停用視窗按鈕並顯示處理中圖示。
   const [isSubmittingItem, setIsSubmittingItem] = useState(false);
 
+  // 整份行程所有天數的項目；載入時統一 ID、時間與座標格式，再按 activeDay 篩選。
   const [itineraryItems, setItineraryItems] = useState<any[]>([]);
   
+  // 目前編輯名稱的項目 ID；null 代表所有卡片都以文字呈現名稱。
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  // 卡片名稱的編輯草稿；與新增視窗的 newItemTitle 分開，避免互相影響。
   const [editingTitle, setEditingTitle] = useState("");
+  // 目前編輯時間的項目 ID；配合共用時間草稿，只開啟對應卡片的輸入欄。
   const [editingTimeId, setEditingTimeId] = useState<string | null>(null);
+  // 既有項目的開始時間草稿；進入卡片時間編輯時由該項目帶入。
   const [editStartTime, setEditStartTime] = useState("");
+  // 既有項目的結束時間草稿；與開始時間一同驗證並送出 update_time。
   const [editEndTime, setEditEndTime] = useState("");
+  // 正在儲存時間的項目 ID，用來略過同筆重複送出並停用對應卡片的儲存操作。
   const [savingTimeId, setSavingTimeId] = useState<string | null>(null);
 
+  // 目前預覽的候選地點，可能來自搜尋、內建景點或空白地圖；尚未因此寫入行程。
   const [selectedPlace, setSelectedPlace] = useState<any | null>(null);
+  // 遞增序號只保護選地點詳情，沒有保護文字搜尋。
   const placeSelectionRequestRef = useRef(0);
+  // 正在補齊詳細資訊的候選地點 ID；只讓對應資訊框顯示載入提示。
   const [placeDetailsLoading, setPlaceDetailsLoading] = useState<string | null>(null);
-  const placeDetailsCacheRef = useRef<Record<string, any>>({});
-  const placeDetailsRequestsRef = useRef<Map<string, Promise<any>>>(new Map());
+  // 目前選中的既有行程項目；供地圖資訊框與清單卡片的選取樣式共用。
   const [selectedMapItem, setSelectedMapItem] = useState<any | null>(null);
+  // 等待重新指定位置的既有項目 ID；選取地點後改走 update_location。
   const [editingLocationItemId, setEditingLocationItemId] = useState<string | null>(null);
+  // 文字搜尋的候選標記，與已儲存行程標記分開；清除候選不會刪除行程。
   const [searchMarkers, setSearchMarkers] = useState<any[]>([]);
+  // 保存 Google Maps 實例，供移動、縮放、fitBounds 等命令操作。
   const mapRef = useRef<google.maps.Map | null>(null);
+  // 受控的地圖中心；載入目的地、選地點及地圖閒置時都可能更新。
   const [mapCenter, setMapCenter] = useState({ lat: 25.0478, lng: 121.5170 });
+  // 程式指定的縮放級別；選景點時放大，載入行程目的地時回到城市尺度。
   const [mapZoom, setMapZoom] = useState(12);
+  // 保存折線，重畫或卸載時 setMap(null) 移除。
   const routePolylineRef = useRef<google.maps.Polyline | null>(null);
+  // GoogleMap 實例是否已掛載；SDK 載入成功不代表實例已可供折線綁定。
   const [mapReady, setMapReady] = useState(false);
+  // 搜尋或地點詳情的地圖提示；null 表示不顯示提示浮層。
   const [mapStatusMessage, setMapStatusMessage] = useState<string | null>(null);
-  const [itemsLoaded, setItemsLoaded] = useState(false);
-  const lastAutoFitDayRef = useRef<number | null>(null);
-  const [markerStatuses, setMarkerStatuses] = useState<Record<string, MarkerStatus>>({});
-
-  // 地圖標記狀態目前存在此瀏覽器的 localStorage，沒有寫入資料庫。
-  useEffect(() => {
-    try {
-      const saved = window.localStorage.getItem(`trav-app:marker-statuses:${params.id}`);
-      if (saved) setMarkerStatuses(JSON.parse(saved));
-    } catch {
-      setMarkerStatuses({});
-    }
-  }, [params.id]);
-
-  const updateMarkerStatus = useCallback((itemId: string, status: MarkerStatus) => {
-    setMarkerStatuses((current) => {
-      const next = { ...current, [String(itemId)]: status };
-      window.localStorage.setItem(`trav-app:marker-statuses:${params.id}`, JSON.stringify(next));
-      return next;
-    });
-  }, [params.id]);
-
-  const getItemMarkerStatus = useCallback((item: any): MarkerStatus => {
-    if (item.completed || item.isCompleted) return 'completed';
-    return markerStatuses[String(item.id)] || 'added';
-  }, [markerStatuses]);
-
-  // 同一地點先查快取；若請求還在進行就共用 Promise，避免重複呼叫地點詳情 API。
-  const fetchPlaceDetailsOnce = useCallback(async (placeId: string) => {
+  // 每次呼叫都直接請求地點詳情，不保存快取或共用進行中的請求。
+  const fetchPlaceDetails = useCallback(async (placeId: string) => {
     const normalizedPlaceId = String(placeId || '');
     if (!normalizedPlaceId) throw new Error('Missing place id');
 
-    const cached = placeDetailsCacheRef.current[normalizedPlaceId];
-    if (cached) return cached;
-
-    const existingRequest = placeDetailsRequestsRef.current.get(normalizedPlaceId);
-    if (existingRequest) return existingRequest;
-
-    const request = fetch('/api/placedetails', {
+    const response = await fetch('/api/placedetails', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ placeId: normalizedPlaceId }),
-    })
-      .then(async (response) => {
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error || 'Place details request failed');
-        placeDetailsCacheRef.current[normalizedPlaceId] = data;
-        return data;
-      })
-      .finally(() => {
-        placeDetailsRequestsRef.current.delete(normalizedPlaceId);
-      });
-
-    placeDetailsRequestsRef.current.set(normalizedPlaceId, request);
-    return request;
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Place details request failed');
+    return data;
   }, []);
 
+  /**
+   * 先使用候選資料顯示資訊框，再非同步補照片、地址、營業時間等詳情。
+   * 以函式型 setter 檢查目前候選 ID，避免 A 地點的回應覆蓋已切換到 B 的資訊框。
+   * finally 也比對 ID，避免較舊請求關閉另一個地點的載入提示。
+   */
   const loadPlaceDetails = useCallback(async (place: any) => {
     const placeId = String(place?.id || '');
     if (!placeId || place?.isMapPoint) return;
 
     setPlaceDetailsLoading(placeId);
     try {
-      const data = await fetchPlaceDetailsOnce(placeId);
+      const data = await fetchPlaceDetails(placeId);
       setSelectedPlace((current: any) => current?.id === placeId ? { ...current, ...data } : current);
     } catch (error) {
       console.error('Place details error:', error);
@@ -630,9 +602,10 @@ export default function ItineraryEditor() {
     } finally {
       setPlaceDetailsLoading((current) => current === placeId ? null : current);
     }
-  }, [fetchPlaceDetailsOnce]);
+  }, [fetchPlaceDetails]);
 
-  // 點清單項目時，同步地圖中心、縮放和清單捲動，讓兩種視圖指向同一地點。
+  // 點清單項目時選取標點並移動地圖中心，不自動捲動清單。
+  // 檢查注意：Number(null)=0，尚未明確排除空座標。
   const focusMapOnItem = useCallback((item: any) => {
     const lat = Number(item.Latitude);
     const lng = Number(item.Longitude);
@@ -644,9 +617,6 @@ export default function ItineraryEditor() {
     setMapZoom(16);
     mapRef.current?.panTo({ lat, lng });
     mapRef.current?.setZoom(16);
-    requestAnimationFrame(() => {
-      document.getElementById(`itinerary-item-${item.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    });
   }, []);
 
   useEffect(() => {
@@ -655,45 +625,8 @@ export default function ItineraryEditor() {
     }
   }, [itineraryItems, selectedMapItem]);
 
-  const resetMapView = useCallback(() => {
-    const destination = {
-      lat: Number(itineraryData?.destLat) || 25.0478,
-      lng: Number(itineraryData?.destLng) || 121.5170,
-    };
-    mapRef.current?.setCenter(destination);
-    mapRef.current?.setZoom(12);
-    mapRef.current?.setTilt(0);
-    mapRef.current?.setHeading(0);
-    setMapCenter(destination);
-    setMapZoom(12);
-  }, [itineraryData]);
-
-  // 依當天有效座標調整地圖範圍；沒有座標時退回行程目的地。
-  const fitCurrentDayPlaces = useCallback(() => {
-    if (!mapRef.current || !window.google) return;
-    const points = itineraryItems
-      .filter((item) => item.dayNumber === activeDay && Number.isFinite(Number(item.Latitude)) && Number.isFinite(Number(item.Longitude)))
-      .map((item) => ({ lat: Number(item.Latitude), lng: Number(item.Longitude) }));
-
-    if (points.length === 0) {
-      resetMapView();
-      return;
-    }
-
-    if (points.length === 1) {
-      mapRef.current.setCenter(points[0]);
-      mapRef.current.setZoom(15);
-      setMapCenter(points[0]);
-      setMapZoom(15);
-      return;
-    }
-
-    const bounds = new window.google.maps.LatLngBounds();
-    points.forEach((point) => bounds.extend(point));
-    mapRef.current.fitBounds(bounds, 64);
-  }, [activeDay, itineraryItems, resetMapView]);
-
-  // 手機切到地圖後，等容器真正顯示再觸發 resize 與範圍計算，避免地圖尺寸算錯。
+  // 手機切到地圖後，等容器顯示再觸發 resize，避免地圖尺寸算錯；不自動調整地點範圍。
+  // 兩層 requestAnimationFrame 留出畫面更新的機會，再通知地圖重新計算可見容器尺寸。
   const switchMobilePlannerView = useCallback((view: 'list' | 'map') => {
     setMobilePlannerView(view);
     if (view !== 'map') return;
@@ -702,10 +635,9 @@ export default function ItineraryEditor() {
       requestAnimationFrame(() => {
         if (!mapRef.current || !window.google) return;
         window.google.maps.event.trigger(mapRef.current, 'resize');
-        fitCurrentDayPlaces();
       });
     });
-  }, [fitCurrentDayPlaces]);
+  }, []);
 
   // 每次切換天數或順序，先移除舊線，再依當天 sortOrder 重畫各地點間的連線。
   useEffect(() => {
@@ -714,6 +646,7 @@ export default function ItineraryEditor() {
 
     if (!mapReady || !window.google || !mapRef.current) return;
 
+    // 按 sortOrder 直接連線，這不是實際道路導航或交通路徑。
     const routeItems = itineraryItems
       .filter((item) => item.dayNumber === activeDay)
       .filter((item) => Number.isFinite(Number(item.Latitude)) && Number.isFinite(Number(item.Longitude)))
@@ -721,6 +654,7 @@ export default function ItineraryEditor() {
 
     if (routeItems.length < 2) return;
 
+    // 篩選後至少保留兩個位置才建立線段；此處沿用 Number 轉型後的有限值檢查。
     const path = routeItems.map((item) => ({
       lat: Number(item.Latitude),
       lng: Number(item.Longitude),
@@ -751,45 +685,8 @@ export default function ItineraryEditor() {
     }
   }, [itineraryData?.destLat, itineraryData?.destLng]);
 
-  // 首次載入某一天時才自動縮放；之後使用者手動移動地圖，不會被輪詢重置視角。
-  useEffect(() => {
-    if (!mapReady || !window.google || !mapRef.current || !itineraryData) return;
-    if (!itemsLoaded || lastAutoFitDayRef.current === activeDay) return;
-
-    const points = itineraryItems
-      .filter((item) => item.dayNumber === activeDay)
-      .filter((item) => Number.isFinite(Number(item.Latitude)) && Number.isFinite(Number(item.Longitude)))
-      .map((item) => ({ lat: Number(item.Latitude), lng: Number(item.Longitude) }));
-
-    if (points.length === 0) {
-      const destination = {
-        lat: Number(itineraryData.destLat) || 25.0478,
-        lng: Number(itineraryData.destLng) || 121.5170,
-      };
-      mapRef.current.setCenter(destination);
-      mapRef.current.setZoom(12);
-      setMapCenter(destination);
-      setMapZoom(12);
-      lastAutoFitDayRef.current = activeDay;
-      return;
-    }
-
-    if (points.length === 1) {
-      mapRef.current.setCenter(points[0]);
-      mapRef.current.setZoom(16);
-      setMapCenter(points[0]);
-      setMapZoom(16);
-      lastAutoFitDayRef.current = activeDay;
-      return;
-    }
-
-    const bounds = new window.google.maps.LatLngBounds();
-    points.forEach((point) => bounds.extend(point));
-    mapRef.current.fitBounds(bounds, 80);
-    lastAutoFitDayRef.current = activeDay;
-  }, [activeDay, itineraryData, itineraryItems, itemsLoaded, mapReady]);
-
 // 文字搜尋透過本專案的 API 取得候選地點；結果只先顯示在地圖，尚未建立行程項目。
+// 候選只顯示地圖，未存行程。檢查注意：沒有過期回應保護，舊結果可能覆蓋新結果。
 const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) => {
     if (!keyword.trim()) return;
     setNewItemLat(null);
@@ -855,13 +752,16 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
     }
   };
 
-  // 使用遞增序號忽略較早返回的搜尋結果，避免快速連點後顯示錯誤地點。
-  // 若正在修改舊項目的位置，就更新該筆；否則只把選取資料帶入新增表單。
+  /**
+   * 自動完成選單的地點選取入口：先取得完整座標，再區分新增草稿或修改既有位置。
+   * 每次呼叫增加請求序號，回應回來時僅接受最新一次選取；這個保護不涵蓋其他搜尋入口。
+   * editingLocationItemId 有值時立即送出位置更新並重讀項目；一般選取只填草稿，仍須按新增。
+   */
   const handlePlaceSelect = async (placeId: string) => {
     const selectionRequestId = placeSelectionRequestRef.current + 1;
     placeSelectionRequestRef.current = selectionRequestId;
     try {
-      const data = await fetchPlaceDetailsOnce(placeId);
+      const data = await fetchPlaceDetails(placeId);
       if (selectionRequestId !== placeSelectionRequestRef.current) return;
       
       if (data.location) {
@@ -930,9 +830,10 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
     }
   };
 
+  // 內建景點以 placeId 查詳情，空白地圖位置由 JSX 建立臨時點。
   const handleMapPoiClick = async (placeId: string) => {
     try {
-      const data = await fetchPlaceDetailsOnce(placeId);
+      const data = await fetchPlaceDetails(placeId);
       if (!data.location) throw new Error('Place details request did not include a location');
 
       setSelectedMapItem(null);
@@ -947,6 +848,7 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
   };
 
   // Google 地點和既有行程項目沒有共同 ID，這裡用接近的座標判斷是否已加入。
+  // 跨所有天數以座標差各小於 0.00015 比對，近似位置不等於唯一地點 ID。
   const findItineraryItemForPlace = (place: any) => {
     const latitude = Number(place?.location?.latitude);
     const longitude = Number(place?.location?.longitude);
@@ -968,7 +870,12 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
-  // PHP 回傳的 ID、時間和座標先轉成畫面一致的格式；資料沒變就沿用原 state，減少輪詢造成的重繪。
+  // 檢查注意：項目讀取沒有過期回應保護。
+  /**
+   * 把 PHP 回應轉成卡片、拖曳及地圖共用的資料格式，成功後取代完整項目清單。
+   * ID 轉字串以配合拖曳 ID 比較；HH:mm:ss 轉 HH:mm；原始非法時間另存 hasInvalidTime。
+   * 座標保留 null，其餘轉數字；這裡只正規化資料，並未檢查所有座標使用處的 null 處理。
+   */
   const fetchItems = useCallback(async (id: string) => {
     try {
       const res = await fetch("/backend/itinerary/items.php?action=list", {
@@ -976,7 +883,6 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
       });
       const data = await res.json();
       if (data.status === 'success') {
-        setItemsLoaded(true);
         const nextItems = data.data.map((item: any) => {
           const startTime = normalizeLoadedTime(item.startTime);
           const endTime = normalizeLoadedTime(item.endTime);
@@ -990,9 +896,7 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
             Longitude: item.Longitude === null ? null : Number(item.Longitude),
           };
         });
-        setItineraryItems((currentItems) => (
-          JSON.stringify(currentItems) === JSON.stringify(nextItems) ? currentItems : nextItems
-        ));
+        setItineraryItems(nextItems);
       }
     } catch (error) { console.error(error); }
   }, []);
@@ -1001,6 +905,7 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
   useEffect(() => {
     if (authLoading) return;
     if (!user) { router.push("/auth/login"); return; }
+    // 主資料先查 Content-Type，避免解析 HTML 錯誤頁；目前沒有取消與過期回應保護。
     const fetchDetail = async () => {
       try {
         const res = await fetch("/backend/itinerary/core.php?action=detail", {
@@ -1015,27 +920,35 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
           setCoverImageVersion(Date.now());
           setHasRetriedCoverImage(false);
         } else { alert(data.message); router.push("/planner"); }
-      } catch (error) { alert("資料讀取失敗"); } finally { setIsLoading(false); }
+      } catch { alert("資料讀取失敗"); } finally { setIsLoading(false); }
     };
+    // 兩個非同步函式各自啟動，不互相等待；主資料轉圈結束時，項目仍可能尚未回來。
     if (params.id) { fetchDetail(); fetchItems(params.id as string); }
   }, [params.id, user, authLoading, router, fetchItems]);
 
-  // 每五秒同步項目清單；卸載或切換行程時清除計時器，避免持續讀取舊行程。
-  useEffect(() => {
-    if (authLoading || !user || !params.id) return;
-    const refreshTimer = window.setInterval(() => fetchItems(params.id as string), 5000);
-    return () => window.clearInterval(refreshTimer);
-  }, [params.id, user, authLoading, fetchItems]);
-
-  // 先顯示本機預覽，再壓縮上傳；失敗則恢復舊封面，最後釋放預覽網址。
+  /**
+   * 封面生命週期：驗證檔案 → 建立 blob 預覽 → 上傳原檔 → 換成後端回傳網址。
+   * MIME、附檔名與 10 MiB 上限是前端檢查；使用 FormData，讓瀏覽器自動產生 multipart 邊界。
+   * 失敗時恢復先前封面；finally 釋放預覽網址、結束上傳狀態並清空 input，方便重選同一檔。
+   */
   const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]; if (!file) return;
+    if (!file.type.startsWith('image/') || !/\.(jpe?g|png|webp)$/i.test(file.name)) {
+      alert('請選擇 JPG、PNG 或 WEBP 圖片。');
+      e.target.value = '';
+      return;
+    }
+    if (file.size > MAX_COVER_SOURCE_BYTES) {
+      alert('圖片超過 10MB，請選擇較小的圖片。');
+      e.target.value = '';
+      return;
+    }
     const previousCoverImage = coverImage;
     const previewUrl = URL.createObjectURL(file); setCoverImage(previewUrl); setIsUploading(true);
     try {
       const optimizedFile = await optimizeCoverImage(file);
       const formData = new FormData(); formData.append("cover_image", optimizedFile); formData.append("Itinerary_ID", params.id as string); formData.append("Account", user?.id || (user as any)?.Account);
-      const res = await fetch("/backend/itinerary/uploads/upload.php?action=cover", { method: "POST", body: formData });
+      const res = await fetch("http://localhost:8080/itinerary/uploads/upload.php?action=cover", { method: "POST", body: formData });
       const data = await res.json(); if (data.status === 'success') { setCoverImage(data.new_image_url); setCoverImageVersion(Date.now()); setHasRetriedCoverImage(false); } else { alert(data.message); setCoverImage(previousCoverImage); }
     } catch (error) { alert(error instanceof Error ? error.message : "圖片上傳失敗"); setCoverImage(previousCoverImage); } 
     finally { URL.revokeObjectURL(previewUrl); setIsUploading(false); if (fileInputRef.current) fileInputRef.current.value = ""; }
@@ -1048,9 +961,10 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
     try {
       const res = await fetch("/backend/itinerary/core.php?action=update", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ Itinerary_ID: params.id, Title: editInfoTitle, StartDate: editInfoStart, EndDate: editInfoEnd }) });
       const data = await res.json(); if (data.status === 'success') { setItineraryData({ ...itineraryData, title: editInfoTitle, startDate: editInfoStart, endDate: editInfoEnd }); setIsEditingInfo(false); } else alert(data.message);
-    } catch(error) { alert("更新失敗"); }
+    } catch { alert("更新失敗"); }
   };
 
+  // 09:30 轉當日第 570 分鐘，非法回 null；00:00 是合法零。
   const timeToMinutes = (value: string) => {
     const match = value.trim().match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
     if (!match) return null;
@@ -1059,40 +973,6 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
     const minutes = Number(match[2]);
     if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return null;
     return hours * 60 + minutes;
-  };
-
-  // 儲存前把當天項目依順序排好，檢查時間重疊；跨午夜的結束時間換算成隔日分鐘。
-  const getScheduleError = (dayNumber: number, start: string, end: string, itemId?: string, sortOrder?: number) => {
-    const startMinutes = timeToMinutes(start);
-    const endMinutes = timeToMinutes(end);
-    if (startMinutes === null || endMinutes === null) return null;
-    if (startMinutes === endMinutes) return "開始與結束時間不能相同。";
-
-    const items = itineraryItems
-      .filter((item) => item.dayNumber === dayNumber && item.id !== itemId)
-      .map((item) => ({ ...item, _sortOrder: Number(item.sortOrder ?? 0) }))
-      .concat([{ id: itemId ?? "new", dayNumber, startTime: start, endTime: end, _sortOrder: sortOrder ?? Number.MAX_SAFE_INTEGER }])
-      .sort((a, b) => a._sortOrder - b._sortOrder);
-
-    let previous: { clockStart: number; end: number; overnight: boolean } | null = null;
-    for (const item of items) {
-      const itemStart = timeToMinutes(item.startTime || "");
-      const itemEnd = timeToMinutes(item.endTime || "");
-      if (itemStart === null || itemEnd === null) continue;
-
-      let timelineStart = itemStart;
-      if (previous?.overnight && timelineStart < previous.clockStart) timelineStart += 1440;
-      if (previous && timelineStart < previous.end) {
-        return `行程時間重疊：${item.startTime} 早於前一個行程結束時間。`;
-      }
-
-      previous = {
-        clockStart: itemStart,
-        end: timelineStart + (itemEnd < itemStart ? itemEnd + 1440 - itemStart : itemEnd - itemStart),
-        overnight: itemEnd < itemStart,
-      };
-    }
-    return null;
   };
 
   // 新項目預填當天最後一個有時間項目的結束時間，使用者仍可自行修改。
@@ -1104,6 +984,7 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
     return lastTimedItem?.endTime || '';
   };
 
+  // 設定模式與預填時間。檢查注意：未清空舊座標，自訂名稱可能沿用前次搜尋位置。
   const openAddItemModal = (mode: 'choose' | 'search' | 'custom' = 'choose') => {
     setAddItemMode(mode);
     setNewItemStartTime(getSuggestedStartTime(activeDay));
@@ -1111,7 +992,11 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
     setIsAddItemOpen(true);
   };
 
-  // 搜尋地點必須先取得座標；自訂地點可沒有座標。檢查通過後才寫入 items.php。
+  /**
+   * 新增只使用目前 activeDay；搜尋模式必須選到座標，自訂模式可先建立無座標項目。
+   * 起訖時間都可留空，有輸入就檢查 24 小時格式；兩者相同會阻擋，跨午夜與重疊則允許。
+   * 成功後清空名稱、時間、座標及候選預覽，再重新讀取後端產生的項目 ID 與排序。
+   */
   const handleCreateItem = async () => {
     if (!newItemTitle.trim()) {
       alert("請先選擇或輸入地點");
@@ -1129,11 +1014,6 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
     }
     if (startMinutes !== null && endMinutes !== null && startMinutes === endMinutes) {
       alert("開始與結束時間不能相同");
-      return;
-    }
-    const scheduleError = getScheduleError(activeDay, newItemStartTime, newItemEndTime, undefined, Number.MAX_SAFE_INTEGER);
-    if (scheduleError) {
-      alert(scheduleError);
       return;
     }
     if (!newItemTitle.trim()) return alert("請輸入行程標題"); setIsSubmittingItem(true);
@@ -1162,18 +1042,20 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
         setIsAddItemOpen(false); 
         fetchItems(params.id as string); 
       } else alert(data.message);
-    } catch (error) { alert("連線異常"); } finally { setIsSubmittingItem(false); }
+    } catch { alert("連線異常"); } finally { setIsSubmittingItem(false); }
   };
 
+  // 空白不送，成功刷新，finally 結束名稱編輯。
   const handleUpdateTitle = async (itemId: string) => {
     if (!editingTitle.trim()) return setEditingItemId(null);
     try {
       const res = await fetch("/backend/itinerary/items.php?action=update_title", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ Item_ID: itemId, Title: editingTitle }) });
       const data = await res.json(); if (data.status === 'success') fetchItems(params.id as string); else alert(data.message);
-    } catch(error) { alert("更新失敗"); } finally { setEditingItemId(null); }
+    } catch { alert("更新失敗"); } finally { setEditingItemId(null); }
   };
 
-  // 修改時間與新增時共用同一套格式和重疊檢查，避免編輯後出現衝突。
+  // 修改時間與新增時共用格式檢查，允許與其他項目時間重疊。
+  // 同筆儲存中略過，成功後重新讀取清單。
   const handleUpdateTime = async (itemId: string) => {
     if (savingTimeId === itemId) return;
     const startMinutes = timeToMinutes(editStartTime);
@@ -1186,17 +1068,11 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
       alert("開始與結束時間不能相同");
       return;
     }
-    const currentItem = itineraryItems.find((item) => item.id === itemId);
-    const scheduleError = getScheduleError(activeDay, editStartTime, editEndTime, itemId, Number(currentItem?.sortOrder ?? 0));
-    if (scheduleError) {
-      alert(scheduleError);
-      return;
-    }
     setSavingTimeId(itemId);
     try {
       const res = await fetch("/backend/itinerary/items.php?action=update_time", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ Item_ID: itemId, StartTime: editStartTime, EndTime: editEndTime }) });
       const data = await res.json(); if (data.status === 'success') fetchItems(params.id as string); else alert(data.message);
-    } catch(error) { alert("更新失敗"); } finally { setEditingTimeId(null); }
+    } catch { alert("更新失敗"); }
     setSavingTimeId(null);
     setEditingTimeId(null);
   };
@@ -1205,23 +1081,17 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
   const handleDeleteItem = async (itemId: string) => {
     if (!window.confirm("確定要刪除此行程嗎？")) return;
     setSelectedMapItem((current: any) => current?.id === itemId ? null : current);
-    setMarkerStatuses((current) => {
-      const next = { ...current };
-      delete next[String(itemId)];
-      window.localStorage.setItem(`trav-app:marker-statuses:${params.id}`, JSON.stringify(next));
-      return next;
-    });
     setItineraryItems(items => items.filter(item => item.id !== itemId));
     try {
       const res = await fetch("/backend/itinerary/items.php?action=delete", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ Item_ID: itemId }) });
       const data = await res.json(); if (data.status !== 'success') { alert(data.message); fetchItems(params.id as string); }
-    } catch(error) { alert("刪除失敗"); fetchItems(params.id as string); }
+    } catch { alert("刪除失敗"); fetchItems(params.id as string); }
   };
 
   // 複製項目時保留地點，刻意清空時間，避免複製後立刻與原項目重疊。
   const handleDuplicateItem = async (item: any) => {
     try {
-      const res = await fetch("/backend/itinerary/items.php?action=create", {
+      const res = await fetch("http://localhost:8080/itinerary/items.php?action=create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1251,15 +1121,18 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
         if (oldIndex < 0 || newIndex < 0) return items;
         const oldDayItems = items.filter(item => item.dayNumber === activeDay);
         const newItems = arrayMove(items, oldIndex, newIndex);
+        // 保留原陣列順序篩選當天，沒有再次按 sortOrder 排。
         const currentDayItems = newItems.filter(item => item.dayNumber === activeDay);
+        // 先保存每個位置原時段，項目移到新位置後使用該位置的時間。
         const timeSlots = oldDayItems.map(item => ({ startTime: item.startTime || "", endTime: item.endTime || "" }));
         const itemsWithSwappedTimes = newItems.map((item) => {
           const dayIndex = currentDayItems.findIndex(dayItem => dayItem.id === item.id);
           if (item.dayNumber !== activeDay || dayIndex < 0) return item;
           return { ...item, startTime: timeSlots[dayIndex].startTime, endTime: timeSlots[dayIndex].endTime };
         });
+        // 檢查注意：本機未同步 sortOrder，折線可能沿舊順序；fetch 未檢查 HTTP/JSON 業務錯誤。
         const sortUpdates = currentDayItems.map((item, index) => ({ id: item.id, sortOrder: index }));
-        fetch("/backend/itinerary/items.php?action=sort", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ updates: sortUpdates }) }).catch(err => console.error(err));
+        fetch("http://localhost:8080/itinerary/items.php?action=sort", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ updates: sortUpdates }) }).catch(err => console.error(err));
         const timeUpdates = currentDayItems.map((item, index) => ({ item, slot: timeSlots[index] }))
           .filter(({ item, slot }) => item.startTime !== slot.startTime || item.endTime !== slot.endTime);
         Promise.all(timeUpdates.map(({ item, slot }) => fetch("/backend/itinerary/items.php?action=update_time", {
@@ -1288,11 +1161,13 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
   }
 
   // 畫面只顯示選取天數的項目；完整清單仍保留在 itineraryItems 供切天與時間檢查使用。
+  // 保留原陣列順序篩選當天，沒有再次按 sortOrder 排。
   const currentDayItems = itineraryItems.filter((item) => item.dayNumber === activeDay);
 
   return (
     <div className={`itinerary-page fixed inset-0 ${isMobilePanelOpen ? 'z-[60]' : 'z-40'} flex flex-col bg-[#F4F2ED] font-sans text-slate-800`}>
       
+      {/* 桌面導覽按鈕目前沒有 onClick/href，只呈現文字。 */}
       <header className="hidden md:flex h-16 bg-white border-b border-slate-100 items-center justify-between px-6 shrink-0 z-50">
         <div className="flex items-center gap-8">
           <div className="font-bold text-xl tracking-tighter text-slate-900">TRAVMADE</div>
@@ -1339,6 +1214,7 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
           </div>
 
           <div className="px-6 py-5 border-b border-slate-50 shrink-0 group/header relative">
+            {/* 閱讀／編輯主資料切換，日期草稿使用 YYYY-MM-DD。 */}
             {isEditingInfo ? (
               <div className="space-y-3 animate-in fade-in duration-200">
                 <input type="text" value={editInfoTitle} onChange={(e) => setEditInfoTitle(e.target.value)} className="w-full text-lg font-bold text-slate-900 bg-slate-50 border border-slate-200 rounded px-2 py-1.5 focus:outline-none focus:border-[#F04D79] transition-colors" placeholder="輸入行程標題..." autoFocus />
@@ -1398,7 +1274,7 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
                   return (
                     <div key={item.id} className="relative">
                       {index < currentDayItems.length - 1 && <div className="absolute left-[2.1rem] top-full z-0 h-3.5 border-l-2 border-dashed border-slate-200" />}
-                      <SortableItem key={item.id} item={item} editingItemId={editingItemId} editingTitle={editingTitle} setEditingItemId={setEditingItemId} setEditingTitle={setEditingTitle} handleUpdateTitle={handleUpdateTitle} editingTimeId={editingTimeId} editStartTime={editStartTime} editEndTime={editEndTime} setEditingTimeId={setEditingTimeId} setEditStartTime={setEditStartTime} setEditEndTime={setEditEndTime} handleUpdateTime={handleUpdateTime} handleDeleteItem={handleDeleteItem} handleDuplicateItem={handleDuplicateItem} onFocusItem={focusMapOnItem} isMapItemSelected={selectedMapItem?.id === item.id} savingTimeId={savingTimeId} timeFlags={timeFlags} markerStatus={getItemMarkerStatus(item)} onMarkerStatusChange={updateMarkerStatus} />
+                      <SortableItem key={item.id} item={item} editingItemId={editingItemId} editingTitle={editingTitle} setEditingItemId={setEditingItemId} setEditingTitle={setEditingTitle} handleUpdateTitle={handleUpdateTitle} editingTimeId={editingTimeId} editStartTime={editStartTime} editEndTime={editEndTime} setEditingTimeId={setEditingTimeId} setEditStartTime={setEditStartTime} setEditEndTime={setEditEndTime} handleUpdateTime={handleUpdateTime} handleDeleteItem={handleDeleteItem} onFocusItem={focusMapOnItem} isMapItemSelected={selectedMapItem?.id === item.id} savingTimeId={savingTimeId} timeFlags={timeFlags} />
                     </div>
                   );
                 })}
@@ -1442,6 +1318,7 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
                 />
               </div>
 
+              {/* 內建景點查詳情；空白地圖先建候選座標，新增後才存行程。 */}
               <GoogleMap
                 mapContainerStyle={{ width: '100%', height: '100%' }}
                 center={mapCenter}
@@ -1468,6 +1345,7 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
                   });
                 }}
                 onLoad={(map) => { mapRef.current = map; setMapReady(true); }}
+                // 使用者拖動地圖後，將最終中心同步回 state；微小差異沿用舊物件，減少重繪。
                 onIdle={() => {
                   const center = mapRef.current?.getCenter();
                   if (!center) return;
@@ -1478,6 +1356,7 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
                       : nextCenter
                   ));
                 }}
+                // GoogleMap 卸載時一起移除命令式建立的折線，並清空實例參照。
                 onUnmount={() => { routePolylineRef.current?.setMap(null); routePolylineRef.current = null; mapRef.current = null; setMapReady(false); }}
               >
                 {mapStatusMessage && (
@@ -1485,22 +1364,18 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
                     {mapStatusMessage}
                   </div>
                 )}
-                {/* 當天行程標記與暫時搜尋結果共用群聚，但搜尋結果不會因此寫進行程。 */}
-                <MarkerClustererF options={{ gridSize: 48, minimumClusterSize: 2, maxZoom: 15, zoomOnClick: true }}>
-                  {(clusterer) => (
-                    <>
+                {/* 當天行程與搜尋結果各自顯示標記，縮小地圖時也不合併；搜尋結果不會因此寫進行程。 */}
                       {currentDayItems
                         .filter((item) => Number.isFinite(Number(item.Latitude)) && Number.isFinite(Number(item.Longitude)))
                         .map((item, index) => (
                           <Marker
                             key={`itinerary-${item.id}`}
-                            clusterer={clusterer}
                             position={{ lat: Number(item.Latitude), lng: Number(item.Longitude) }}
-                            title={`${item.title || '行程地點'} · ${getMarkerStatusOption(getItemMarkerStatus(item)).label}`}
+                            title={item.title || '行程地點'}
                             label={{ text: String(index + 1), color: "white", fontWeight: "bold" }}
                             icon={isLoaded && window.google ? {
                               path: window.google.maps.SymbolPath.CIRCLE,
-                              fillColor: getMarkerStatusOption(getItemMarkerStatus(item)).fill,
+                              fillColor: '#F04D79',
                               fillOpacity: 1,
                               strokeColor: 'white',
                               strokeWeight: 2,
@@ -1513,7 +1388,6 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
                       {searchMarkers.map((place) => (
                         <Marker
                           key={`search-${place.id}`}
-                          clusterer={clusterer}
                           position={{
                             lat: place.location.latitude,
                             lng: place.location.longitude
@@ -1529,10 +1403,8 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
                           onClick={() => { setSelectedMapItem(null); setSelectedPlace(place); void loadPlaceDetails(place); }}
                         />
                       ))}
-                    </>
-                  )}
-                </MarkerClustererF>
 
+                {/* 已加入項目資訊框可查看清單或重新選位置。 */}
                 {selectedMapItem && (
                   <InfoWindow
                     position={{ lat: Number(selectedMapItem.Latitude), lng: Number(selectedMapItem.Longitude) }}
@@ -1568,6 +1440,7 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
                   </InfoWindow>
                 )}
 
+                {/* 候選資訊框依有無資料顯示照片、營業時間、電話、地址與網址。 */}
                 {selectedPlace && (
                   <InfoWindow
                     position={{
@@ -1581,6 +1454,7 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
                       {placeDetailsLoading === selectedPlace.id && (
                         <p className="mb-2 text-[10px] font-semibold text-slate-400">載入地點詳細資料…</p>
                       )}
+                      {/* 照片走同源代理，encodeURIComponent 防止資源名稱破壞網址參數。 */}
                       {selectedPlace.photos?.[0]?.name && (
                         <img
                           src={`/api/placephoto?name=${encodeURIComponent(selectedPlace.photos[0].name)}`}
@@ -1699,6 +1573,7 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
           </div>
         </div>
 
+        {/* 手機底部切換行程、記帳、行李，安全區內距避開裝置操作區。 */}
         <nav className={`${mobilePlannerView === 'map' ? 'hidden' : 'grid'} fixed inset-x-0 bottom-0 z-40 grid-cols-3 gap-1 border-t border-slate-200 bg-white/95 px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 shadow-[0_-4px_20px_rgba(15,23,42,0.08)] backdrop-blur xl:hidden`}>
           <button type="button" onClick={() => setIsMobilePanelOpen(false)} className={`flex min-w-0 flex-col items-center gap-1 py-1 text-[10px] font-bold ${!isMobilePanelOpen ? 'text-[#F04D79]' : 'text-slate-400'}`}><LayoutGrid size={18} />行程</button>
           {[
@@ -1775,6 +1650,7 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
                     />
                   </div>
                 </div>
+                {/* 時間非空即顯示提示，手動輸入也會出現，未追蹤是否真的自動帶入。 */}
                 {newItemStartTime && (
                   <p className="mt-2 text-xs font-medium text-slate-400">已自動帶入上一個行程的結束時間，可直接修改。</p>
                 )}

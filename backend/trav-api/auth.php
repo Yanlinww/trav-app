@@ -1,241 +1,313 @@
 <?php
-/** 帳號入口：密碼登入、註冊、Google 與 Facebook 登入。 */
-header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Methods: POST, GET, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With');
-header('Content-Type: application/json; charset=utf-8');
+/** 
+ * =========================================================================
+ * 帳號驗證中心 (Auth API)
+ * 負責處理：一般登入、一般註冊、Google 快速登入、Facebook 快速登入
+ * =========================================================================
+ */
+
+// -------------------------------------------------------------------------
+// 1. CORS 跨域設定與環境準備
+// (因為前端 Next.js 在 localhost:3001，後端 PHP 在 localhost:8080，不同網域必須開通跨域)
+// -------------------------------------------------------------------------
+header('Access-Control-Allow-Origin: *'); // 允許任何前端網域來呼叫這支 API
+header('Access-Control-Allow-Methods: POST, GET, OPTIONS'); // 允許的 HTTP 請求方法
+header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With'); // 允許前端帶來的標頭
+header('Content-Type: application/json; charset=utf-8'); // 告訴前端：我回傳的資料格式是 JSON，且支援中文
+
+// 攔截 OPTIONS 預檢請求：瀏覽器在發送 POST 之前會先發送 OPTIONS 確認伺服器是否允許
+// 這裡我們直接回傳 200 (OK)，讓前端可以順利發送真正的 POST 請求
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(200); exit(); }
 
-require_once __DIR__ . '/db_connect.php';
+// 載入資料庫連線設定 (這樣才能使用 $conn 變數來操作 MySQL)
+require_once __DIR__ . '/db_connect.php'; 
 
-$actions = ['login' => 'auth_login', 'register' => 'auth_register', 'google' => 'auth_google', 'facebook' => 'auth_facebook'];
-$action = $_GET['action'] ?? '';
-if (!isset($actions[$action])) { http_response_code(400); echo json_encode(['status' => 'error', 'message' => '無效的帳號操作'], JSON_UNESCAPED_UNICODE); exit(); }
+// -------------------------------------------------------------------------
+// 2. 路由分發器 (Router) - 決定現在要做什麼動作
+// -------------------------------------------------------------------------
+// 定義這支 API 支援哪些功能 (白名單，防止別人亂打 API)
+$actions = [
+    'login' => 'auth_login',       // 呼叫 auth_login 函數
+    'register' => 'auth_register', // 呼叫 auth_register 函數
+    'google' => 'auth_google',     // 呼叫 auth_google 函數
+    'facebook' => 'auth_facebook'  // 呼叫 auth_facebook 函數
+];
+
+// 取得網址列上的 ?action=XXX 參數 (例如：auth.php?action=login)
+$action =$_GET['action'] ?? '';
+
+// 如果 action 不在我們的白名單內，就擋下來並報錯 (HTTP 狀態碼 400 Bad Request)
+if (!isset($actions[$action])) { 
+    http_response_code(400); 
+    echo json_encode(['status' => 'error', 'message' => '無效的帳號操作'], JSON_UNESCAPED_UNICODE); 
+    exit(); 
+}
+
+// 根據 action 執行對應的 PHP 函數，並把資料庫連線 ($conn) 傳進去
 $actions[$action]($conn);
 
-/** login 原本的操作內容。 */
+
+// -------------------------------------------------------------------------
+// 功能 A：一般帳號密碼登入
+// -------------------------------------------------------------------------
 function auth_login(mysqli $conn): void {
-    // 接收前端傳來的 JSON
+    // 讀取前端用 POST 傳過來的 JSON 資料，並轉換成 PHP 物件
     $data = json_decode(file_get_contents("php://input"));
 
+    // 檢查帳號和密碼是否有填寫
     if (!empty($data->Account) && !empty($data->Password)) {
-        $account = $data->Account;
-        $password = $data->Password;
+        $account =$data->Account;
+        $password =$data->Password;
 
-        // 準備 SQL：用帳號（也就是 Email）去資料庫撈出該會員
-        $stmt = $conn->prepare("SELECT * FROM `Member` WHERE `Account` = ?");
-        $stmt->bind_param("s", $account);
-        $stmt->execute();
-        $result = $stmt->get_result();
+        // 【安全重點】準備 SQL 語句。使用 `?` 佔位符可以防止「SQL 注入攻擊 (SQL Injection)」
+        $stmt =$conn->prepare("SELECT * FROM `Member` WHERE `Account` = ?");
+        // 把 $account 變數綁定到 `?` 的位置 ("s" 代表字串 String)
+        $stmt->bind_param("s", $account);$stmt->execute();
+        $result =$stmt->get_result(); // 取得查詢結果
 
+        // 如果在資料庫有找到這個帳號 (筆數 > 0)
         if ($result->num_rows > 0) {
-            $user = $result->fetch_assoc();
+            $user =$result->fetch_assoc(); // 將資料庫的一筆資料轉成 PHP 陣列
             
-            // 🔒 安全解密：比對前端傳來的密碼，跟資料庫裡的加密雜湊值是否吻合
-            if (password_verify($password, $user['Password'])) {
-                
+            // 【安全重點】密碼驗證：前端傳來的明碼 (例如 "1234")，與資料庫裡的亂碼 (Hash) 進行比對
+            if (password_verify($password,$user['Password'])) {
+                // 比對成功，回傳使用者的基本資料給前端
                 echo json_encode([
                     "status" => "success",
                     "message" => "登入成功！歡迎回來 TRAVMADE！",
                     "user" => [
-                        "id" => $user['Account'],
+                        "id" => $user['Account'],        // 把 Account 當作前端的 user.id
                         "email" => $user['Email'],
                         "nickname" => $user['Name'],
                         "avatar" => $user['Avatar'],
                         "role" => $user['Role'] ?? 'user'
                     ]
                 ], JSON_UNESCAPED_UNICODE);
-                
             } else {
+                // 密碼錯誤
                 echo json_encode(["status" => "error", "message" => "密碼輸入錯誤喔，請再確認一次！"], JSON_UNESCAPED_UNICODE);
             }
         } else {
+            // 找不到這個帳號
             echo json_encode(["status" => "error", "message" => "找不到此帳號，請確認輸入或先去註冊！"], JSON_UNESCAPED_UNICODE);
+        }
+        $stmt->close(); // 關閉查詢釋放資源
+    } else {
+        echo json_encode(["status" => "error", "message" => "請確實填寫帳號與密碼！"], JSON_UNESCAPED_UNICODE);
+    }
+    $conn->close();
+}
+
+
+// -------------------------------------------------------------------------
+// 功能 B：一般帳號註冊
+// -------------------------------------------------------------------------
+function auth_register(mysqli $conn): void {$data = json_decode(file_get_contents("php://input"));
+
+    if (!empty($data->Account) && !empty($data->Password)) {
+        $account =$data->Account;
+        $email =$data->Email ?? '';
+        $name =$data->Name ?? '';
+        $gender =$data->Gender ?? '';
+        
+        // 【安全重點】密碼加密：使用 password_hash 把使用者的密碼變成一段不可逆的亂碼，再存入資料庫
+        // 這樣就算工程師或駭客看到資料庫，也不知道使用者的真實密碼
+        $password_hashed = password_hash($data->Password, PASSWORD_DEFAULT);
+
+        // 使用 `?` 佔位符準備寫入資料
+        $stmt =$conn->prepare("INSERT INTO `Member` (`Account`, `Password`, `Email`, `Name`, `Gender`) VALUES (?, ?, ?, ?, ?)");
+        // "sssss" 代表有 5 個 String 參數要綁定
+        $stmt->bind_param("sssss", $account, $password_hashed,$email, $name,$gender);
+
+        // 執行寫入動作
+        if ($stmt->execute()) {
+            echo json_encode(["status" => "success", "message" => "🎉 恭喜！帳號註冊成功！"], JSON_UNESCAPED_UNICODE);
+        } else {
+            echo json_encode(["status" => "error", "message" => "註冊失敗，可能是該帳號或信箱已經被註冊過了。"], JSON_UNESCAPED_UNICODE);
         }
         $stmt->close();
     } else {
         echo json_encode(["status" => "error", "message" => "請確實填寫帳號與密碼！"], JSON_UNESCAPED_UNICODE);
     }
-
     $conn->close();
 }
 
-/** register 原本的操作內容。 */
-function auth_register(mysqli $conn): void {
-    // 接收前端 (Next.js) 傳來的 JSON 資料
-    $data = json_decode(file_get_contents("php://input"));
 
-    // 檢查有沒有收到最重要的帳號跟密碼
-    if (!empty($data->Account) && !empty($data->Password)) {
-        // 取得前端傳來的資料
-        $account = $data->Account;
-        $email = $data->Email ?? '';
-        $name = $data->Name ?? '';
-        $gender = $data->Gender ?? '';
-        
-        // 🔒 資安防護：密碼絕對不能明碼存進資料庫！我們要把它「雜湊(Hash)」加密
-        $password_hashed = password_hash($data->Password, PASSWORD_DEFAULT);
-
-        // 準備 SQL 寫入指令 (使用 ? 預處理來防止 SQL 隱碼攻擊)
-        $stmt = $conn->prepare("INSERT INTO `Member` (`Account`, `Password`, `Email`, `Name`, `Gender`) VALUES (?, ?, ?, ?, ?)");
-        $stmt->bind_param("sssss", $account, $password_hashed, $email, $name, $gender);
-
-        // 執行寫入並回傳結果給前端
-        if ($stmt->execute()) {
-            echo json_encode([
-                "status" => "success", 
-                "message" => "🎉 恭喜！帳號註冊成功，資料已寫入雲端！"
-            ], JSON_UNESCAPED_UNICODE);
-        } else {
-            echo json_encode([
-                "status" => "error", 
-                "message" => "註冊失敗，可能是帳號重複了：" . $stmt->error
-            ], JSON_UNESCAPED_UNICODE);
-        }
-        
-        $stmt->close();
-    } else {
-        echo json_encode([
-            "status" => "error", 
-            "message" => "請確實填寫帳號與密碼！"
-        ], JSON_UNESCAPED_UNICODE);
-    }
-
-    // 關閉資料庫連線
-    $conn->close();
-}
-
-function respond_google_login_success(string $message, array $user): void {
-    echo json_encode(["status" => "success", "message" => $message, "user" => $user], JSON_UNESCAPED_UNICODE);
+// -------------------------------------------------------------------------
+// 第三方登入共用輔助函數 (減少重複的程式碼)
+// -------------------------------------------------------------------------
+function respond_social_login_success(string $message, array$user): void {
+    // 專門負責在第三方登入成功時，把正確的 JSON 格式回傳給前端
+    echo json_encode([
+        "status" => "success", 
+        "message" => $message, 
+        "user" => $user
+    ], JSON_UNESCAPED_UNICODE);
 }
 
 
-/** social_login_google 原本的操作內容。 */
-function auth_google(mysqli $conn): void {
-    $data = json_decode(file_get_contents("php://input"));
-
+// -------------------------------------------------------------------------
+// 功能 C：Google 快速登入 (前端給 Token，後端去驗證)
+// -------------------------------------------------------------------------
+function auth_google(mysqli $conn): void {$data = json_decode(file_get_contents("php://input"));
 
     if (!empty($data->AccessToken)) {
-        $token = $data->AccessToken;
+        $token =$data->AccessToken; // 前端 Google 登入後拿到的那串 Token
         
-        // 透過 Token 向 Google 獲取用戶資料
+        // 1. 使用 cURL (PHP 的網路請求工具) 帶著 Token 去向 Google 的伺服器要資料
         $ch = curl_init();
         curl_setopt($ch, CURLOPT_URL, "https://www.googleapis.com/oauth2/v3/userinfo");
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        // 在標頭加上 Bearer Token 證明我們的合法身分
         curl_setopt($ch, CURLOPT_HTTPHEADER, ["Authorization: Bearer " . $token]);
         $response = curl_exec($ch);
         curl_close($ch);
-        $g_user = json_decode($response);
+        
+        $g_user = json_decode($response); // 解析 Google 回傳的 JSON
 
+        // 如果 Google 有成功回傳 sub (Google 帳號的唯一 ID)
         if (isset($g_user->sub)) {
-            $g_id = $g_user->sub;
-            $email = $g_user->email ?? '';
-            $name = $g_user->name ?? 'Google User';
-            $avatar = $g_user->picture ?? '';
+            $g_id =$g_user->sub; 
+            $email =$g_user->email ?? '';
+            $name =$g_user->name ?? 'Google User';
+            $avatar =$g_user->picture ?? '';
             
-            // 檢查資料庫是否已有此人 (用 google_id 或 Email 判斷)
-            $stmt = $conn->prepare("SELECT * FROM `Member` WHERE `google_id` = ? OR `Account` = ? OR `Email` = ?");
-            $stmt->bind_param("sss", $g_id, $email, $email);
-            $stmt->execute();
-            $result = $stmt->get_result();
+            // 2. 去我們的 MySQL 資料庫尋找：這個 Google ID 或這個信箱，是不是已經註冊過了？
+            $stmt =$conn->prepare("SELECT * FROM `Member` WHERE `google_id` = ? OR `Account` = ? OR `Email` = ?");
+            $stmt->bind_param("sss", $g_id,$email, $email);$stmt->execute();
+            $result =$stmt->get_result();
             
             if ($result->num_rows > 0) {
-                // ✅ 情境 A：帳號已存在 -> 直接登入
-                $user = $result->fetch_assoc();
+                // 🔹 情境 A：老朋友 (帳號已存在) -> 直接讓他登入
+                $user =$result->fetch_assoc();
                 
-                // 如果他是第一次用 Google 登入，順便幫他把 google_id 補上
+                // 如果他以前是用一般註冊，這是第一次按 Google 登入，我們順便幫他把 google_id 綁定存進去
                 if (empty($user['google_id'])) {
-                    $upd = $conn->prepare("UPDATE `Member` SET `google_id` = ? WHERE `Account` = ?");
-                    $upd->bind_param("ss", $g_id, $user['Account']);
-                    $upd->execute(); $upd->close();
+                    $upd =$conn->prepare("UPDATE `Member` SET `google_id` = ? WHERE `Account` = ?");
+                    $upd->bind_param("ss", $g_id,$user['Account']);
+                    $upd->execute();$upd->close();
                 }
-                respond_google_login_success("🎉 Google 登入成功！", ["id" => $user['Account'], "email" => $user['Email'], "nickname" => $user['Name'], "avatar" => $user['Avatar'], "role" => $user['Role'] ?? 'user']);
-            } else {
-                // 🆕 情境 B：帳號不存在 -> 自動註冊並登入
-                $account = $email; // 將 Email 作為帳號
-                $random_password = password_hash(bin2hex(random_bytes(8)), PASSWORD_DEFAULT); // 隨機生成一組密碼
                 
-                $ins = $conn->prepare("INSERT INTO `Member` (`Account`, `Password`, `Email`, `Name`, `Avatar`, `google_id`) VALUES (?, ?, ?, ?, ?, ?)");
-                $ins->bind_param("ssssss", $account, $random_password, $email, $name, $avatar, $g_id);
+                // 呼叫輔助函數，回傳成功訊息給前端
+                respond_social_login_success("🎉 Google 登入成功！", [
+                    "id" => $user['Account'], 
+                    "email" => $user['Email'], 
+                    "nickname" => $user['Name'], 
+                    "avatar" => $user['Avatar'], 
+                    "role" => $user['Role'] ?? 'user'
+                ]);
+            } else {
+                // 🔹 情境 B：新朋友 (帳號不存在) -> 系統自動幫他註冊
+                $account =$email; // 將他的 Google Email 直接當作我們的登入帳號 (Account)
+                // 隨機生成一組 8 byte 亂碼並加密，作為他的預設密碼 (因為他是第三方登入，其實用不到這組密碼)
+                $random_password = password_hash(bin2hex(random_bytes(8)), PASSWORD_DEFAULT); 
+                
+                $ins =$conn->prepare("INSERT INTO `Member` (`Account`, `Password`, `Email`, `Name`, `Avatar`, `google_id`) VALUES (?, ?, ?, ?, ?, ?)");
+                $ins->bind_param("ssssss", $account,$random_password, $email,$name, $avatar,$g_id);
                 
                 if ($ins->execute()) {
-                    respond_google_login_success("🎉 帳號建立完成，Google 登入成功！", ["id" => $account, "email" => $email, "nickname" => $name, "avatar" => $avatar, "role" => 'user']);
+                    // 自動註冊成功，立刻讓他登入
+                    respond_social_login_success("🎉 帳號建立完成，Google 登入成功！", [
+                        "id" => $account, 
+                        "email" => $email, 
+                        "nickname" => $name, 
+                        "avatar" => $avatar, 
+                        "role" => 'user'
+                    ]);
                 } else {
                     echo json_encode(["status" => "error", "message" => "自動註冊失敗：" . $conn->error]);
                 }
                 $ins->close();
             }
             $stmt->close();
-        } else { echo json_encode(["status" => "error", "message" => "無法取得 Google 用戶資料"]); }
-    } else { echo json_encode(["status" => "error", "message" => "缺少授權碼"]); }
+        } else { 
+            echo json_encode(["status" => "error", "message" => "無法取得 Google 用戶資料"]); 
+        }
+    } else { 
+        echo json_encode(["status" => "error", "message" => "缺少授權碼"]); 
+    }
     $conn->close();
 }
 
-function respond_facebook_login_success(string $message, array $user): void {
-    echo json_encode(["status" => "success", "message" => $message, "user" => $user], JSON_UNESCAPED_UNICODE);
-}
 
-
-/** social_login_facebook 原本的操作內容。 */
-function auth_facebook(mysqli $conn): void {
-    $data = json_decode(file_get_contents("php://input"));
-
+// -------------------------------------------------------------------------
+// 功能 D：Facebook 快速登入 (前端給 Code，後端自己去換 Token 跟資料)
+// -------------------------------------------------------------------------
+function auth_facebook(mysqli $conn): void {$data = json_decode(file_get_contents("php://input"));
 
     if (!empty($data->Code) && !empty($data->RedirectUri)) {
-        $app_id = '1349371613270362'; 
-        $app_secret = 'b11dda73d29ffef9f873c97b2c2ae68a';
-        $redirect_uri = $data->RedirectUri; 
+        // ⚠️ 開發專題提醒：這些 ID 和 Secret 最好寫在 .env 設定檔，不要公開放在程式碼中
+        $app_id = '1349371613270362';$app_secret = 'b11dda73d29ffef9f873c97b2c2ae68a';
+        $redirect_uri =$data->RedirectUri; 
 
-        // 1. 換取 Access Token
+        // 1. 拿前端傳來的 Code，去跟 Facebook 伺服器換取「通行證 (Access Token)」
         $token_url = "https://graph.facebook.com/v18.0/oauth/access_token?client_id=" . $app_id . "&redirect_uri=" . urlencode($redirect_uri) . "&client_secret=" . $app_secret . "&code=" . $data->Code;
         $ch = curl_init();
-        curl_setopt($ch, CURLOPT_URL, $token_url);
+        curl_setopt($ch, CURLOPT_URL,$token_url);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         $response = curl_exec($ch);
         curl_close($ch);
         $token_data = json_decode($response);
 
+        // 如果成功換到 Token
         if (isset($token_data->access_token)) {
-            $access_token = $token_data->access_token;
+            $access_token =$token_data->access_token;
             
-            // 2. 拿 Token 換取 FB 用戶資料 (包含大頭貼)
+            // 2. 拿著剛換到的 Token，去向 FB 索取用戶資料 (指定要大尺寸的 picture)
             $profile_url = "https://graph.facebook.com/me?fields=id,name,email,picture.type(large)&access_token=" . $access_token;
             $ch2 = curl_init();
-            curl_setopt($ch2, CURLOPT_URL, $profile_url);
+            curl_setopt($ch2, CURLOPT_URL,$profile_url);
             curl_setopt($ch2, CURLOPT_RETURNTRANSFER, true);
             $profile_response = curl_exec($ch2);
             curl_close($ch2);
             $fb_user = json_decode($profile_response);
 
+            // 如果成功拿到 FB 使用者資料
             if (isset($fb_user->id)) {
-                $fb_id = $fb_user->id;
-                $name = $fb_user->name ?? 'Facebook User';
-                $email = $fb_user->email ?? ($fb_id . '@facebook.com'); // 如果 FB 沒給 email 的備案
-                $avatar = $fb_user->picture->data->url ?? '';
+                $fb_id =$fb_user->id; // FB 的唯一識別碼
+                $name =$fb_user->name ?? 'Facebook User';
+                // FB 有時候不會給 Email(用戶沒綁定或隱私設定)，此時用 FB_ID 假造一個 Email 防呆
+                $email = $fb_user->email ?? ($fb_id . '@facebook.com'); 
+                $avatar =$fb_user->picture->data->url ?? '';
 
-                // 檢查資料庫是否已有此人
-                $stmt = $conn->prepare("SELECT * FROM `Member` WHERE `facebook_id` = ? OR `Account` = ? OR `Email` = ?");
-                $stmt->bind_param("sss", $fb_id, $email, $email);
-                $stmt->execute();
-                $result = $stmt->get_result();
+                // 3. 檢查我們資料庫是否已經有這個人了
+                $stmt =$conn->prepare("SELECT * FROM `Member` WHERE `facebook_id` = ? OR `Account` = ? OR `Email` = ?");
+                $stmt->bind_param("sss", $fb_id,$email, $email);$stmt->execute();
+                $result =$stmt->get_result();
 
                 if ($result->num_rows > 0) {
-                    // ✅ 情境 A：帳號已存在 -> 直接登入
-                    $user = $result->fetch_assoc();
+                    // 🔹 情境 A：老朋友 -> 直接登入
+                    $user =$result->fetch_assoc();
+                    
+                    // 順便綁定 facebook_id
                     if (empty($user['facebook_id'])) {
-                        $upd = $conn->prepare("UPDATE `Member` SET `facebook_id` = ? WHERE `Account` = ?");
-                        $upd->bind_param("ss", $fb_id, $user['Account']);
-                        $upd->execute(); $upd->close();
+                        $upd =$conn->prepare("UPDATE `Member` SET `facebook_id` = ? WHERE `Account` = ?");
+                        $upd->bind_param("ss", $fb_id,$user['Account']);
+                        $upd->execute();$upd->close();
                     }
-                    respond_facebook_login_success("🎉 Facebook 登入成功！", ["id" => $user['Account'], "email" => $user['Email'], "nickname" => $user['Name'], "avatar" => $user['Avatar'], "role" => $user['Role'] ?? 'user']);
+                    respond_social_login_success("🎉 Facebook 登入成功！", [
+                        "id" => $user['Account'], 
+                        "email" => $user['Email'], 
+                        "nickname" => $user['Name'], 
+                        "avatar" => $user['Avatar'], 
+                        "role" => $user['Role'] ?? 'user'
+                    ]);
                 } else {
-                    // 🆕 情境 B：帳號不存在 -> 自動註冊並登入
-                    $account = $email;
+                    // 🔹 情境 B：新朋友 -> 自動註冊並登入
+                    $account =$email;
                     $random_password = password_hash(bin2hex(random_bytes(8)), PASSWORD_DEFAULT);
-                    $ins = $conn->prepare("INSERT INTO `Member` (`Account`, `Password`, `Email`, `Name`, `Avatar`, `facebook_id`) VALUES (?, ?, ?, ?, ?, ?)");
-                    $ins->bind_param("ssssss", $account, $random_password, $email, $name, $avatar, $fb_id);
+                    
+                    $ins =$conn->prepare("INSERT INTO `Member` (`Account`, `Password`, `Email`, `Name`, `Avatar`, `facebook_id`) VALUES (?, ?, ?, ?, ?, ?)");
+                    $ins->bind_param("ssssss", $account,$random_password, $email,$name, $avatar,$fb_id);
+                    
                     if ($ins->execute()) {
-                        respond_facebook_login_success("🎉 帳號建立完成，Facebook 登入成功！", ["id" => $account, "email" => $email, "nickname" => $name, "avatar" => $avatar, "role" => 'user']);
+                        respond_social_login_success("🎉 帳號建立完成，Facebook 登入成功！", [
+                            "id" => $account, 
+                            "email" => $email, 
+                            "nickname" => $name, 
+                            "avatar" => $avatar, 
+                            "role" => 'user'
+                        ]);
                     } else {
                         echo json_encode(["status" => "error", "message" => "自動註冊失敗：" . $conn->error]);
                     }

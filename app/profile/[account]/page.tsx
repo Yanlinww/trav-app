@@ -6,6 +6,8 @@ import { useAuth } from '../../context/AuthContext';
 import { CalendarDays, Camera, Copy, Eye, Heart, MapPin, Bookmark, Loader2, ChevronLeft } from 'lucide-react';
 import { FaFacebook, FaInstagram, FaTwitter, FaYoutube, FaTiktok } from 'react-icons/fa';
 import { Link2 } from 'lucide-react';
+import { UserCheck, UserPlus } from 'lucide-react';
+import FollowListModal from '../../components/FollowListModal';
 
 type PublicItinerary = {
   id: string;
@@ -31,8 +33,10 @@ export default function PublicProfilePage() {
   const [activeTab, setActiveTab] = useState('photos');
   
   const [profileUser, setProfileUser] = useState<{
-    account: string; name: string; avatar: string; followersCount: number; followingCount: number;
+    account: string; name: string; avatar: string; followersCount: number; followingCount: number; isFollowing: boolean;
   } | null>(null);
+  const [followListType, setFollowListType] = useState<'followers' | 'following' | null>(null);
+  const [isUpdatingFollow, setIsUpdatingFollow] = useState(false);
   const [isLoadingProfile, setIsLoadingProfile] = useState(true);
   
   const [userFiles, setUserFiles] = useState<any[]>([]); 
@@ -55,7 +59,7 @@ export default function PublicProfilePage() {
       try {
         const res = await fetch("/backend/social.php?action=profile", {
           method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ Account: targetAccount })
+          body: JSON.stringify({ Account: targetAccount, Viewer_Account: currentAccount })
         });
         const data = await res.json();
         if (data.status === 'success') setProfileUser(data.data);
@@ -64,6 +68,22 @@ export default function PublicProfilePage() {
     };
     fetchProfile();
   }, [targetAccount, currentAccount]);
+
+  const handleToggleFollow = async () => {
+    if (!currentAccount) { router.push('/auth/login'); return; }
+    if (isUpdatingFollow) return;
+    setIsUpdatingFollow(true);
+    try {
+      const response = await fetch('http://localhost:8080/social.php?action=toggle_follow', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ Follower_Account: currentAccount, Target_Account: targetAccount }),
+      });
+      const result = await response.json();
+      if (!response.ok || result.status !== 'success') throw new Error(result.message || '更新追蹤狀態失敗');
+      setProfileUser((profile) => profile && ({ ...profile, isFollowing: Boolean(result.isFollowing), followersCount: result.followersCount }));
+    } catch (error) { alert(error instanceof Error ? error.message : '更新追蹤狀態失敗'); }
+    finally { setIsUpdatingFollow(false); }
+  };
 
   // 2. 抓取照片檔案
   useEffect(() => {
@@ -172,17 +192,16 @@ export default function PublicProfilePage() {
             </div>
           </div>
           
-          {/* 右側：粉絲數據與社群連結 */}
+          {/* 右側：公開行程統計與社群連結 */}
           <div className="flex flex-col items-center md:items-end gap-5 mt-4 md:mt-0">
             <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-3 text-neutral-800 md:justify-end">
-              <div className="text-center flex items-baseline gap-1.5 px-1"><span className="text-2xl font-bold">{profileUser.followersCount}</span> <span className="text-sm text-neutral-500 font-medium">粉絲</span></div>
-              <div className="w-px h-6 bg-neutral-200"></div>
-              <div className="text-center flex items-baseline gap-1.5 px-1"><span className="text-2xl font-bold">{profileUser.followingCount}</span> <span className="text-sm text-neutral-500 font-medium">追蹤中</span></div>
-              <div className="w-px h-6 bg-neutral-200"></div>
               <div className="text-center flex items-baseline gap-1.5"><span className="text-2xl font-bold">{publicStats.likes}</span> <span className="text-sm text-neutral-500 font-medium">獲得喜歡</span></div>
               <div className="w-px h-6 bg-neutral-200"></div>
               <div className="text-center flex items-baseline gap-1.5"><span className="text-2xl font-bold">{publicStats.copies}</span> <span className="text-sm text-neutral-500 font-medium">被複製</span></div>
+              <button type="button" onClick={() => setFollowListType('followers')} className="text-center flex items-baseline gap-1.5 hover:text-[#F04D79]"><span className="text-2xl font-bold">{profileUser.followersCount}</span> <span className="text-sm font-medium">粉絲</span></button>
+              <button type="button" onClick={() => setFollowListType('following')} className="text-center flex items-baseline gap-1.5 hover:text-[#F04D79]"><span className="text-2xl font-bold">{profileUser.followingCount}</span> <span className="text-sm font-medium">追蹤中</span></button>
             </div>
+            {currentAccount !== targetAccount && <button type="button" disabled={isUpdatingFollow} onClick={() => void handleToggleFollow()} className="inline-flex items-center gap-2 rounded-full bg-[#F04D79] px-5 py-2 text-sm font-bold text-white disabled:opacity-50">{profileUser.isFollowing ? <><UserCheck size={17} />取消追蹤</> : <><UserPlus size={17} />追蹤</>}</button>}
             
             <div className="flex items-center gap-2">
               <SocialIconBtn network="facebook" link={socialLinks.facebook} icon={FaFacebook} />
@@ -255,6 +274,7 @@ export default function PublicProfilePage() {
           )
         )}
       </div>
+      {followListType && <FollowListModal account={targetAccount} viewerAccount={currentAccount} listType={followListType} onClose={() => setFollowListType(null)} />}
     </div>
   );
 }

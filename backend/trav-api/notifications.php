@@ -18,8 +18,8 @@ function notifications_get(mysqli $conn): void {
     $conn->query("CREATE TABLE IF NOT EXISTS `Notifications` (
         `Notification_ID` INT AUTO_INCREMENT PRIMARY KEY,
         `Account` VARCHAR(50) NOT NULL COMMENT '接收通知的帳號',
-        `Sender_Account` VARCHAR(50) NULL COMMENT '觸發通知的帳號(誰按讚/留言/追蹤)',
-        `Type` VARCHAR(20) NOT NULL COMMENT '通知類型: like, comment, follow',
+        `Sender_Account` VARCHAR(50) NULL COMMENT '觸發通知的帳號(誰按讚/留言)',
+        `Type` VARCHAR(20) NOT NULL COMMENT '通知類型: like, comment',
         `Reference_ID` VARCHAR(50) NULL COMMENT '關聯的ID (貼文ID等)',
         `Message` VARCHAR(255) NOT NULL COMMENT '通知內容',
         `Is_Read` TINYINT(1) DEFAULT 0 COMMENT '0:未讀, 1:已讀',
