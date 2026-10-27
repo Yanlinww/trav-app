@@ -11,20 +11,22 @@ import {
 } from 'lucide-react';
 import { FaFacebook, FaInstagram, FaTwitter, FaYoutube, FaTiktok } from 'react-icons/fa';
 
+// 本人頁依登入帳號載入照片、行程與社群資料；編輯操作分別送往對應 PHP API。
 export default function ProfilePage() {
   const { user } = useAuth();
   const router = useRouter(); 
   
-  // 狀態：只保留 photos (旅遊照片) 與 journeys (收藏的行程)
+  // photos 顯示上傳照片；journeys 顯示本人的行程列表，資料來源不是收藏關係 API。
   const [activeTab, setActiveTab] = useState('photos');
   
   // 📸 照片上傳與檔案狀態
   const [isUploading, setIsUploading] = useState(false);
   const [userFiles, setUserFiles] = useState<any[]>([]); 
   const [isLoadingFiles, setIsLoadingFiles] = useState(true);
+  // 由照片區卡片觸發隱藏的 file input；上傳結束後也用此 ref 清空選取值。
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // 🗺️ 行程與收藏狀態
+  // 帳號行程列表與獨立載入狀態。
   const [itineraries, setItineraries] = useState<any[]>([]);
   const [isLoadingItineraries, setIsLoadingItineraries] = useState(false);
   // 🔗 社群連結設定相關狀態
@@ -33,13 +35,16 @@ export default function ProfilePage() {
   const [socialLinks, setSocialLinks] = useState({
     instagram: '', twitter: '', xiaohongshu: '', tiktok: '', youtube: '', facebook: ''
   });
+  // 同一份 socialLinks 同時作為圖示網址與編輯草稿；輸入即更新 state，按儲存才寫入後端。
 
   const displayName = user?.nickname || 'TRAVELER';
   const avatarUrl = (user as any)?.avatar;
-  const currentAccount = user ? String(user.id || (user as any).Account || '') : '';
+  const currentAccount = user ? String(user.id || (user as any).Account || '') : ''; // 兼容既有會員欄位。
   const [followStats, setFollowStats] = useState({ followersCount: 0, followingCount: 0 });
+  // null 表示關閉；字串值決定 FollowListModal 讀粉絲名單或追蹤中名單。
   const [followListType, setFollowListType] = useState<'followers' | 'following' | null>(null);
 
+  // 帳號或名單開關改變時更新統計；以本人同時作為名單主人與觀看者。
   useEffect(() => {
     if (!currentAccount) return;
     const loadFollowStats = async () => {
@@ -50,29 +55,33 @@ export default function ProfilePage() {
           body: JSON.stringify({ Account: currentAccount, Viewer_Account: currentAccount }),
         });
         const result = await response.json();
+        // 直接以後端兩個計數取代目前統計；此入口沒有取消／舊回應忽略機制。
         if (result.status === 'success') setFollowStats({ followersCount: result.data.followersCount, followingCount: result.data.followingCount });
       } catch (error) { console.error('無法取得追蹤統計', error); }
     };
     void loadFollowStats();
   }, [currentAccount, followListType]);
 
-  // 1. 抓取照片檔案
+  // files.php 依 Account 與 photos 類型讀取照片，成功後取代目前列表。
   const fetchUserFiles = async () => {
+    // 登入資料尚未還原時不查詢；載入旗標只控制照片區，不鎖住整個個人頁。
     if (!user) return;
     setIsLoadingFiles(true);
     try {
       const res = await fetch("/backend/files.php?action=get", {
         method: "POST", headers: { "Content-Type": "application/json" },
+        // 兼容會員回應的 id／Account；photos 指定只取旅遊照片。
         body: JSON.stringify({ Account: user.id || (user as any).Account, Tab_Type: 'photos' }),
       });
       const data = await res.json();
+      // 成功替換照片列表，業務失敗清空；例外只記錄錯誤，finally 一律結束載入。
       if (data.status === 'success') setUserFiles(data.data);
       else setUserFiles([]);
     } catch (error) { console.error("無法取得照片", error); } 
     finally { setIsLoadingFiles(false); }
   };
 
-  // 2. 抓取收藏的行程 (串接 Planner API)
+  // core.php?action=list 讀取帳號行程，不是收藏關係查詢；卡片連到可編輯的 /planner/{id}。
   const fetchItineraries = async () => {
     if (!user) return;
     setIsLoadingItineraries(true);
@@ -82,13 +91,14 @@ export default function ProfilePage() {
         body: JSON.stringify({ Account: user.id || (user as any).Account }),
       });
       const data = await res.json();
+      // 回應列表供 journeys 卡片使用；不是把行程複製到本頁或修改其公開狀態。
       if (data.status === 'success') setItineraries(data.data);
       else setItineraries([]);
     } catch (error) { console.error("無法取得行程", error); } 
     finally { setIsLoadingItineraries(false); }
   };
 
-  // 3. 抓取使用者儲存的社群連結
+  // 讀取社群連結並把缺少的平台補為空字串，供圖示與編輯欄位共用。
   const fetchSocialLinks = async () => {
     if (!user) return;
     try {
@@ -96,18 +106,21 @@ export default function ProfilePage() {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ Account: user.id || (user as any).Account }),
       });
+      // links 只讀取；data.data 預期含 instagram、twitter 等與 state 同名的平台欄位。
       const data = await res.json();
       if (data.status === 'success' && data.data) {
+        // 將缺少值補成空字串，讓後續 trim 判斷與受控輸入欄位維持字串型別。
         setSocialLinks({
           instagram: data.data.instagram || '', twitter: data.data.twitter || '',
           xiaohongshu: data.data.xiaohongshu || '', tiktok: data.data.tiktok || '',
           youtube: data.data.youtube || '', facebook: data.data.facebook || ''
         });
       }
+    // 業務失敗或例外不覆蓋原資料；例外只在主控台記錄，沒有彈窗提示。
     } catch (error) { console.error("無法取得社群連結", error); }
   };
 
-  // 監聽分頁切換
+  // 切到哪個分頁才讀該類資料；社群連結另於 user 改變時讀取。
   useEffect(() => {
     if (user) {
       if (activeTab === 'photos') fetchUserFiles();
@@ -115,9 +128,11 @@ export default function ProfilePage() {
     }
   }, [user, activeTab]);
 
+  // user 變動才讀取連結，不因切換照片／行程分頁而重讀。
   useEffect(() => { if (user) fetchSocialLinks(); }, [user]);
 
   useEffect(() => {
+    // 另一個初始化統計入口；取消旗標只忽略舊回應，不中止已送出的 HTTP 請求。
     let isCancelled = false;
     if (!currentAccount) {
       setFollowStats({ followersCount: 0, followingCount: 0 });
@@ -131,6 +146,7 @@ export default function ProfilePage() {
           body: JSON.stringify({ Account: currentAccount }),
         });
         const data = await res.json();
+        // 只接受仍屬於這輪 Effect 的回應；數字轉型與預設 0 供統計按鈕顯示。
         if (!isCancelled && data.status === 'success' && data.data) {
           setFollowStats({
             followersCount: Number(data.data.followersCount) || 0,
@@ -143,19 +159,23 @@ export default function ProfilePage() {
     };
 
     void fetchFollowStats();
+    // 換帳號或卸載後使舊回應失效，與上方依名單開關重讀的統計入口各自運作。
     return () => { isCancelled = true; };
   }, [currentAccount]);
 
-  // 儲存社群連結
+  // 將目前連結草稿送往 update_links，成功才關閉表單；各欄位與後端平台名稱一致。
+  // 關閉／取消按鈕只關閉彈窗，不還原 socialLinks；未儲存的草稿仍可能被圖示或下次編輯沿用。
   const handleSaveLinks = async () => {
     if (!user) return;
     setIsSavingLinks(true);
     try {
       const res = await fetch("/backend/social.php?action=update_links", {
         method: "POST", headers: { "Content-Type": "application/json" },
+        // Account 指定保存對象，展開 socialLinks 將各平台草稿平鋪到同一份 JSON。
         body: JSON.stringify({ Account: user.id || (user as any).Account, ...socialLinks }),
       });
       const data = await res.json();
+      // 成功只關閉彈窗，網址仍沿用目前 state；失敗不關窗，finally 恢復儲存按鈕。
       if (data.status === 'success') {
         alert("✅ 社群連結已成功儲存！");
         setIsLinkModalOpen(false);
@@ -164,9 +184,10 @@ export default function ProfilePage() {
     finally { setIsSavingLinks(false); }
   };
 
-  // 處理照片上傳
+  // 先檢查圖片類型，再以 FormData 上傳原檔；成功後重讀列表，結束時清空 input 以便重選同一檔。
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    // 取消檔案選擇時沒有 File，直接結束；MIME 檢查只在前端，並不檢查圖片實際內容。
     if (!file) return;
 
     if (!file.type.startsWith('image/')) {
@@ -176,21 +197,25 @@ export default function ProfilePage() {
     }
 
     setIsUploading(true);
+    // 檔案用 FormData 送二進位；不手動指定 Content-Type，讓瀏覽器加入 multipart 邊界。
     const formData = new FormData();
     formData.append('file', file);
     formData.append('Account', user?.id || (user as any)?.Account || '');
-    formData.append('type', 'photos'); 
+    formData.append('type', 'photos'); // 與讀列表的 Tab_Type 名稱不同，這是上傳 API 接收的欄位。
 
     try {
       const res = await fetch("/backend/files.php?action=upload", { method: "POST", body: formData });
       const data = await res.json();
+      // 重新讀後端產生的檔案資料，不直接把本機 File 物件插入照片列表。
       if (data.status === 'success') fetchUserFiles(); 
       else alert(`❌ 上傳失敗：${data.message}`);
     } catch (error) { alert("❌ 無法連線到上傳 API"); } 
     finally { setIsUploading(false); if (fileInputRef.current) fileInputRef.current.value = ''; }
   };
 
+  // 有連結則另開視窗，無連結則開啟設定彈窗，不導航到空網址。
   const SocialIconBtn = ({ network, link, icon: Icon, label }: { network: string, link: string, icon: any, label?: string }) => {
+    // 非空連結才有 href 與 _blank；未設定時讓點擊開啟草稿表單，而不是導航。
     const isActive = link.trim().length > 0;
     return (
       <a 
@@ -211,6 +236,7 @@ export default function ProfilePage() {
     );
   };
 
+  // 名單彈窗共用 followListType；本人取消追蹤時先調整畫面計數，開關變化也會觸發重讀。
   return (
     <div className="relative w-full min-h-screen bg-[#FBFBFB] pb-24">
       <div className="absolute top-0 left-0 w-full h-[280px] bg-neutral-900 rounded-b-[40px] shadow-inner z-0 overflow-hidden">

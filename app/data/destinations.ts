@@ -1,20 +1,26 @@
+// 首頁目的地推薦使用的靜態範例格式，與後端公開行程資料分開。
 export interface Destination {
-    id: string;
-    name: string;
-    country: string;
-    description: string;
-    image: string;
-    price: number;
-    rating: number;
-    reviews: number;
-    days: number;
-    category: string;
-    highlights: string[];
-    bestTime: string;
-    tags?: string[];        
-    safetyRating?: string;  
+    id: string; // 範例識別碼，供卡片 key 與目的地連結使用，不是資料庫查詢結果。
+    name: string; // 首頁卡片標題與封面替代文字。
+    country: string; // 卡片中的國家／地區顯示文字，可包含多個地區名稱。
+    description: string; // 卡片簡介，顯示時由頁面樣式限制長度。
+    image: string; // 卡片封面網址。
+    price: number; // 首頁以 NT$ 格式顯示的範例價格。
+    rating: number; // 範例評分，非即時取得的 Google 評價。
+    reviews: number; // 範例評論數。
+    days: number; // 範例行程天數。
+    category: string; // 卡片分類標籤。
+    highlights: string[]; // 保留的行程亮點；目前首頁推薦卡片未使用此列表。
+    bestTime: string; // 建議旅遊月份文字；目前首頁推薦卡片未顯示。
+    tags?: string[]; // 首頁選標籤時比對此欄位；未提供者不會符合篩選。
+    safetyRating?: string; // 首頁安全指數文字；未提供時由頁面顯示預設值。
 }
 
+// 未篩選時首頁取前六筆；目前範例未填 tags，因此選標籤後可能顯示空結果。
+// 此陣列不呼叫 API，修改內容只改變使用它的靜態展示資料。
+// 首頁的篩選採 tags?.includes(selectedTag)，不是依 category 或 country 自動推斷標籤。
+// safetyRating 缺少時顯示「9.5」是首頁的備援文字，並非這份資料或外部服務提供的即時指數。
+// id 用來組出 /destinations/{id} 連結；宣告資料不會自動建立該路由或把它對應為公開行程 ID。
 export const destinations: Destination[] = [
     {
         id: "1",

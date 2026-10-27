@@ -6,8 +6,10 @@ import { useRouter } from "next/navigation";
 import { Mail, Lock, User, ArrowRight, Loader2, Plane, X, Smartphone } from "lucide-react";
 import { Link } from "../../components/Link";
 
+// 註冊頁只建立會員，成功後轉至登入頁，不會自動更新 AuthContext。
 export default function RegisterPage() {
   const [isLoading, setIsLoading] = useState(false);
+  // 表單 state 是待送出的草稿；這些值尚未代表資料庫已存在的會員。
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [nickname, setNickname] = useState("");
@@ -15,47 +17,58 @@ export default function RegisterPage() {
 
   const router = useRouter();
 
+  // 表單送出：確認條款 → 呼叫 PHP 註冊 → 依業務結果提示／導頁；欄位另由 HTML 表單限制。
   const handleRegister = async (e: React.FormEvent) => {
+    // 阻止原生表單換頁，改用下方 fetch 送出；條款未勾選時在發送前返回。
     e.preventDefault();
 
     if (!agreeTerms) {
+      // 條款勾選只在前端阻擋提交，不包含在下方註冊 JSON，也不會在這裡保存同意紀錄。
       alert("請先閱讀並同意會員服務條款喔！");
       return;
     }
 
+    // 控制送出按鈕的 disabled 與載入圖示；完成後由 finally 恢復。
     setIsLoading(true);
 
     try {
+      // 本頁以電子郵件同時作為 Account 與 Email；暱稱對應 Name，Gender 目前送空字串。
       const res = await fetch("/backend/auth.php?action=register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
-            Account: email,     
-            Password: password, 
-            Email: email,       
-            Name: nickname,     
-            Gender: ""          
+            Account: email, // 後端登入使用的帳號，本頁與電子郵件採相同輸入值。
+            Password: password, // 密碼由後端處理，本頁不自行雜湊或建立登入狀態。
+            Email: email,
+            Name: nickname, // 會員暱稱，不是帳號識別值。
+            Gender: "" // 目前表單沒有性別欄位，因此送出空字串。
         }),
       });
       
+      // 讀取後端的 status／message；此流程未另檢查 res.ok，非 JSON 回應會進入 catch。
       const data = await res.json();
 
+      // 以回應的 status 判定註冊結果；錯誤訊息由後端提供。
       if (data.status === 'success') {
         alert(data.message); 
-        router.push("/auth/login"); // 註冊成功，直接導向剛剛寫好的精美登入頁！
+        router.push("/auth/login"); // 建立完成後由使用者另行登入。
       } else {
+        // 業務失敗保留輸入草稿供修正，不建立會員 state，也不轉向登入頁。
         alert("❌ 註冊失敗密碼：" + data.message); 
       }
     } catch (err) {
+      // 連線或解析例外會顯示通用連線提示；不會在這裡自動再次註冊。
       console.error(err);
       alert("無法連線至後端伺服器！請確認 Docker Desktop 中的 backend 容器是否已亮綠燈並正常運作");
     } finally {
+      // 成功或失敗都恢復按鈕狀態，避免畫面持續顯示處理中。
       setIsLoading(false);
     }
   };
 
+  // 欄位透過 value／onChange 綁定草稿；required 與 email 輸入型別提供瀏覽器端基本檢查。
   return (
-    // 外層：與登入頁呼應的全螢幕唯美背景與遮罩
+    // 手機以單欄表單為主，md 以上並排品牌介紹與註冊欄位。
     <div className="min-h-screen flex items-center justify-center bg-[url('https://images.unsplash.com/photo-1488646953014-85cb44e25828?auto=format&fit=crop&q=80')] bg-cover bg-center relative p-4">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm"></div>
 

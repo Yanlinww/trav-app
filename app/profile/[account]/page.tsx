@@ -9,6 +9,7 @@ import { Link2 } from 'lucide-react';
 import { UserCheck, UserPlus } from 'lucide-react';
 import FollowListModal from '../../components/FollowListModal';
 
+// 公開行程卡片與創作者統計使用的回應格式，不包含行程編輯資料。
 type PublicItinerary = {
   id: string;
   title: string;
@@ -22,19 +23,21 @@ type PublicItinerary = {
   dayCount: number;
 };
 
+// 公開個人頁：資料歸屬由網址帳號決定，追蹤操作則由目前登入者發起。
 export default function PublicProfilePage() {
   const params = useParams();
   const router = useRouter();
   const { user } = useAuth();
-  const currentAccount = user ? String(user.id || (user as any).Account || "") : "";
+  const currentAccount = user ? String(user.id || (user as any).Account || "") : ""; // 觀看者，未登入為空。
   
-  const targetAccount = decodeURIComponent(params.account as string);
+  const targetAccount = decodeURIComponent(params.account as string); // 網址指定的個人頁主人。
   
   const [activeTab, setActiveTab] = useState('photos');
   
   const [profileUser, setProfileUser] = useState<{
     account: string; name: string; avatar: string; followersCount: number; followingCount: number; isFollowing: boolean;
   } | null>(null);
+  // null 關閉名單；followers／following 同時決定彈窗標題與要查詢的關係種類。
   const [followListType, setFollowListType] = useState<'followers' | 'following' | null>(null);
   const [isUpdatingFollow, setIsUpdatingFollow] = useState(false);
   const [isLoadingProfile, setIsLoadingProfile] = useState(true);
@@ -47,13 +50,16 @@ export default function PublicProfilePage() {
     instagram: '', twitter: '', xiaohongshu: '', tiktok: '', youtube: '', facebook: ''
   });
 
+  // 由 itineraries 推算筆數、讚數與複製數；列表更新時才重新計算，不另呼叫統計 API。
+  // 本頁請求 Limit=48，這裡只加總已載入列表，不代表帳號所有歷史行程的統計。
   const publicStats = useMemo(() => ({
     count: itineraries.length,
     likes: itineraries.reduce((total, itinerary) => total + itinerary.likeCount, 0),
     copies: itineraries.reduce((total, itinerary) => total + itinerary.copyCount, 0),
   }), [itineraries]);
-  // 1. 抓取基本資料
+  // Account 查頁面主人，Viewer_Account 決定回傳的 isFollowing 觀看角度。
   useEffect(() => {
+    // 網址尚未提供帳號時不查詢，避免送出空的名單主人。
     if (!targetAccount) return;
     const fetchProfile = async () => {
       try {
@@ -62,30 +68,39 @@ export default function PublicProfilePage() {
           body: JSON.stringify({ Account: targetAccount, Viewer_Account: currentAccount })
         });
         const data = await res.json();
+        // data.data 包含名稱、頭像、追蹤人數與 isFollowing，更新後驅動上方資料與追蹤按鈕。
+        // 業務失敗不清空舊物件；此讀取目前沒有取消旗標，註釋整理不新增舊回應保護。
         if (data.status === 'success') setProfileUser(data.data);
+      // 例外只記錄到主控台；finally 結束初次載入，沒有 profileUser 時走「找不到旅行者」。
       } catch (e) { console.error(e); } 
       finally { setIsLoadingProfile(false); }
     };
     fetchProfile();
+  // 切換頁面主人或觀看者時重讀，因為同一會員對不同觀看者可能有不同追蹤狀態。
   }, [targetAccount, currentAccount]);
 
+  // 以登入者追蹤／取消追蹤目標會員；後端成功才更新狀態與粉絲數，不是改動自己的追蹤數。
+  // Follower_Account 目前由前端提供，這裡的登入判斷不等於可信的後端身分驗證。
   const handleToggleFollow = async () => {
+    // 未登入先導頁；已在更新時略過，避免同一操作重複切換追蹤關係。
     if (!currentAccount) { router.push('/auth/login'); return; }
     if (isUpdatingFollow) return;
     setIsUpdatingFollow(true);
     try {
       const response = await fetch('http://localhost:8080/social.php?action=toggle_follow', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
+        // Follower 是發起操作的人，Target 是被追蹤的人，不能對調兩者。
         body: JSON.stringify({ Follower_Account: currentAccount, Target_Account: targetAccount }),
       });
       const result = await response.json();
       if (!response.ok || result.status !== 'success') throw new Error(result.message || '更新追蹤狀態失敗');
+      // 以後端結果為準，不自行反轉舊值；保留原個人資料，只替換按鈕狀態與目標會員的粉絲數。
       setProfileUser((profile) => profile && ({ ...profile, isFollowing: Boolean(result.isFollowing), followersCount: result.followersCount }));
     } catch (error) { alert(error instanceof Error ? error.message : '更新追蹤狀態失敗'); }
     finally { setIsUpdatingFollow(false); }
   };
 
-  // 2. 抓取照片檔案
+  // 只有在 photos 分頁才讀取頁面主人的照片，不使用觀看者帳號查詢。
   useEffect(() => {
     if (!targetAccount || activeTab !== 'photos') return;
     const fetchFiles = async () => {
@@ -93,17 +108,20 @@ export default function PublicProfilePage() {
       try {
         const res = await fetch("/backend/files.php?action=get", {
           method: "POST", headers: { "Content-Type": "application/json" },
+          // Account 指照片擁有者，Tab_Type 指定 photos，不會讀取其他類型的檔案。
           body: JSON.stringify({ Account: targetAccount, Tab_Type: 'photos' }),
         });
         const data = await res.json();
+        // 成功時取代照片列表；業務失敗則清空。網路／解析例外的現有分支不另清空列表。
         if (data.status === 'success') setUserFiles(data.data);
         else setUserFiles([]);
       } catch (e) {} finally { setIsLoadingFiles(false); }
     };
     fetchFiles();
+  // 換會員或切回照片分頁時重新查詢；finally 會結束照片區自己的載入提示。
   }, [targetAccount, activeTab]);
 
-  // 4. 抓取公開行程與創作者統計
+  // Owner_Account 篩選行程作者，Account 傳入觀看者；結果供公開卡片與上方統計共用。
   useEffect(() => {
     if (!targetAccount) return;
     const fetchItins = async () => {
@@ -114,36 +132,48 @@ export default function PublicProfilePage() {
           body: JSON.stringify({ 
             Account: currentAccount,
             Owner_Account: targetAccount,
+            // 本頁不套搜尋字詞或天數篩選，只顯示指定作者的公開列表，最多請求 48 筆。
             Search: '',
             Duration: 'all',
             Limit: 48,
           }),
         });
         const data = await res.json();
+        // 確保列表是陣列，避免卡片 map 與上方 reduce 遇到非陣列回應。
         if (data.status === 'success') setItineraries(Array.isArray(data.data) ? data.data : []);
         else setItineraries([]);
       } catch (e) {} finally { setIsLoadingItineraries(false); }
+      // 例外保持原列表；finally 只結束行程載入，不改基本資料或照片區的狀態。
     };
     fetchItins();
   }, [targetAccount, currentAccount]);
 
-  // 5. 抓取社群連結
+  // 讀取頁面主人的社群網址，供下方 Instagram、Facebook 等平台圖示使用；這裡沒有儲存操作。
   useEffect(() => {
+    // 等網址帳號可用才送出請求，避免以空字串查詢其他會員資料。
     if (!targetAccount) return;
     const fetchSocials = async () => {
       try {
+        // action=links 選擇「讀連結」功能；POST 的 JSON 內文提供要查詢的會員帳號。
         const res = await fetch("/backend/social.php?action=links", {
           method: "POST", headers: { "Content-Type": "application/json" },
+          // 使用 targetAccount 查主人，而不是 currentAccount（目前觀看者）。
           body: JSON.stringify({ Account: targetAccount }),
         });
+        // 解析 JSON 後檢查業務 status 與資料是否存在；此分支未另外檢查 HTTP res.ok。
         const data = await res.json();
+        // data.data 是各平台網址物件；寫入 state 後由 SocialIconBtn 決定是否顯示與連往何處。
         if (data.status === 'success' && data.data) setSocialLinks(data.data);
+      // 現有例外分支不顯示提示、不重試也不清空，會保留原本的 socialLinks。
       } catch (e) {}
     };
     fetchSocials();
+  // 首次掛載及主人帳號改變時重讀；單純切分頁或登入者改變不會觸發這段。
   }, [targetAccount]);
 
+  // 未設定的平台不顯示圖示，有連結才另開視窗。
   const SocialIconBtn = ({ link, icon: Icon, label, network: _network }: { link: string, icon: any, label?: string, network?: string }) => {
+    // 空網址直接不渲染；label 用於文字型平台標誌，未提供時顯示傳入的圖示元件。
     if (!link || link.trim().length === 0) return null; 
     return (
       <a href={link} target="_blank" rel="noreferrer" className="flex items-center justify-center size-8 rounded-full bg-neutral-100 text-neutral-700 hover:bg-neutral-200 transition-all shadow-sm">
@@ -152,6 +182,7 @@ export default function PublicProfilePage() {
     );
   };
 
+  // 先區分基本資料仍在讀取與沒有可顯示的會員；照片、行程各自管理載入狀態。
   if (isLoadingProfile) {
     return <div className="min-h-screen flex items-center justify-center bg-[#FBFBFB]"><Loader2 className="w-8 h-8 animate-spin text-neutral-300" /></div>;
   }
@@ -165,6 +196,7 @@ export default function PublicProfilePage() {
     );
   }
 
+  // 追蹤名單以 targetAccount 為主人、currentAccount 為觀看者，沿用同一個共用彈窗。
   return (
     <div className="relative w-full min-h-screen bg-[#FBFBFB] pb-24">
       <div className="absolute top-0 left-0 w-full h-[280px] bg-neutral-900 rounded-b-[40px] shadow-inner z-0 overflow-hidden">
