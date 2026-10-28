@@ -48,13 +48,13 @@ export default function Home() {
     ];
 
     // 熱門搜尋關鍵字快捷鍵
-    const hotKeywords = ["京都", "冰島藍湖", "清邁", "巴塞隆納"];
+    const hotKeywords = ["台南", "澎湖", "阿里山", "日月潭"];
 
     // 即時情報跑馬燈資訊
     const dynamicNews = [
-        "🔥 本週熱門：獨旅女性推薦安全目的地 Top 10 已更新",
-        "✨ 季節限定：日本東北秘境紅葉單人行程開放預約",
-        "💡 獨旅貼士：歐洲火車通行證最新優惠與防偷指南",
+        "🔥 國旅提案：探索適合一個人慢遊的台灣目的地",
+        "✨ 山林散策：規劃阿里山森林步道與山城小旅行",
+        "💡 獨旅貼士：搭配台鐵、高鐵與客運規劃國內交通",
     ];
 
     /* ==========================================
@@ -79,10 +79,10 @@ export default function Home() {
 
                     {/* 主標題與簡介 */}
                     <h1 className="mb-8 max-w-5xl mx-auto text-6xl md:text-8xl font-extralight tracking-tight text-neutral-900">
-                        探索世界之美
+                        探索台灣之美
                     </h1>
                     <p className="text-lg md:text-xl mb-12 max-w-2xl mx-auto text-neutral-500 font-light tracking-wide leading-relaxed">
-                        精選全球頂級與獨旅友善目的地，為您規劃一場洗滌心靈的專屬旅程。
+                        探索台灣各地的風景與人情，規劃適合自己的國內旅程。
                     </p>
 
                     {/* 搜尋輸入框卡片 */}
@@ -201,7 +201,7 @@ export default function Home() {
                             </h2>
                             <div className="h-0.5 w-12 bg-neutral-900"></div>
                             <p className="text-neutral-500 font-light tracking-wide text-sm italic">
-                                結合全球安全係數、獨旅友善度及頂級奢華體驗的專屬目的地評選
+                                從台灣山海、城市街區到離島，尋找適合獨旅的旅行靈感
                             </p>
                         </div>
                         <Link to="/destinations">

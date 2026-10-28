@@ -35,15 +35,15 @@ export default function RootLayout({
                       <span className="font-bold text-lg">旅遊探索</span>
                     </div>
                     <p className="text-gray-400 text-sm">
-                      探索世界，創造美好回憶
+                      探索台灣，創造美好回憶
                     </p>
                   </div>
                   <div>
                     <h3 className="mb-4 text-gray-200 font-medium">熱門目的地</h3>
                     <ul className="space-y-2 text-sm text-gray-400">
-                      <li>日本</li>
-                      <li>歐洲</li>
-                      <li>東南亞</li>
+                      <li>台北</li>
+                      <li>台南</li>
+                      <li>花蓮</li>
                     </ul>
                   </div>
                   <div>

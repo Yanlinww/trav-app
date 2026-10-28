@@ -330,7 +330,7 @@ export default function LoginPage() {
           <div className="hidden md:flex flex-col w-1/2 bg-gray-50 p-10 items-center justify-center text-center border-r border-gray-100">
             <div className="space-y-6 flex flex-col items-center">
               <h3 className="text-2xl font-light text-gray-900 tracking-wider">
-                探索世界 <br /> 就在 TRAVMADE
+                探索台灣 <br /> 就在 TRAVMADE
               </h3>
               
               {/* 視覺卡片插圖模擬 */}

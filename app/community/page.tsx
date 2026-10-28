@@ -110,7 +110,7 @@ const postTypes: { id: PostType; label: string; description: string }[] = [
 // 熱門話題載入失敗或無資料時的預設備用話題
 const fallbackTopics: Topic[] = [
   { tag: "獨旅", count: 0 },
-  { tag: "日本", count: 0 },
+  { tag: "台灣旅遊", count: 0 },
   { tag: "美食", count: 0 },
   { tag: "秘境", count: 0 },
 ];

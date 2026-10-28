@@ -20,7 +20,7 @@ import {
   ChevronLeft, Wallet, Loader2, MapPin, Trash2, Check, Edit2,
   LayoutGrid,
   XCircle,
-  X, User
+  X
 } from "lucide-react";
 import { GoogleMap, useJsApiLoader, Marker, InfoWindow } from '@react-google-maps/api';
 import PlaceAutocomplete from '../../components/PlaceAutocomplete';
@@ -264,9 +264,9 @@ function LuggagePanel({ itineraryId, currentUserId }: { itineraryId: string; cur
 
   // 沒有已存清單時用預設分類，首次讀取失敗也可能使用模板。
   const defaultTemplate = [
-    { id: 'c1', title: '重要證件', items: [{ id: 'i1', name: '護照', isChecked: false }, { id: 'i2', name: '信用卡', isChecked: false }, { id: 'i3', name: '外幣', isChecked: false }, { id: 'i4', name: '國際駕照', isChecked: false }, { id: 'i5', name: '線上投保旅平險！再送LINE點數', isChecked: false }] },
+    { id: 'c1', title: '重要證件', items: [{ id: 'i1', name: '身分證／健保卡', isChecked: false }, { id: 'i2', name: '信用卡', isChecked: false }, { id: 'i3', name: '現金／交通卡', isChecked: false }, { id: 'i4', name: '駕照', isChecked: false }, { id: 'i5', name: '旅平險投保資料', isChecked: false }] },
     { id: 'c2', title: '衣物類', items: [{ id: 'i6', name: '上服', isChecked: false }, { id: 'i7', name: '褲子', isChecked: false }, { id: 'i8', name: '內衣褲', isChecked: false }, { id: 'i9', name: '睡衣', isChecked: false }, { id: 'i10', name: '鞋子與拖鞋', isChecked: false }, { id: 'i11', name: '襪子', isChecked: false }] },
-    { id: 'c3', title: '3C物品', items: [{ id: 'i12', name: '手機', isChecked: false }, { id: 'i13', name: '行動電源', isChecked: false }, { id: 'i14', name: '手機充電器', isChecked: false }, { id: 'i15', name: 'Wi-Fi分享器/上網卡', isChecked: false }, { id: 'i16', name: '耳機', isChecked: false }] },
+    { id: 'c3', title: '3C物品', items: [{ id: 'i12', name: '手機', isChecked: false }, { id: 'i13', name: '行動電源', isChecked: false }, { id: 'i14', name: '手機充電器', isChecked: false }, { id: 'i15', name: '充電線／備用電池', isChecked: false }, { id: 'i16', name: '耳機', isChecked: false }] },
     { id: 'c4', title: '日常盥洗用品', items: [{ id: 'i17', name: '牙刷/牙膏/毛巾', isChecked: false }, { id: 'i18', name: '洗面乳/沐浴乳', isChecked: false }, { id: 'i19', name: '防曬油', isChecked: false }, { id: 'i20', name: '隨身藥品', isChecked: false }] },
     { id: 'c5', title: '其他物品', items: [{ id: 'i21', name: '水瓶或保溫瓶', isChecked: false }, { id: 'i22', name: '筆', isChecked: false }, { id: 'i23', name: '塑膠袋', isChecked: false }, { id: 'i24', name: '雨傘', isChecked: false }, { id: 'i25', name: '環保餐具', isChecked: false }] }
   ];
@@ -1226,24 +1226,9 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
   const currentDayItems = itineraryItems.filter((item) => item.dayNumber === activeDay);
 
   return (
-    <div className={`itinerary-page fixed inset-0 ${isMobilePanelOpen ? 'z-[60]' : 'z-40'} flex flex-col bg-[#F4F2ED] font-sans text-slate-800`}>
-      
-      {/* 桌面導覽按鈕目前沒有 onClick/href，只呈現文字。 */}
-      <header className="hidden md:flex h-16 bg-white border-b border-slate-100 items-center justify-between px-6 shrink-0 z-50">
-        <div className="flex items-center gap-8">
-          <div className="font-bold text-xl tracking-tighter text-slate-900">TRAVMADE</div>
-          <nav className="flex items-center gap-6 text-sm font-bold text-slate-500">
-            <button className="hover:text-[#F04D79]">首頁</button>
-            <button className="hover:text-[#F04D79]">旅遊景點</button>
-            <button className="text-[#F04D79]">行程規劃</button>
-            <button className="hover:text-[#F04D79]">動態牆</button>
-          </nav>
-        </div>
-        <div className="flex items-center gap-3">
-          <div className="size-8 rounded-full bg-slate-200 flex items-center justify-center"><User size={16} /></div>
-          <span className="text-sm font-bold">{user?.name || '使用者'}</span>
-        </div>
-      </header>
+    // 手機面板可覆蓋全站 Header；md 以上固定退到它下方，並預留 4rem 高度。
+    // 層級由斷點決定，不受手機開關殘留狀態影響；導覽與會員資訊統一使用 layout 的 Header。
+    <div className={`itinerary-page fixed inset-0 md:top-16 ${isMobilePanelOpen ? 'z-[60]' : 'z-40'} md:z-40 flex flex-col bg-[#F4F2ED] font-sans text-slate-800`}>
 
       {/* 左側是行程資料與每日清單，中央是地圖，右側是個人記帳或行李。 */}
       <div className="flex flex-1 overflow-visible xl:overflow-hidden">
@@ -1621,9 +1606,10 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
 
           {/* 面板只在選取對應分頁時掛載，記帳與行李各自處理自己的讀寫。 */}
           <div className={`${isMobilePanelOpen ? 'flex' : 'hidden'} xl:flex absolute xl:static inset-0 xl:inset-auto z-[70] xl:z-auto h-full xl:h-auto w-full xl:w-[340px] shrink-0 flex-col bg-white border-0 xl:border-l xl:border-slate-100 shadow-2xl xl:shadow-[-4px_0_24px_rgba(0,0,0,0.01)]`}>
-            <div className="xl:hidden flex h-16 shrink-0 items-center gap-3 border-b border-slate-100 bg-white px-4">
-              <button type="button" onClick={() => setIsMobilePanelOpen(false)} className="flex size-9 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-600" aria-label="返回行程"><ChevronLeft size={20} /></button>
-              <div className="min-w-0"><p className="truncate text-[11px] font-bold tracking-[0.14em] text-slate-400">{itineraryData?.title || '行程'}</p><h2 className="truncate text-base font-bold text-slate-800">{rightPanelTab === 'budget' ? '旅程記帳' : '行李清單'}</h2></div>
+            {/* 返回入口放右側，避開左側開發浮層；只關閉覆蓋面板，不卸載目前分頁。 */}
+            <div className="xl:hidden flex min-h-16 shrink-0 items-center justify-between gap-3 border-b border-slate-100 bg-white px-4 py-2">
+              <div className="min-w-0 flex-1"><p className="truncate text-[11px] font-bold tracking-[0.14em] text-slate-400">{itineraryData?.title || '行程'}</p><h2 className="truncate text-base font-bold text-slate-800">{rightPanelTab === 'budget' ? '旅程記帳' : '行李清單'}</h2></div>
+              <button type="button" onClick={() => setIsMobilePanelOpen(false)} className="inline-flex min-h-11 shrink-0 items-center justify-center gap-1 rounded-xl border border-slate-200 bg-slate-100 px-3 text-sm font-bold text-slate-700 hover:bg-slate-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500" aria-label="返回行程"><ChevronLeft size={18} aria-hidden="true" /><span>返回行程</span></button>
             </div>
             <div className="hidden xl:flex pt-2 px-2 border-b border-slate-100 gap-1 shrink-0">
               {[
@@ -1636,7 +1622,7 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
                 </button>
               ))}
             </div>
-            <div className="flex-1 overflow-y-auto bg-slate-50/30">
+            <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50/30">
               {rightPanelTab === 'budget' && <BudgetPanel itineraryId={params.id as string} currentUserId={String(user?.id || (user as any)?.Account || '')}  />}
               {rightPanelTab === 'luggage' && <div className="p-4"><LuggagePanel itineraryId={params.id as string} currentUserId={String(user?.id || (user as any)?.Account || '')} /></div>}
             </div>

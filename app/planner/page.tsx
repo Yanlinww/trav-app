@@ -6,14 +6,14 @@
  * 頁面只處理列表與建立入口；單一行程的詳細編輯放在 /planner/[id]。
  */
 // useState 保存畫面狀態；useEffect 在登入狀態確定後載入資料。
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 // 按鈕點擊後才決定目的地，所以使用客戶端路由切換。
 import { useRouter } from "next/navigation";
 // 從共用 Context 取得目前登入者，讓此頁知道要查哪個帳號的行程。
 import { useAuth } from "../context/AuthContext";
 import { 
   Plus, X, Calendar, MapPin, Loader2, User, Pin, Trash2, MoreVertical, ChevronLeft,
-  Globe, Lock
+  Globe, Lock, ChevronRight
 } from "lucide-react";
 
 /**
@@ -86,12 +86,39 @@ export default function PlannerDashboard() {
     "penghu": { lat: 23.5711, lng: 119.5815 },
     "kinmen": { lat: 24.4327, lng: 118.3225 },
     "matsu": { lat: 26.1505, lng: 119.9334 },
-    "tokyo": { lat: 35.6812, lng: 139.7671 },
-    "osaka": { lat: 34.6937, lng: 135.5023 },
   };
 
   // 後端列表回應保存在此，建立／刪除／釘選後可立即更新畫面。
   const [itineraries, setItineraries] = useState<Itinerary[]>([]);
+  const [isMobileList, setIsMobileList] = useState(false);
+  const [listPage, setListPage] = useState(1);
+  const listHeadingRef = useRef<HTMLHeadingElement>(null);
+
+  // 與行程靈感採同一分頁斷點：小於 640px 每頁十份，其他尺寸每頁四十份。
+  useEffect(() => {
+    const media = window.matchMedia('(max-width: 639px)');
+    const syncViewport = () => setIsMobileList(media.matches);
+    syncViewport();
+    media.addEventListener('change', syncViewport);
+    return () => media.removeEventListener('change', syncViewport);
+  }, []);
+  useEffect(() => {
+    setListPage(1);
+    setActiveDropdown(null);
+  }, [isMobileList, user?.id, (user as any)?.Account]);
+  const pageSize = isMobileList ? 10 : 40;
+  const pageCount = Math.max(1, Math.ceil(itineraries.length / pageSize));
+  const currentPage = Math.min(listPage, pageCount);
+  // 刪除末頁最後一份後退回有效頁碼，避免顯示空頁或殘留已刪除卡片的選單。
+  useEffect(() => {
+    setListPage((page) => Math.min(page, pageCount));
+  }, [pageCount]);
+  const changePage = (page: number) => {
+    setListPage(Math.max(1, Math.min(page, pageCount)));
+    setActiveDropdown(null);
+    listHeadingRef.current?.focus({ preventScroll: true });
+    listHeadingRef.current?.scrollIntoView({ block: 'start' });
+  };
   
   // ---------------------------------------------------------------------------
   // API 與資料操作函式 (API Handling & Business Logic)
@@ -140,6 +167,8 @@ export default function PlannerDashboard() {
   // sort 會直接修改陣列，因此先複製；只改畫面的顯示順序，不改原始 state。
   // 釘選的行程排前面；兩筆狀態相同時保留原本的相對順序。
   const sortedItineraries = [...itineraries].sort((a, b) => (a.isPinned === b.isPinned ? 0 : a.isPinned ? -1 : 1));
+  // 先對完整列表釘選排序再切頁，確保釘選優先不受目前頁碼影響。
+  const visibleItineraries = sortedItineraries.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
   /**
    * 公開資訊在 /destinations 頁管理，所以這裡只傳行程 ID 並導過去。
@@ -226,6 +255,7 @@ export default function PlannerDashboard() {
       if (data.status === 'success') {
         // 重新讀取列表，比自行拼接卡片更能反映後端實際儲存的資料。
         await fetchItineraries();
+        setListPage(1);
         // 只有建立成功才清空草稿；按右上角關閉視窗時，輸入內容仍保留在本頁 state。
         setIsModalOpen(false);
         setTitle("");
@@ -244,15 +274,16 @@ export default function PlannerDashboard() {
   // JSX 視圖渲染 (UI Render)
   // ---------------------------------------------------------------------------
   return (
-    <div className="min-h-screen bg-[#FAFAFA] relative">
+    <div className="min-h-[calc(100dvh-8.5rem)] bg-[#FAFAFA] relative md:min-h-screen">
       {/* 選單開啟時蓋一層透明區域，點卡片外面即可關閉選單。 */}
       {activeDropdown && <div className="fixed inset-0 z-10" onClick={() => setActiveDropdown(null)} />}
       
-      <div className="max-w-7xl mx-auto px-6 py-12">
+      <div className="max-w-7xl mx-auto px-5 py-7 md:px-6 md:py-12">
         {/* 頂部標題與操作按鈕區 */}
-        <div className="mb-8 md:mb-12 md:flex md:items-center md:justify-between">
-          <h1 className="text-[28px] font-bold leading-tight text-slate-900 tracking-wide md:text-3xl">我的行程</h1>
-          <div className="mt-4 md:mt-0">
+        <div className="mb-6 md:mb-12 md:flex md:items-center md:justify-between">
+          <h1 ref={listHeadingRef} tabIndex={-1} className="scroll-mt-24 text-2xl font-bold leading-tight text-slate-900 tracking-wide focus:outline-none md:text-3xl">我的行程</h1>
+          {/* 手機空清單只保留卡片內的建立入口，避免兩個主要按鈕同時搶眼。 */}
+          <div className={`${itineraries.length === 0 ? 'hidden md:block' : ''} mt-4 md:mt-0`}>
             <button onClick={() => setIsModalOpen(true)} className="flex h-12 min-w-0 items-center justify-center gap-2 whitespace-nowrap rounded-lg bg-slate-900 px-3 text-xs font-medium text-white transition-all hover:bg-amber-600 sm:text-sm md:px-5">
               <Plus className="size-4" /> <span>建立新行程</span>
             </button>
@@ -261,14 +292,15 @@ export default function PlannerDashboard() {
 
         {/* 同一塊列表位置依資料數量切換提示或卡片，不另建一個頁面。 */}
         {itineraries.length === 0 ? (
-          <div className="text-center py-28 bg-white border border-slate-100 rounded-2xl shadow-sm">
-            <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-6"><MapPin className="text-slate-300" size={28} /></div>
-            <p className="text-slate-500 mb-8 tracking-wide">還沒有任何行程，開始規劃你的下一趟旅程吧！</p>
-            <button onClick={() => setIsModalOpen(true)} className="px-7 py-3 bg-slate-900 text-white font-medium rounded-lg">建立第一個行程</button>
+          // 手機以較短的卡片與分行文案呈現空狀態；桌機沿用原本較寬鬆的留白。
+          <div className="text-center px-6 py-12 bg-white border border-slate-100 rounded-2xl md:px-0 md:py-28 md:shadow-sm">
+            <div className="size-12 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-5 md:size-16 md:mb-6"><MapPin className="size-6 text-slate-300 md:size-7" /></div>
+            <p className="text-sm leading-7 text-slate-500 mb-6 md:mb-8 md:text-base md:tracking-wide"><span className="block md:inline">還沒有任何行程，</span><span>開始規劃你的下一趟旅程吧！</span></p>
+            <button onClick={() => setIsModalOpen(true)} className="min-h-11 px-5 py-2.5 bg-slate-600 text-white text-sm font-medium rounded-xl transition-colors hover:bg-slate-700 md:rounded-lg md:bg-slate-900 md:px-7 md:py-3 md:text-base">建立第一個行程</button>
           </div>
         ) : (
           <div className="grid grid-cols-2 gap-3 md:grid-cols-3 md:gap-6 lg:grid-cols-4">
-          {sortedItineraries.map((itinerary) => (
+          {visibleItineraries.map((itinerary) => (
               <div key={itinerary.id} onClick={() => router.push(`/planner/${itinerary.id}`)} className="bg-white border border-slate-100 rounded-xl group cursor-pointer hover:shadow-xl relative">
                 {/* 整張卡片可進入詳細頁；內部選單按鈕會阻止事件往卡片傳遞。 */}
                 <div className="relative aspect-[4/3] overflow-hidden bg-slate-100 rounded-t-xl">
@@ -322,6 +354,14 @@ export default function PlannerDashboard() {
         )}
       </div>
 
+      {pageCount > 1 && (
+        <nav aria-label="我的行程分頁" className="mx-auto mb-8 flex max-w-7xl items-center justify-between gap-3 px-5 md:justify-center md:gap-6 md:px-6">
+          <button type="button" disabled={currentPage === 1} onClick={() => changePage(currentPage - 1)} className="inline-flex min-h-11 items-center gap-1 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-600 disabled:opacity-40"><ChevronLeft size={16} />上一頁</button>
+          <span aria-live="polite" aria-atomic="true" className="text-xs text-slate-500">第 {currentPage} / {pageCount} 頁</span>
+          <button type="button" disabled={currentPage === pageCount} onClick={() => changePage(currentPage + 1)} className="inline-flex min-h-11 items-center gap-1 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-600 disabled:opacity-40">下一頁<ChevronRight size={16} /></button>
+        </nav>
+      )}
+
       {/* 彈窗和列表共用本頁的表單狀態；關閉後不用離開 /planner。 */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-[60]">
@@ -362,10 +402,6 @@ export default function PlannerDashboard() {
                     <option value="penghu">澎湖縣</option>
                     <option value="kinmen">金門縣</option>
                     <option value="matsu">連江縣(馬祖)</option>
-                  </optgroup>
-                  <optgroup label="海外 (測試)">
-                    <option value="tokyo">日本東京</option>
-                    <option value="osaka">日本大阪</option>
                   </optgroup>
                 </select>
                 <div className="grid grid-cols-2 gap-4">

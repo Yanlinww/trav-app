@@ -210,6 +210,9 @@ export default function DestinationsPage() {
   // 行程列表相關
   const [itineraries, setItineraries] = useState<PublicItinerary[]>([]);
   const [publicItineraryCatalogue, setPublicItineraryCatalogue] = useState<PublicItinerary[]>([]);
+  const [isMobileList, setIsMobileList] = useState(false);
+  const [listPage, setListPage] = useState(1);
+  const listHeadingRef = useRef<HTMLHeadingElement>(null);
   
   // 搜尋與篩選相關
   const [search, setSearch] = useState('');
@@ -219,6 +222,28 @@ export default function DestinationsPage() {
   const [selectedLocation, setSelectedLocation] = useState('');
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [viewMode, setViewMode] = useState<'discover' | 'saved'>('discover'); // '探索行程' 或 '我的收藏'
+
+  // 與卡片的 sm 斷點一致：手機每頁十份，sm 以上每頁四十份。
+  useEffect(() => {
+    const media = window.matchMedia('(max-width: 639px)');
+    const syncViewport = () => setIsMobileList(media.matches);
+    syncViewport();
+    media.addEventListener('change', syncViewport);
+    return () => media.removeEventListener('change', syncViewport);
+  }, []);
+  useEffect(() => {
+    setListPage(1);
+  }, [appliedSearch, durationFilter, sortBy, selectedLocation, viewMode, isMobileList]);
+  const pageSize = isMobileList ? 10 : 40;
+  const pageCount = Math.max(1, Math.ceil(itineraries.length / pageSize));
+  const currentPage = Math.min(listPage, pageCount);
+  const visibleItineraries = itineraries.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  const changePage = (page: number) => {
+    setListPage(Math.max(1, Math.min(page, pageCount)));
+    // 翻頁後回到列表標題，避免仍停在上一頁底部；焦點供鍵盤與讀屏接續閱讀。
+    listHeadingRef.current?.focus({ preventScroll: true });
+    listHeadingRef.current?.scrollIntoView({ block: 'start' });
+  };
   
   // UI 狀態相關
   const [featuredIndex, setFeaturedIndex] = useState(0); // 主打推薦的輪播索引
@@ -261,7 +286,11 @@ export default function DestinationsPage() {
 
   // --- 衍生計算資料 (Memoized Values) ---
   const selectedOwnedItinerary = ownedItineraries.find((itinerary) => itinerary.id === selectedOwnedId) || null;
-  const featuredItineraries = itineraries.slice(0, 4); // 取前 4 筆當作首頁輪播圖
+  // 每份行程的隨機順位在 API 回應時建立；Ref 保留順位，避免按讚或切換推薦時重新抽選。
+  const featuredOrderRef = useRef(new Map<string, number>());
+  const featuredItineraries = useMemo(() => [...itineraries]
+    .sort((left, right) => (featuredOrderRef.current.get(left.id) ?? 0) - (featuredOrderRef.current.get(right.id) ?? 0))
+    .slice(0, 3), [itineraries]); // 只重排行程副本，不影響下方列表的熱門／最新排序。
   const featuredItinerary = featuredItineraries[Math.min(featuredIndex, Math.max(featuredItineraries.length - 1, 0))];
   
   // 動態計算熱門目的地標籤
@@ -322,6 +351,10 @@ export default function DestinationsPage() {
       if (requestId === publicRequestIdRef.current) {
         hasPublicItineraryLoadedRef.current = true;
         const nextRows = Array.isArray(data.data) ? data.data as PublicItinerary[] : [];
+        // 新遇到的行程才抽順位；不足三份時全部顯示，重新進入頁面後再重新抽選。
+        nextRows.forEach((itinerary) => {
+          if (!featuredOrderRef.current.has(itinerary.id)) featuredOrderRef.current.set(itinerary.id, Math.random());
+        });
         
         // 如果是沒有帶任何篩選條件的「純淨請求」，就把結果存進 Catalogue 當作前端篩選快取
         if (!savedOnly && !keyword && duration === 'all' && !location) {
@@ -723,7 +756,7 @@ export default function DestinationsPage() {
       {/* ========================================= */}
       {/* 區塊 1: 頁面首圖與主標語區 (Hero Section) */}
       {/* ========================================= */}
-      <section className="relative isolate min-h-[540px] overflow-hidden border-b border-[#d5e1e9] bg-[#3d5a70] px-4 py-8 text-white sm:px-6 lg:px-10 lg:py-10">
+      <section className="relative isolate z-10 min-h-[540px] border-b border-[#d5e1e9] bg-[#3d5a70] px-4 py-8 text-white sm:px-6 lg:px-10 lg:py-10">
         <img src={featuredItinerary?.coverImage || fallbackCover} alt="" className="absolute inset-0 -z-20 size-full object-cover" />
         {/* 漸層遮罩，讓左側文字不論背景圖亮暗都能清楚閱讀 */}
         <div className="absolute inset-0 -z-10 bg-[linear-gradient(90deg,rgba(19,37,51,0.9)_0%,rgba(28,48,63,0.76)_42%,rgba(28,48,63,0.25)_100%)]" />
@@ -756,9 +789,9 @@ export default function DestinationsPage() {
                 <button type="submit" className="rounded-xl bg-[#56758e] px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-[#45647d]">搜尋</button>
               </form>
 
-              {/* 折疊式篩選器 (Filter Accordion) */}
-              <div className="mt-3 max-w-xl rounded-2xl border border-white/20 bg-slate-900/20 backdrop-blur-md">
-                <button type="button" onClick={() => setIsFilterOpen((value) => !value)} aria-expanded={isFilterOpen} className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left text-sm font-bold text-white transition hover:bg-white/10">
+              {/* 篩選內容絕對定位，不撐高背景區；超長選項在浮層內捲動，Escape 可收合。 */}
+              <div onKeyDown={(event) => { if (event.key === 'Escape') { setIsFilterOpen(false); event.currentTarget.querySelector('button')?.focus(); } }} className="relative z-20 mt-3 max-w-xl rounded-2xl border border-white/20 bg-slate-900/20 backdrop-blur-md">
+                <button type="button" onClick={() => setIsFilterOpen((value) => !value)} aria-expanded={isFilterOpen} aria-controls="public-itinerary-filters" className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left text-sm font-bold text-white transition hover:bg-white/10">
                   <span className="inline-flex items-center gap-2">
                     <SlidersHorizontal size={16} />篩選行程
                     {(selectedLocation || durationFilter !== 'all') && <span className="rounded-full bg-white/20 px-2 py-0.5 text-[11px]">{Number(Boolean(selectedLocation)) + Number(durationFilter !== 'all')}</span>}
@@ -766,7 +799,7 @@ export default function DestinationsPage() {
                   <ChevronDown size={17} className={`transition ${isFilterOpen ? 'rotate-180' : ''}`} />
                 </button>
                 {isFilterOpen && (
-                  <div className="border-t border-white/15 bg-white/95 p-4 text-[#4e697e] shadow-xl backdrop-blur-md">
+                  <div id="public-itinerary-filters" className="absolute inset-x-0 top-full mt-2 max-h-[min(60dvh,24rem)] overflow-y-auto overscroll-contain rounded-2xl border border-[#d6e3eb] bg-white p-4 text-[#4e697e] shadow-xl">
                     <div className="flex items-center justify-between gap-3">
                       <span className="text-xs font-bold">探索條件</span>
                       {(selectedLocation || durationFilter !== 'all') && <button type="button" onClick={clearFilters} className="text-xs font-bold text-[#5e7891] hover:text-[#365168]">清除篩選</button>}
@@ -796,7 +829,7 @@ export default function DestinationsPage() {
             </div>
 
             {/* 右側：精選行程推薦 Carousel */}
-            <div className="min-w-0">
+            <div className={featuredItinerary ? 'min-w-0' : 'hidden'}>
               {featuredItinerary ? (
                 <>
                   <div className="mb-3 flex items-center justify-between text-sm font-bold text-white/85">
@@ -823,9 +856,7 @@ export default function DestinationsPage() {
                     </div>
                   </div>
                 </>
-              ) : (
-                <div className="rounded-3xl border border-white/20 bg-white/10 p-6 text-sm leading-6 text-white/75 backdrop-blur-md">公開行程會在這裡顯示，成為其他旅人的下一段靈感。</div>
-              )}
+              ) : null}
             </div>
           </div>
         </div>
@@ -838,7 +869,7 @@ export default function DestinationsPage() {
         <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="text-xs font-bold tracking-[0.18em] text-[#8aa0b2]">COMMUNITY PLANS</p>
-            <h2 className="mt-2 text-xl font-bold text-[#30485f] sm:text-2xl">{heading}</h2>
+            <h2 ref={listHeadingRef} tabIndex={-1} className="mt-2 scroll-mt-24 text-xl font-bold text-[#30485f] focus:outline-none sm:text-2xl">{heading}</h2>
           </div>
           <div className="flex flex-wrap items-center justify-start gap-2 sm:justify-end">
             <button type="button" onClick={() => switchViewMode('discover')} className={`inline-flex items-center gap-1.5 rounded-xl px-2.5 py-2 text-[11px] font-bold transition sm:px-3 sm:text-xs ${viewMode === 'discover' ? 'bg-[#5e7891] text-white shadow-sm' : 'bg-white text-[#698499] hover:bg-[#eaf2f7]'}`}><Globe2 size={14} />探索行程</button>
@@ -871,8 +902,9 @@ export default function DestinationsPage() {
             )}
           </div>
         ) : (
-          <div className="grid items-start grid-cols-2 gap-3 sm:items-stretch sm:gap-5 lg:grid-cols-3 xl:grid-cols-4">
-            {itineraries.map((itinerary) => (
+          // 手機單欄橫式卡片避免資訊被兩欄擠窄；sm 以上恢復封面在上的網格。
+          <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2 sm:items-stretch sm:gap-5 lg:grid-cols-3 xl:grid-cols-4">
+            {visibleItineraries.map((itinerary) => (
               <article 
                 key={itinerary.id} 
                 role="button" 
@@ -880,18 +912,18 @@ export default function DestinationsPage() {
                 aria-label={`預覽行程：${itinerary.title}`} 
                 onClick={(event) => { if ((event.target as HTMLElement).closest('button, a')) return; void openPreview(itinerary.id); }} 
                 onKeyDown={(event) => { if (event.target !== event.currentTarget || (event.key !== 'Enter' && event.key !== ' ')) return; event.preventDefault(); void openPreview(itinerary.id); }} 
-                className="group flex self-start cursor-pointer flex-col overflow-hidden rounded-2xl border border-[#dce7ef] bg-white shadow-[0_6px_18px_rgba(66,96,120,0.06)] transition duration-300 hover:-translate-y-1 hover:border-[#c4d8e6] hover:shadow-[0_14px_28px_rgba(66,96,120,0.12)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#6f91aa] focus-visible:ring-offset-2 sm:h-full"
+                className="group flex self-start cursor-pointer flex-row overflow-hidden sm:flex-col rounded-2xl border border-[#dce7ef] bg-white shadow-[0_6px_18px_rgba(66,96,120,0.06)] transition duration-300 hover:-translate-y-1 hover:border-[#c4d8e6] hover:shadow-[0_14px_28px_rgba(66,96,120,0.12)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#6f91aa] focus-visible:ring-offset-2 sm:h-full"
               >
-                <div className="relative aspect-[4/3] overflow-hidden bg-[#edf4f8]">
+                <div className="relative w-24 shrink-0 overflow-hidden bg-[#edf4f8] sm:aspect-[4/3] sm:w-full">
                   <img src={itinerary.coverImage || fallbackCover} alt="" className="size-full object-cover transition duration-500 group-hover:scale-105" onError={(event) => { event.currentTarget.src = fallbackCover; }} />
-                  {itinerary.location && <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950/75 to-transparent px-4 pb-3 pt-12 text-xs font-bold text-white"><span className="inline-flex items-center gap-1"><MapPin size={13} /> {itinerary.location}</span></div>}
+                  {itinerary.location && <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950/75 to-transparent px-2 pb-3 pt-8 text-[11px] font-bold text-white sm:px-4 sm:pt-12 sm:text-xs"><span className="flex min-w-0 items-center gap-1"><MapPin size={13} className="shrink-0" /><span className="line-clamp-2 break-words">{itinerary.location}</span></span></div>}
                 </div>
-                <div className="flex flex-col p-3 sm:flex-1 sm:p-5">
-                  <h3 className="line-clamp-2 min-h-10 break-words text-base font-bold leading-5 text-[#30485f] sm:min-h-12 sm:text-lg sm:leading-6">{itinerary.title}</h3>
-                  <p className="mt-2 min-h-9 break-all text-xs leading-4 text-[#7690a3] line-clamp-2 sm:min-h-10 sm:text-sm sm:leading-5">{itinerary.description || ''}</p>
+                <div className="flex min-w-0 flex-1 flex-col p-3 sm:p-5">
+                  <h3 className="line-clamp-2 break-words text-base font-bold leading-5 text-[#30485f] sm:min-h-12 sm:text-lg sm:leading-6">{itinerary.title}</h3>
+                  <p className={`mt-1 break-words text-xs leading-4 text-[#7690a3] line-clamp-2 sm:mt-2 sm:min-h-10 sm:text-sm sm:leading-5 ${itinerary.description ? '' : 'hidden sm:block'}`}>{itinerary.description || ''}</p>
                   
                   {/* 行程數據 Meta */}
-                  <div className="mt-3 flex flex-wrap gap-x-2 gap-y-1 pt-3 text-[11px] text-[#91a6b7] sm:mt-auto sm:gap-x-3 sm:text-xs">
+                  <div className="mt-2 flex flex-wrap gap-x-2 gap-y-1 sm:pt-3 text-[11px] text-[#91a6b7] sm:mt-auto sm:gap-x-3 sm:text-xs">
                     <span className="inline-flex items-center gap-1"><CalendarDays size={13} /> {itinerary.dayCount} 天</span>
                     <span>{itinerary.itemCount} 個地點</span>
                     <span>{itinerary.copyCount} 次複製</span>
@@ -899,29 +931,29 @@ export default function DestinationsPage() {
                   </div>
                   
                   {/* 作者與互動區 */}
-                  <div className="mt-4 border-t border-[#edf2f5] pt-3 sm:mt-5 sm:flex sm:items-center sm:justify-between sm:gap-3 sm:pt-4">
-                    <div className="mb-3 flex min-w-0 items-center gap-2 sm:mb-0">
+                  <div className="mt-2 border-t border-[#edf2f5] pt-2 sm:mt-5 sm:flex sm:items-center sm:justify-between sm:gap-3 sm:pt-4">
+                    <div className="mb-2 flex min-w-0 items-center gap-2 sm:mb-0">
                       <div className="flex size-7 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#edf4f8] text-[10px] font-bold text-[#688198]">
                         {itinerary.owner.avatar ? <img src={itinerary.owner.avatar} alt="" className="size-full object-cover" /> : itinerary.owner.name.slice(0, 1)}
                       </div>
                       <span className="truncate text-xs font-medium text-[#688198]">{itinerary.owner.name}</span>
                     </div>
                     
-                    <div className="flex flex-wrap gap-1.5 sm:shrink-0 sm:items-center sm:gap-2">
-                      <button type="button" onClick={() => void toggleLike(itinerary)} disabled={likingId === itinerary.id} className={`inline-flex items-center justify-center gap-1 rounded-xl border px-1.5 py-2 text-[11px] font-bold transition disabled:cursor-wait disabled:opacity-60 sm:px-2.5 sm:text-xs ${itinerary.isLiked ? 'border-rose-200 bg-rose-50 text-rose-500' : 'border-[#d7e4ec] bg-white text-[#7690a3] hover:border-rose-200 hover:text-rose-500'}`} aria-label={itinerary.isLiked ? '取消按讚' : '按讚'}>
+                    <div className="grid grid-cols-4 gap-1 sm:flex sm:shrink-0 sm:flex-wrap sm:items-center sm:gap-2">
+                      <button type="button" onClick={() => void toggleLike(itinerary)} disabled={likingId === itinerary.id} className={`inline-flex min-h-11 items-center justify-center gap-1 rounded-xl border px-1 py-2 sm:min-h-0 text-[11px] font-bold transition disabled:cursor-wait disabled:opacity-60 sm:px-2.5 sm:text-xs ${itinerary.isLiked ? 'border-rose-200 bg-rose-50 text-rose-500' : 'border-[#d7e4ec] bg-white text-[#7690a3] hover:border-rose-200 hover:text-rose-500'}`} aria-label={itinerary.isLiked ? '取消按讚' : '按讚'}>
                         <Heart size={14} className={itinerary.isLiked ? 'fill-current' : ''} />{itinerary.likeCount}
                       </button>
-                      <button type="button" onClick={() => void toggleSave(itinerary)} disabled={savingId === itinerary.id} title={itinerary.isSaved ? '取消收藏' : '收藏行程'} aria-label={itinerary.isSaved ? '取消收藏' : '收藏行程'} className={`inline-flex items-center justify-center rounded-xl border p-2 text-xs font-bold transition disabled:cursor-wait disabled:opacity-60 ${itinerary.isSaved ? 'border-[#c7dce9] bg-[#eaf4f9] text-[#4e718c]' : 'border-[#d7e4ec] bg-white text-[#7690a3] hover:border-[#a9c3d4] hover:text-[#4e718c]'}`}>
+                      <button type="button" onClick={() => void toggleSave(itinerary)} disabled={savingId === itinerary.id} title={itinerary.isSaved ? '取消收藏' : '收藏行程'} aria-label={itinerary.isSaved ? '取消收藏' : '收藏行程'} className={`inline-flex min-h-11 items-center justify-center rounded-xl border p-2 sm:min-h-0 text-xs font-bold transition disabled:cursor-wait disabled:opacity-60 ${itinerary.isSaved ? 'border-[#c7dce9] bg-[#eaf4f9] text-[#4e718c]' : 'border-[#d7e4ec] bg-white text-[#7690a3] hover:border-[#a9c3d4] hover:text-[#4e718c]'}`}>
                         <Bookmark size={15} className={itinerary.isSaved ? 'fill-current' : ''} />
                       </button>
-                      <button type="button" onClick={() => void sharePublicItinerary(itinerary)} title="分享公開行程" aria-label="分享公開行程" className="inline-flex items-center justify-center rounded-xl border border-[#d7e4ec] bg-white p-2 text-[#7690a3] transition hover:border-[#a9c3d4] hover:text-[#4e718c]">
+                      <button type="button" onClick={() => void sharePublicItinerary(itinerary)} title="分享公開行程" aria-label="分享公開行程" className="inline-flex min-h-11 items-center justify-center rounded-xl border border-[#d7e4ec] bg-white p-2 sm:min-h-0 text-[#7690a3] transition hover:border-[#a9c3d4] hover:text-[#4e718c]">
                         <Share2 size={15} />
                       </button>
                       
                       {/* 若該行程是本人擁有的，顯示管理按鈕 */}
                       {currentAccount === itinerary.owner.account && (
-                        <button type="button" onClick={() => void openManage(itinerary.id)} className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-[#c9dbe7] bg-[#f4f8fb] px-3 py-2 text-xs font-bold text-[#58758c] transition hover:bg-[#eaf2f7]">
-                          <Settings2 size={14} />管理
+                        <button type="button" onClick={() => void openManage(itinerary.id)} aria-label={`管理行程：${itinerary.title}`} title="管理行程" className="inline-flex min-h-11 shrink-0 items-center justify-center gap-1.5 rounded-xl border border-[#c9dbe7] bg-[#f4f8fb] px-1 py-2 text-xs sm:min-h-0 sm:px-3 font-bold text-[#58758c] transition hover:bg-[#eaf2f7]">
+                          <Settings2 size={14} /><span className="hidden sm:inline">管理</span>
                         </button>
                       )}
                     </div>
@@ -932,6 +964,14 @@ export default function DestinationsPage() {
           </div>
         )}
 
+        {/* 不足兩頁不顯示控制列；條件變更或下架減少資料時，頁碼會保持在有效範圍。 */}
+        {!isLoading && !error && pageCount > 1 && (
+          <nav aria-label="公開行程分頁" className="mt-6 flex items-center justify-between gap-3 sm:justify-center sm:gap-6">
+            <button type="button" disabled={currentPage === 1} onClick={() => changePage(currentPage - 1)} className="inline-flex min-h-11 items-center gap-1 rounded-xl border border-[#d6e3eb] bg-white px-3 text-sm font-bold text-[#58758c] disabled:opacity-40"><ChevronLeft size={16} />上一頁</button>
+            <span aria-live="polite" aria-atomic="true" className="text-xs text-[#698499]">第 {currentPage} / {pageCount} 頁</span>
+            <button type="button" disabled={currentPage === pageCount} onClick={() => changePage(currentPage + 1)} className="inline-flex min-h-11 items-center gap-1 rounded-xl border border-[#d6e3eb] bg-white px-3 text-sm font-bold text-[#58758c] disabled:opacity-40">下一頁<ChevronRight size={16} /></button>
+          </nav>
+        )}
         <div className="mt-10 rounded-2xl border border-[#dce7ef] bg-white px-5 py-4 text-sm leading-6 text-[#6d8498] shadow-sm"><Users className="mr-2 inline text-[#8ca4b6]" size={17} />複製後的行程只屬於你；你可以自行調整時間、地點與封面，原作者的行程不會受到影響。</div>
       </section>
 
@@ -981,7 +1021,7 @@ export default function DestinationsPage() {
                     <input value={publicTitle} onChange={(event) => setPublicTitle(event.target.value)} maxLength={255} placeholder="例如：台北三天兩夜慢遊行程" className="mt-2 w-full rounded-xl border border-[#cbdce7] bg-white px-4 py-3 text-sm text-[#365168] outline-none transition focus:border-[#7d9aaf]" />
                   </label>
                   <label className="block text-sm font-bold text-[#4e697e]">目的地 <span className="font-medium text-[#9aafbd]">（選填）</span>
-                    <input value={publicLocation} onChange={(event) => setPublicLocation(event.target.value)} onBlur={() => setPublicLocation((value) => normalizePublicLocation(value))} maxLength={150} placeholder="例如：日本・東京，或台灣・台中" className="mt-2 w-full rounded-xl border border-[#cbdce7] bg-white px-4 py-3 text-sm text-[#365168] outline-none transition focus:border-[#7d9aaf]" />
+                    <input value={publicLocation} onChange={(event) => setPublicLocation(event.target.value)} onBlur={() => setPublicLocation((value) => normalizePublicLocation(value))} maxLength={150} placeholder="例如：台中、台南、花蓮或澎湖" className="mt-2 w-full rounded-xl border border-[#cbdce7] bg-white px-4 py-3 text-sm text-[#365168] outline-none transition focus:border-[#7d9aaf]" />
                     <span className="mt-1 block text-xs font-medium text-[#9aafbd]">建議使用「國家・城市」；儲存時會統一分隔符號，讓其他旅人可直接依目的地篩選。</span>
                     {popularLocationSummaries.length > 0 && <span className="mt-3 flex flex-wrap gap-2">{popularLocationSummaries.slice(0, 6).map(({ location }) => <button type="button" key={location} onClick={() => setPublicLocation(location)} className={`rounded-full border px-2.5 py-1 text-[11px] font-bold transition ${normalizePublicLocation(publicLocation) === location ? 'border-[#5e7891] bg-[#5e7891] text-white' : 'border-[#d6e3eb] bg-[#f8fbfd] text-[#668096] hover:border-[#a9bfce]'}`}>#{location}</button>)}</span>}
                   </label>

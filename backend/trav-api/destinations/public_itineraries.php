@@ -406,26 +406,31 @@ function destinations_toggle_public_itinerary_like(): void
         if (!$itinerary->get_result()->fetch_assoc()) throw new RuntimeException('找不到此公開行程。');
         $itinerary->close();
 
-        $insert = $conn->prepare('INSERT IGNORE INTO Public_Itinerary_Like (Itinerary_ID, Account) VALUES (?, ?)');
-        if (!$insert) throw new RuntimeException('無法更新按讚。');
-        $insert->bind_param('is', $itineraryId, $account);
-        if (!$insert->execute()) throw new RuntimeException('無法更新按讚。');
-        $isLiked = $insert->affected_rows === 1;
-        $insert->close();
+        // 與列表的 Is_Liked 使用同一張互動表；父行程已鎖定，避免並行切換造成計數失真。
+        $existing = $conn->prepare("SELECT Interaction_ID FROM Public_Itinerary_Interaction WHERE Itinerary_ID = ? AND Account = ? AND Action_Type = 'like'");
+        $existing->bind_param('is', $itineraryId, $account);
+        $existing->execute();
+        $isLiked = !$existing->get_result()->fetch_row();
+        $existing->close();
 
         if ($isLiked) {
-            $update = $conn->prepare('UPDATE Itinerary SET Like_Count = Like_Count + 1 WHERE Itinerary_ID = ?');
+            $insert = $conn->prepare("INSERT INTO Public_Itinerary_Interaction (Itinerary_ID, Account, Action_Type) VALUES (?, ?, 'like')");
+            $insert->bind_param('is', $itineraryId, $account);
+            if (!$insert->execute()) throw new RuntimeException('無法更新按讚。');
+            $insert->close();
         } else {
-            $remove = $conn->prepare('DELETE FROM Public_Itinerary_Like WHERE Itinerary_ID = ? AND Account = ?');
+            // 只移除 like，保留同一會員對此行程的收藏與其他互動。
+            $remove = $conn->prepare("DELETE FROM Public_Itinerary_Interaction WHERE Itinerary_ID = ? AND Account = ? AND Action_Type = 'like'");
             if (!$remove) throw new RuntimeException('無法取消按讚。');
             $remove->bind_param('is', $itineraryId, $account);
-            $remove->execute();
+            if (!$remove->execute()) throw new RuntimeException('無法取消按讚。');
             $remove->close();
-            $update = $conn->prepare('UPDATE Itinerary SET Like_Count = GREATEST(Like_Count - 1, 0) WHERE Itinerary_ID = ?');
         }
+        // 以實際 like 紀錄重算本行程的快取計數，避免沿用過時或不一致的數字。
+        $update = $conn->prepare("UPDATE Itinerary SET Like_Count = (SELECT COUNT(*) FROM Public_Itinerary_Interaction WHERE Itinerary_ID = ? AND Action_Type = 'like') WHERE Itinerary_ID = ?");
         if (!$update) throw new RuntimeException('無法更新按讚數。');
-        $update->bind_param('i', $itineraryId);
-        $update->execute();
+        $update->bind_param('ii', $itineraryId, $itineraryId);
+        if (!$update->execute()) throw new RuntimeException('無法更新按讚數。');
         $update->close();
 
         $count = $conn->prepare('SELECT Like_Count FROM Itinerary WHERE Itinerary_ID = ?');
