@@ -1,18 +1,18 @@
 <?php
 /** 
  * ============================================================================
- * 模組：公開行程資料表初始化與字串處理工具
+ * 模組：公開行程的歷史資料表初始化與地點字串處理工具
  * 功能：
- * 1. 自動檢查並補齊資料庫針對「公開行程 (目的地)」所需的新欄位與關聯表。
+ * 1. 保留舊版建表／補欄位函式；目前程式沒有呼叫它，require 本檔不會執行 DDL。
  * 2. 清洗並標準化使用者輸入的「旅遊地點」字串。
  * ============================================================================
  */
 
 /**
  * ============================================================================
- * 資料庫結構自動確保函式 (Auto Schema Migration)
- * 作用：當這支 API 被呼叫時，會自動檢查資料庫有沒有缺欄位。如果有缺，就自動幫你 CREATE 或 ALTER。
- * 好處：你在部屬到新伺服器，或是給教授看專題時，不用手動去 phpMyAdmin 慢慢加欄位。
+ * 舊版資料庫初始化函式，只有明確呼叫才會執行 ALTER／UPDATE／CREATE。
+ * 不先查欄位是否存在，而是嘗試執行 SQL；例外會被忽略，不能以正常返回判定結構已完整。
+ * 這份定義仍建立舊 Like／Save 表；目前按讚與收藏使用 Public_Itinerary_Interaction，不能當作現行完整 migration。
  * ============================================================================
  */
 function ensure_destinations_schema(mysqli $conn): void {
@@ -32,7 +32,7 @@ function ensure_destinations_schema(mysqli $conn): void {
         "ALTER TABLE `Itinerary` ADD COLUMN `View_Count` INT NOT NULL DEFAULT 0",
         
         // 💡【效能優化：建立索引 Index】
-        // 因為首頁會大量撈取「已公開」且「最新更新」的行程，針對這些欄位建立索引，可以讓資料庫查詢速度快上百倍
+        // 索引可支援公開狀態與日期條件；實際是否使用及效益須依資料量與查詢計畫判斷。
         "ALTER TABLE `Itinerary` ADD INDEX `idx_itinerary_public_start` (`Is_Public`, `Start_Date`)",
         "ALTER TABLE `Itinerary` ADD INDEX `idx_itinerary_public_updated` (`Is_Public`, `Public_Updated_At`)",
         // 為了快速抓出該行程每一天有哪些景點所建的索引
@@ -41,10 +41,8 @@ function ensure_destinations_schema(mysqli $conn): void {
 
     // 迴圈執行所有的 ALTER 語法
     foreach ($statements as$statement) {
-        // 💡【防錯機制】
-        // 為什麼要用 try-catch 並且把錯誤吃掉 ($ignored)？
-        // 因為如果這個欄位「已經存在」了，MySQL 會報錯。我們把錯誤吃掉，程式就不會死掉。
-        // 這樣這支函式不管執行幾百次都是安全的 (冪等性)。
+        // 已有欄位／索引會報重複錯誤；此 catch 也會忽略權限、SQL 等其他例外。
+        // 因此可繼續嘗試下一句，但不保證每句都成功，也不會修正既有欄位型別。
         try { $conn->query($statement); } catch (Throwable $ignored) {}
     }
 
@@ -53,7 +51,7 @@ function ensure_destinations_schema(mysqli $conn): void {
         $conn->query("UPDATE `Itinerary` SET `Public_Updated_At` = COALESCE(`Public_Updated_At`, `Start_Date`) WHERE `Is_Public` = 1 AND `Public_Updated_At` IS NULL");
     } catch (Throwable $ignored) {}
 
-    // 3. 自動建立社群互動的三張附屬資料表：按讚、瀏覽紀錄、收藏
+    // 3. 嘗試建立舊版按讚、瀏覽與收藏表；現行 like／save 已改用共用互動表。
     try {
         // 建立【按讚紀錄表】
         // 複合主鍵 (PRIMARY KEY): 確保同一個 Account 對同一個 Itinerary 只能按一次讚
@@ -68,7 +66,7 @@ function ensure_destinations_schema(mysqli $conn): void {
         );
         
         // 建立【瀏覽紀錄表】
-        // 注意這裡用的是 Viewer_Key (可能是 IP + UserAgent 等組合)，因為訪客(沒登入)也能瀏覽，這樣才能計算不重複觀看數
+        // 以請求傳入的 Viewer_Key 去重；目前前端使用帳號或 sessionStorage 匿名識別，不是本檔計算 IP。
         $conn->query(
             "CREATE TABLE IF NOT EXISTS `Public_Itinerary_View` (
                 `Itinerary_ID` INT NOT NULL,
@@ -79,7 +77,7 @@ function ensure_destinations_schema(mysqli $conn): void {
         );
         
         // 建立【收藏紀錄表】
-        // 讓使用者可以把別人的公開行程收藏到自己的清單中
+        // 舊版收藏結構；目前 bookmark action 不讀寫此表。CREATE IF NOT EXISTS 不會修改已有表。
         $conn->query(
             "CREATE TABLE IF NOT EXISTS `Public_Itinerary_Save` (
                 `Itinerary_ID` INT NOT NULL,

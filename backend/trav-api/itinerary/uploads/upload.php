@@ -29,7 +29,7 @@ function upload_itinerary_cover(mysqli $conn): void {
             exit();
         }
 
-        // 1. 權限驗證：確保這個行程是該使用者的
+    // 1. 比對表單 Account 與行程擁有者；這是資料關係檢查，沒有驗證登入憑證。
         $check_stmt = $conn->prepare("SELECT `Itinerary_ID` FROM `Itinerary` WHERE `Itinerary_ID` = ? AND `Account` = ?");
         $check_stmt->bind_param("is", $itinerary_id, $account);
         $check_stmt->execute();
@@ -65,7 +65,7 @@ function upload_itinerary_cover(mysqli $conn): void {
         // 4. 將檔案從暫存區移動到目標資料夾
         if (move_uploaded_file($file['tmp_name'], $target_path)) {
 
-            // 5. 組合對外網址 (依據你的 Docker 伺服器 Port 8080)
+            // 5. 回傳同源 /backend/ 圖片路徑；此處不把 Docker 的 8080 連接埠寫入網址。
             $image_url = "/backend/uploads/covers/" . $new_filename;
 
             // 6. Itinerary.Cover_Image 只存圖片網址；實體圖片已寫入上面的目錄。

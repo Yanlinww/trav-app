@@ -43,7 +43,7 @@ function files_get(mysqli $conn): void {
 function files_upload(mysqli $conn): void {
     // 接收表單傳來的文字資料
     $account = $_POST['Account'] ?? '';
-    $type = $_POST['type'] ?? 'photos'; // photos, journeys, 或 saved
+    $type = $_POST['type'] ?? 'photos'; // 前端使用 photos／journeys／saved；此處提供預設值，未實作類型白名單。
 
     // 檢查帳號是否為空
     if (empty($account)) {
@@ -60,7 +60,7 @@ function files_upload(mysqli $conn): void {
             mkdir($target_dir, 0777, true);
         }
         
-        // 重新命名檔案避免重複
+        // 時間戳與隨機數降低撞名機率，並替換原名特殊字元；未在此檢查內容格式或副檔名白名單。
         $filename = time() . '_' . rand(1000, 9999) . '_' . preg_replace("/[^a-zA-Z0-9.]/", "_", basename($file["name"]));
         $target_file = $target_dir . $filename;
         

@@ -55,7 +55,7 @@ function get_luggage(mysqli $conn, int $itineraryId): array {
  * action=update｜輸入：Itinerary_ID、Account、LuggageData（前端傳 JSON 字串）。
  * Account 已在共用入口檢查，不寫入行李表。
  * 沒有該行程的資料時新增；主鍵重複時更新原有清單，避免產生多筆資料。
- * Updated_At 由資料庫自動維護，不需要從前端傳入。
+ * SQL 只寫入 Itinerary_ID／Luggage_Data；若需自動更新時間，須由實際資料表定義負責。
  * 回傳陣列：status；失敗時附 message。此處不解析 LuggageData 的內層 JSON。
  */
 function update_luggage(mysqli $conn, int $itineraryId, object $data): array {

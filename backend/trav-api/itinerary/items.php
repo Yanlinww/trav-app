@@ -3,6 +3,7 @@
  * 行程細項：每天的景點／自訂項目、時間、座標與拖曳排序。
  * 呼叫：POST /itinerary/items.php?action=功能名稱，參數放在 JSON 物件。
  * 主要資料表：Itinerary_Item。
+ * 本入口依傳入行程／細項 ID 讀寫，沒有呼叫擁有者關係檢查或本站登入憑證驗證。
  * 閱讀順序：先看底部 $handlers 找功能，再看對應函式中的輸入、SQL 與回應。
  */
 require_once __DIR__ . '/../db_connect.php';
@@ -60,7 +61,8 @@ function items_get_itinerary_items(mysqli $conn, object $data): void {
  * 建立行程細項
  * action=create｜必填：Itinerary_ID、Day_Number、Title。
  * 選填：StartTime、EndTime、Latitude、Longitude。
- * 時間先正規化；新項目放在同一天排序的末尾。回傳 status、message、Item_ID。
+ * 時間先正規化並拒絕開始與結束相同；未要求結束必須晚於開始。新項目放在同一天排序末尾。
+ * 回傳 status、message、Item_ID。
  */
 function items_create_itinerary_item(mysqli $conn, object $data): void {
     if (!empty($data->Itinerary_ID) && !empty($data->Title) && !empty($data->Day_Number)) {

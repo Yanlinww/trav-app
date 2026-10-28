@@ -12,7 +12,7 @@ $action = $_GET['action'] ?? '';
 if (!isset($actions[$action])) { http_response_code(400); echo json_encode(['status' => 'error', 'message' => '無效的通知操作'], JSON_UNESCAPED_UNICODE); exit(); }
 $actions[$action]($conn);
 
-/** get_notifications 原本的操作內容。 */
+/** get：讀取傳入 Account 最新 50 筆通知；unreadCount 只統計這 50 筆中的未讀數。 */
 function notifications_get(mysqli $conn): void {
     // 🌟 自動建表防呆機制
     $conn->query("CREATE TABLE IF NOT EXISTS `Notifications` (
@@ -76,7 +76,7 @@ function notifications_get(mysqli $conn): void {
     $conn->close();
 }
 
-/** mark_notifications_read 原本的操作內容。 */
+/** mark_read：將傳入 Account 的全部未讀通知標為已讀，不限剛讀取的 50 筆。 */
 function notifications_mark_read(mysqli $conn): void {
     $data = json_decode(file_get_contents("php://input"));
     $account = $data->Account ?? '';

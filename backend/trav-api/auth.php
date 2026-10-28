@@ -8,14 +8,14 @@
 
 // -------------------------------------------------------------------------
 // 1. CORS 跨域設定與環境準備
-// (因為前端 Next.js 在 localhost:3001，後端 PHP 在 localhost:8080，不同網域必須開通跨域)
+// 前後端直接使用不同連接埠時屬不同來源；經 /backend 代理呼叫則是瀏覽器同源請求。
 // -------------------------------------------------------------------------
 header('Access-Control-Allow-Origin: *'); // 允許任何前端網域來呼叫這支 API
-header('Access-Control-Allow-Methods: POST, GET, OPTIONS'); // 允許的 HTTP 請求方法
+header('Access-Control-Allow-Methods: POST, GET, OPTIONS'); // 向瀏覽器宣告方法；本檔只攔 OPTIONS，未強制其餘請求為 POST。
 header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With'); // 允許前端帶來的標頭
 header('Content-Type: application/json; charset=utf-8'); // 告訴前端：我回傳的資料格式是 JSON，且支援中文
 
-// 攔截 OPTIONS 預檢請求：瀏覽器在發送 POST 之前會先發送 OPTIONS 確認伺服器是否允許
+// 跨來源 JSON 等非簡單請求會先送 OPTIONS 預檢；不是每個 POST 都會預檢。
 // 這裡我們直接回傳 200 (OK)，讓前端可以順利發送真正的 POST 請求
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(200); exit(); }
 
@@ -25,7 +25,7 @@ require_once __DIR__ . '/db_connect.php';
 // -------------------------------------------------------------------------
 // 2. 路由分發器 (Router) - 決定現在要做什麼動作
 // -------------------------------------------------------------------------
-// 定義這支 API 支援哪些功能 (白名單，防止別人亂打 API)
+// 固定 action 與函式對照，避免任意指定函式；白名單本身不是登入或呼叫權限驗證。
 $actions = [
     'login' => 'auth_login',       // 呼叫 auth_login 函數
     'register' => 'auth_register', // 呼叫 auth_register 函數
@@ -71,7 +71,7 @@ function auth_login(mysqli $conn): void {
             
             // 【安全重點】密碼驗證：前端傳來的明碼 (例如 "1234")，與資料庫裡的亂碼 (Hash) 進行比對
             if (password_verify($password,$user['Password'])) {
-                // 比對成功，回傳使用者的基本資料給前端
+                // 比對成功只回傳會員資料；此處沒有建立 PHP session 或本站登入權杖。
                 echo json_encode([
                     "status" => "success",
                     "message" => "登入成功！歡迎回來 TRAVMADE！",
@@ -110,8 +110,8 @@ function auth_register(mysqli $conn): void {$data = json_decode(file_get_content
         $name =$data->Name ?? '';
         $gender =$data->Gender ?? '';
         
-        // 【安全重點】密碼加密：使用 password_hash 把使用者的密碼變成一段不可逆的亂碼，再存入資料庫
-        // 這樣就算工程師或駭客看到資料庫，也不知道使用者的真實密碼
+        // password_hash 產生含鹽值的單向雜湊，不是可解密的密文；登入時由 password_verify 比對。
+        // 不儲存明碼，但弱密碼仍可能被猜測，不能將雜湊描述成絕對無法還原或破解。
         $password_hashed = password_hash($data->Password, PASSWORD_DEFAULT);
 
         // 使用 `?` 佔位符準備寫入資料
@@ -158,7 +158,7 @@ function auth_google(mysqli $conn): void {$data = json_decode(file_get_contents(
         $ch = curl_init();
         curl_setopt($ch, CURLOPT_URL, "https://www.googleapis.com/oauth2/v3/userinfo");
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        // 在標頭加上 Bearer Token 證明我們的合法身分
+        // Bearer Token 用於向 Google 取得授權的會員資料，不是本站後續 API 的登入憑證。
         curl_setopt($ch, CURLOPT_HTTPHEADER, ["Authorization: Bearer " . $token]);
         $response = curl_exec($ch);
         curl_close($ch);
@@ -199,7 +199,7 @@ function auth_google(mysqli $conn): void {$data = json_decode(file_get_contents(
             } else {
                 // 🔹 情境 B：新朋友 (帳號不存在) -> 系統自動幫他註冊
                 $account =$email; // 將他的 Google Email 直接當作我們的登入帳號 (Account)
-                // 隨機生成一組 8 byte 亂碼並加密，作為他的預設密碼 (因為他是第三方登入，其實用不到這組密碼)
+                // 產生 8 個隨機位元組、轉為 16 字元十六進位字串後做雜湊；不將這組密碼回傳給前端。
                 $random_password = password_hash(bin2hex(random_bytes(8)), PASSWORD_DEFAULT); 
                 
                 $ins =$conn->prepare("INSERT INTO `Member` (`Account`, `Password`, `Email`, `Name`, `Avatar`, `google_id`) VALUES (?, ?, ?, ?, ?, ?)");

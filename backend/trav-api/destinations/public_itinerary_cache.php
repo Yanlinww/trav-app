@@ -6,7 +6,7 @@
  * ============================================================================
  */
 
-// 定義快取的存活時間 (TTL - Time To Live)。60 秒代表資料庫更新後，前端最多只會看到 60 秒的舊資料。
+// 伺服器檔案快取的有效期為 60 秒；寫入功能可提早清除，已顯示在前端的資料不會因此自動刷新。
 const PUBLIC_ITINERARY_CACHE_TTL_SECONDS = 60;
 
 /**
@@ -16,7 +16,7 @@ function public_itinerary_cache_directory(): string {
     // 使用作業系統預設的暫存目錄 (例如 Linux 的 /tmp)，並在裡面建一個我們專屬的資料夾
     $directory = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'travmate-public-itinerary-cache';
     
-    // 如果資料夾不存在，就自動建立它。0775 是給予適當的讀寫權限
+    // 不存在時嘗試用 0775 建立；實際權限受 umask 影響，建立失敗不會在此拋出自訂錯誤。
     if (!is_dir($directory)) {
         @mkdir($directory, 0775, true);
     }
@@ -25,7 +25,7 @@ function public_itinerary_cache_directory(): string {
 
 /**
  * 讀取快取資料
- * @param string $key 快取的鍵值 (通常是資料的名稱或 ID)
+ * @param string $key 呼叫端以帳號、搜尋、篩選、排序與筆數等條件產生的 SHA-256 鍵值
  * @return array|null 如果快取有效回傳陣列資料，如果過期或不存在則回傳 null
  */
 function public_itinerary_cache_read(string $key): ?array {
@@ -61,7 +61,7 @@ function public_itinerary_cache_write(string $key, array $payload): void {
     // 將資料轉成 JSON 並寫入「暫存檔」。LOCK_EX 代表寫入時鎖定檔案，防止其他人同時寫這支暫存檔。
     if (file_put_contents($temporary, json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), LOCK_EX) !== false) {
         // 寫完之後，瞬間把暫存檔「重新命名 (rename)」成目標檔名。
-        // 在作業系統底層，rename 是一個「原子操作 (瞬間完成)」，這樣就能保證使用者永遠只會讀到完整的 JSON 檔案！
+        // 同一檔案系統成功 rename 時可避免讀到覆寫一半的內容；寫入／重新命名失敗不會在這裡重試。
         @rename($temporary, $target);
     }
     
@@ -73,7 +73,7 @@ function public_itinerary_cache_write(string $key, array $payload): void {
 
 /**
  * 清除所有快取 (Invalidate Cache)
- * 適用時機：當管理員強制作廢快取，或系統發生重大更新時呼叫
+ * 目前公開設定、按讚、收藏、複製、首次計入瀏覽及 core 的公開切換會呼叫，讓下次列表重查。
  */
 function invalidate_public_itinerary_cache(): void {
     // glob 函式會找出目錄下所有符合 *.json 規則的檔案路徑

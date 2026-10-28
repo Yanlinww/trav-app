@@ -281,7 +281,7 @@ function community_time_ago(?string $datetime): string
 /**
  * 處理網址，判斷是外部圖片、Base64 圖片，還是本機的相對路徑圖片
  * 空來源回 null；data:image 與 http/https 網址原樣保留。
- * 其餘內容去除開頭斜線，再接到目前寫死的 localhost:8080 後端位址。
+ * 其餘內容去除開頭斜線，再接上同源的 /backend/ 前綴，交由前端代理轉送。
  * 這是顯示用的來源轉換，不會讀檔、上傳圖片或驗證網址是否可連線。
  */
 function community_public_url(?string $path): ?string

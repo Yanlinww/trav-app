@@ -2,7 +2,8 @@
 /**
  * 公開行程功能入口：列表、預覽、發布、瀏覽、按讚、收藏及複製。
  * 呼叫：POST /destinations/public_itineraries.php?action=功能名稱，參數為 JSON 物件。
- * schema.php、public_itinerary_cache.php 與 migrations/run.php 各自保留原本用途。
+ * schema.php 提供地點正規化；其歷史建表函式未在這個入口呼叫。快取工具由 public_itinerary_cache.php 提供。
+ * Account／Owner_Account／Viewer_Key 取自請求；本檔沒有共用的本站登入憑證驗證。
  * 列表的快取命中路徑不開啟資料庫連線。
  */
 require_once __DIR__ . '/../itinerary/api_helpers.php';
@@ -11,7 +12,9 @@ require_once __DIR__ . '/public_itinerary_cache.php';
 
 /**
  * action=list：搜尋、篩選、排序公開行程；優先讀取快取，未命中才連資料庫。
- * 來源：get_public_itineraries.php；保留原本輸入欄位、交易與 JSON 回應格式。
+ * Search 比對標題、公開地點與明細標題；Location 為完整字串相等比對。
+ * Limit 預設 24、範圍 1～48；沒有 offset／頁碼查詢，前端另切分已載入的列表。
+ * 天數篩選用主檔起訖日期差；回應 dayCount 卻用最大明細 Day_Number（至少 1），兩者不一定相同。
  */
 function destinations_list_public_itineraries(): void
 {
@@ -90,7 +93,7 @@ function destinations_list_public_itineraries(): void
     $params = [$account, $account, $ownerAccount, $ownerAccount, $search, $searchLike, $searchLike, $searchLike, $location, $location, $durationMin, $durationMin, $durationMax, $durationMax];
 
     if ($savedOnly) {
-        // 這裡也改成查詢新的 Interaction 總表，並指定 Action_Type = 'save'
+        // 只保留傳入帳號在互動表具有 save 紀錄的公開行程；不讀舊 Save 表。
         $sql .= " AND EXISTS (SELECT 1 FROM Public_Itinerary_Interaction saved_filter WHERE saved_filter.Itinerary_ID = i.Itinerary_ID AND saved_filter.Account = ? AND saved_filter.Action_Type = 'save')";
         $types .= 's';
         $params[] = $account;
@@ -386,7 +389,7 @@ function destinations_record_public_itinerary_view(): void
 
 /**
  * action=like：切換公開行程按讚，更新按讚數及公開列表快取。
- * 來源：toggle_public_itinerary_like.php；保留原本輸入欄位、交易與 JSON 回應格式。
+ * like 寫入共用互動表，與列表的 Is_Liked 同來源；按讚數以實際 like 紀錄重算。
  */
 function destinations_toggle_public_itinerary_like(): void
 {
@@ -482,7 +485,7 @@ function destinations_toggle_public_itinerary_save(): void
         $insert->close();
 
         if (!$isSaved) {
-            // 若已經收藏過，則進行取消收藏 (刪除該筆 save 紀錄)
+            // INSERT IGNORE 沒有新增一筆時走取消分支；通常是重複收藏，這裡未額外區分其他被忽略的原因。
             $remove = $conn->prepare("DELETE FROM Public_Itinerary_Interaction WHERE Itinerary_ID = ? AND Account = ? AND Action_Type = 'save'");
             if (!$remove) throw new RuntimeException('無法取消收藏。');
             $remove->bind_param('is', $itineraryId, $account);
@@ -503,7 +506,8 @@ function destinations_toggle_public_itinerary_save(): void
 
 /**
  * action=copy：複製公開行程及其細項到指定帳號，更新複製次數。
- * 來源：copy_public_itinerary.php；保留原本輸入欄位、交易與 JSON 回應格式。
+ * 複製原主檔 Title／Cover_Image 與日期座標，不取 Public_Title／Public_Cover_Image；新行程為私密。
+ * 只複製 Itinerary_Item，不包含行李、費用或社群互動，成功後清除公開列表快取。
  */
 function destinations_copy_public_itinerary(): void
 {

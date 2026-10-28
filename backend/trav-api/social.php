@@ -1,5 +1,5 @@
 <?php
-/** 個人社交入口：公開個人資料與社群連結。 */
+/** 個人社交入口：公開個人資料、社群連結、追蹤切換與追蹤／粉絲名單。 */
 
 // ==========================================
 // 1. CORS 跨域設定 (讓 Next.js 前端可以順利打 API)
@@ -12,7 +12,7 @@ header('Content-Type: application/json; charset=utf-8'); // 告訴前端：我�
 // 取得前端傳來的 action 參數 (例如：?action=links)
 $action =$_GET['action'] ?? '';
 
-// 攔截 OPTIONS 預檢請求：瀏覽器在發 POST 前會先發 OPTIONS 檢查，這裡直接回傳 200 OK 讓它通過
+// 跨來源 JSON 請求可能先送 OPTIONS 預檢，這裡回 200；追蹤兩個 action 另行強制 POST。
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(200); exit(); }
 
 // ==========================================
@@ -89,7 +89,7 @@ function social_profile(mysqli $conn): void {
 function social_links(mysqli $conn): void {$data = json_decode(file_get_contents("php://input"));
 
     if (!empty($data->Account)) {
-        // 準備 SQL：從會員表撈取那包 JSON (假設欄位名稱為 Social_Links，若是中文請自行替換)
+        // 依 Account 讀取 Member.Social_Links 的 JSON 字串，沒有查詢其他 Link_* 欄位。
         $stmt =$conn->prepare("SELECT Social_Links FROM Member WHERE Account = ?");
         $stmt->bind_param("s", $data->Account);$stmt->execute();
         $result =$stmt->get_result();
@@ -144,10 +144,10 @@ function social_update_links(mysqli $conn): void {$data = json_decode(file_get_c
         ];
 
         // 2. 【關鍵點】編碼 JSON：把剛才的陣列變成「一長串文字 (JSON 格式)」
-        // JSON_UNESCAPED_UNICODE 確保網址裡如果有中文 (例如小紅書網址)，不會變成亂碼
+        // JSON_UNESCAPED_UNICODE 保留中文字而不轉成 Unicode 跳脫表示；不負責驗證網址。
         $json_string = json_encode($social_array, JSON_UNESCAPED_UNICODE);
 
-        // 3. 準備 SQL：把這包壓縮好的字串，塞進單一欄位 `Social_Links` 裡
+        // 3. 將 JSON 序列化字串寫入 Social_Links；這不是壓縮或加密，也未在此驗證登入憑證。
         $update =$conn->prepare("UPDATE Member SET Social_Links = ? WHERE Account = ?");
         $update->bind_param("ss", $json_string,$account); // "ss" 代表兩個參數都是字串 (String)
         

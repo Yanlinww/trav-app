@@ -2,7 +2,8 @@
 /**
  * 社群功能入口：貼文列表、熱門標籤、留言、發文、互動及新增留言。
  * 網址格式：/community/community.php?action=posts|topics|comments|create|reaction|comment。
- * 讀取使用 GET，寫入使用 POST；只有 create 接受圖片 multipart/form-data。
+ * 前端讀取使用 GET、寫入使用 POST；只有 create 強制檢查 POST，並接受圖片 multipart/form-data。
+ * 其他 action 依各自的 $_GET／JSON 取值；CORS 標頭本身不會限制請求方法或驗證身分。
  * 共用查詢、格式化及回應函式保留在 community_helpers.php。
  */
 require_once __DIR__ . '/../db_connect.php';
@@ -19,7 +20,7 @@ function community_list_posts(mysqli $conn): void
     $search = $_GET['search'] ?? '';
     $currentUser = $_GET['Account'] ?? '';
 
-    // 基礎 SQL，我們只要撈出符合條件的 Post_ID 就好
+    // 先取符合條件的 Post_ID 與排序用 Created_At，完整貼文由後續批次查詢組合。
     $sql = "
         SELECT DISTINCT p.Post_ID, p.Created_At
         FROM Community_Post p
@@ -243,6 +244,7 @@ function community_create_post(mysqli $conn): void
             $imageStmt->close();
         }
 
+        // 交易只涵蓋資料庫寫入；已移動的圖片不會因稍後 rollback 自動刪除。
         $conn->commit();
 
         $post = community_fetch_single_post($conn, $postId, $account);
@@ -261,7 +263,8 @@ function community_create_post(mysqli $conn): void
 }
 
 /**
- * reaction（POST）：切換貼文的 like 或 save；按讚時保留通知原作者的流程。
+ * reaction：前端以 POST JSON 傳 like／save；本函式只檢查類型非空，未驗證類型白名單。
+ * 新增 like 才通知非本人的原作者；取消按讚不刪除既有通知。
  * 原端點：toggle_reaction.php；保留原輸入欄位與 JSON 回應格式。
  */
 function community_toggle_reaction(mysqli $conn): void
@@ -350,7 +353,7 @@ function community_add_comment(mysqli $conn): void
         $targetAccount = $postOwner;
         $msg = "在你的貼文底下留言";
         
-        // 如果有 Parent_ID，代表是「回覆」，則通知對象改成留言的主人
+        // 有 Parent_Comment_ID 且查到該留言作者時，將通知對象改成回覆對象；此查詢未核對是否同篇貼文。
         if ($parentId) {
             $getParent = $conn->prepare("SELECT Account FROM Community_Comment WHERE Comment_ID = ?");
             $getParent->bind_param("i", $parentId);

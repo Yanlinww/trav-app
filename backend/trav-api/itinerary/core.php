@@ -3,6 +3,7 @@
  * 行程主檔：列表、建立、修改、刪除、釘選與公開設定。
  * 呼叫：POST /itinerary/core.php?action=功能名稱，參數放在 JSON 物件。
  * 主要資料表：Itinerary；公開設定也會清除目的地快取。
+ * Account／Viewer_Account 來自請求，欄位關係比對不等同登入憑證驗證；update 未核對 Account。
  * 閱讀順序：先看底部 $handlers 找功能，再看對應函式中的輸入、SQL 與回應。
  */
 require_once __DIR__ . '/../db_connect.php';
@@ -11,7 +12,7 @@ require_once __DIR__ . '/api_helpers.php';
 /**
  * 行程列表
  * action=list｜輸入：Account；Viewer_Account 可省略。
- * 查詢 Account 擁有的行程；本人查看不限制公開狀態，其他查看者只看公開行程。
+ * 兩個傳入帳號相同才視為本人並列出全部；省略 Viewer_Account 時通常只列公開行程。
  * 回傳：status、data（行程卡片陣列）；日期轉成 YYYY/MM/DD。
  */
 function core_get_itineraries(mysqli $conn, object $data): void {
@@ -20,7 +21,7 @@ function core_get_itineraries(mysqli $conn, object $data): void {
         // Account 是被查看的帳號；Viewer_Account 是目前查看者的帳號。
         $viewerAccount = $data->Viewer_Account ?? '';
 
-        // 相同帳號代表本人查看，用於決定是否限制公開行程。
+        // 以兩個請求欄位是否相同決定公開限制，不是在這裡驗證登入者。
         $isOwner = ($account === $viewerAccount);
 
         $sql = "SELECT i.* FROM Itinerary i WHERE i.Account = ?";
@@ -142,7 +143,7 @@ function core_create_itinerary(mysqli $conn, object $data): void {
 /**
  * 修改行程名稱與日期
  * action=update｜輸入：Itinerary_ID、Title、StartDate、EndDate。
- * 一次覆寫主檔的 Title、Start_Date、End_Date；這個函式依行程 ID 更新。
+ * 一次覆寫主檔的 Title、Start_Date、End_Date；只依行程 ID 更新，未檢查擁有者或日期先後。
  * 回傳：status；失敗時附 message。
  */
 function core_update_itinerary_info(mysqli $conn, object $data): void {
@@ -168,7 +169,7 @@ function core_update_itinerary_info(mysqli $conn, object $data): void {
  */
 function core_delete_itinerary(mysqli $conn, object $data): void {
     if (!empty($data->Itinerary_ID) && !empty($data->Account)) {
-        // 先確認使用者是行程擁有者。
+        // 讀取擁有者，稍後與請求傳入的 Account 作嚴格比對；沒有驗證登入憑證。
         $checkStmt = $conn->prepare("SELECT Account FROM Itinerary WHERE Itinerary_ID = ?");
         $checkStmt->bind_param("i", $data->Itinerary_ID);
         $checkStmt->execute();
@@ -233,7 +234,7 @@ function core_toggle_itinerary_visibility(mysqli $conn, object $data): void {
         $itineraryId = $data->Itinerary_ID;
         $isPublic = $data->Is_Public ? 1 : 0;
 
-        // 只有行程的 Owner 可以更改隱私狀態
+        // UPDATE 同時比對行程 ID 與傳入 Account；此欄位關係檢查不是登入身分驗證。
         $stmt = $conn->prepare("UPDATE Itinerary SET Is_Public = ? WHERE Itinerary_ID = ? AND Account = ?");
         $stmt->bind_param("iis", $isPublic, $itineraryId, $account);
 

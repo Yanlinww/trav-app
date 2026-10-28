@@ -2,7 +2,8 @@
 /**
  * 個人設定功能入口：基本資料、密碼與社群帳號綁定。
  * 呼叫：POST /profile/profile.php?action=功能名稱。
- * 更新頭像使用 FormData；其餘功能使用 JSON 物件。
+ * update 一律讀取 FormData（即使只有暱稱）；其餘功能讀取 JSON 物件。
+ * Account 由請求傳入；除 password 另核對舊密碼外，這裡沒有共用的本站登入憑證驗證。
  */
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: POST, OPTIONS');
@@ -44,7 +45,7 @@ function profile_update_details(mysqli $conn): void
             mkdir($target_dir, 0777, true);
         }
         
-        // 取得副檔名並建立唯一檔名
+        // 副檔名沿用上傳名稱，檔名由帳號與秒級時間雜湊組成；同秒上傳仍可能同名。
         $ext = pathinfo($file['name'], PATHINFO_EXTENSION);
         $filename = 'avatar_' . md5($account . time()) . '.' . $ext;
         $target_file = $target_dir . $filename;
@@ -57,11 +58,11 @@ function profile_update_details(mysqli $conn): void
 
     // 更新資料庫
     if ($avatarUrl) {
-        // 如果有上傳新大頭貼，就連大頭貼網址一起更新
+        // 只有圖片成功移動且取得網址時，才連頭像欄位一起更新。
         $stmt = $conn->prepare("UPDATE `Member` SET `Name` = ?, `Avatar` = ? WHERE `Account` = ?");
         $stmt->bind_param("sss", $name, $avatarUrl, $account);
     } else {
-        // 如果沒有上傳新照片，只更新名字
+        // 沒有新圖片網址（未上傳、上傳狀態異常或移動失敗）時只更新暱稱。
         $stmt = $conn->prepare("UPDATE `Member` SET `Name` = ? WHERE `Account` = ?");
         $stmt->bind_param("ss", $name, $account);
     }
@@ -105,7 +106,7 @@ function profile_update_password(mysqli $conn): void
             // 2. 驗證舊密碼是否正確
             if (password_verify($oldPassword, $user['Password'])) {
                 
-                // 3. 舊密碼正確，將新密碼進行雜湊加密
+                // 3. 舊密碼正確，將新密碼轉成單向雜湊；不是可解密的密文。
                 $newPasswordHashed = password_hash($newPassword, PASSWORD_DEFAULT);
                 
                 // 4. 寫入新密碼
@@ -319,7 +320,7 @@ function profile_bind_instagram(mysqli $conn): void
 
         $token_data = json_decode($response);
 
-        // Instagram 原生 API 回傳的 ID 欄位叫做 user_id
+        // 本程式預期 token 回應含 user_id；未另外呼叫個人資料 API，缺此欄位即走失敗分支。
         if (isset($token_data->user_id)) {
             $igId = $token_data->user_id; 
 
