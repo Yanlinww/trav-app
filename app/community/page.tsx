@@ -20,6 +20,7 @@ import {
   Send,
   Sparkles,
   X,
+  PenLine
 } from "lucide-react";
 // 引用全域驗證上下文 Hook
 import { useAuth } from "../context/AuthContext";
@@ -94,7 +95,7 @@ const COMMUNITY_API = `${API_BASE}/community`;
 
 // 頁面上方 Tab 分頁切換選單設定
 const tabs: { id: TabType; label: string }[] = [
-  { id: "all", label: "全部" },
+  { id: "all", label: "全部動態" },
   { id: "footprint", label: "旅行足跡" },
   { id: "question", label: "行程請益" },
   { id: "group", label: "揪團出發" },
@@ -175,16 +176,17 @@ export default function CommunityPage() {
   const [commentDrafts, setCommentDrafts] = useState<Record<number, string>>({});                        // 各貼文獨立的留言輸入內文 Map (PostID -> string)
   const [replyTargets, setReplyTargets] = useState<Record<number, CommunityComment | undefined>>({});    // 各貼文的回覆目標 Map (PostID -> Comment)
   const [openComments, setOpenComments] = useState<Record<number, boolean>>({});                          // 各貼文留言區展開/收合狀態 Map
-  const [loadedComments, setLoadedComments] = useState<Record<number, boolean>>({});                        // 各貼文留言是否已自後端載入 Map
-  const [loadingComments, setLoadingComments] = useState<Record<number, boolean>>({});                      // 各貼文留言載入中 Spinner 狀態 Map
+  const [loadedComments, setLoadedComments] = useState<Record<number, boolean>>({});                      // 各貼文留言是否已自後端載入 Map
+  const [loadingComments, setLoadingComments] = useState<Record<number, boolean>>({});                    // 各貼文留言載入中 Spinner 狀態 Map
 
   /* ------------------- 全域 UI / 載入狀態 ------------------- */
   const [loadingPosts, setLoadingPosts] = useState(true);                        // 貼文列表載入中狀態
-  const [submitting, setSubmitting] = useState(false);                          // 發布貼文進行中狀態
+  const [submitting, setSubmitting] = useState(false);                           // 發布貼文進行中狀態
   const [error, setError] = useState("");                                       // 錯誤訊息提示
 
   /* ------------------- Ref 引用區塊 ------------------- */
   const fileInputRef = useRef<HTMLInputElement>(null);                          // 隱藏版 <input type="file"> 的 DOM 引用
+  const composeRef = useRef<HTMLFormElement>(null);                             // 用於 FAB 點擊後捲動至發文框
 
   // 使用 useMemo 快取話題清單，確保即便話題清單為空也能降級顯示 fallbackTopics
   const visibleTopics = useMemo(() => (topics.length > 0 ? topics : fallbackTopics), [topics]);
@@ -465,135 +467,136 @@ export default function CommunityPage() {
 
   /* ------------------- UI 渲染區塊 (JSX Render) ------------------- */
   return (
-    <div className="min-h-screen bg-[#f5f5f2] text-neutral-900">
+    <div className="min-h-screen bg-[#f9fafb] text-neutral-900 relative pb-20">
       {/* 頁頭 Banner 區塊：包含頁面標題與搜尋框 */}
-      <section className="border-b border-neutral-200 bg-white">
-        <div className="mx-auto max-w-7xl px-5 py-10 md:px-8 md:py-14">
-          <div className="flex flex-col justify-between gap-8 md:flex-row md:items-end">
+      <section className="bg-white rounded-b-[2rem] shadow-sm shadow-slate-200/50 mb-8 border-b border-neutral-100 pb-4 relative z-10">
+        <div className="mx-auto max-w-7xl px-5 py-8 md:px-8 md:py-12">
+          <div className="flex flex-col justify-between gap-6 md:flex-row md:items-end">
             <div>
-              <p className="mb-3 flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.28em] text-neutral-400">
-                <Sparkles className="size-3.5 text-amber-500" /> Travmate Community
+              <p className="mb-2 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-900">
+                <Sparkles className="size-3" /> Travmate Community
               </p>
-              <h1 className="text-4xl font-light tracking-tight md:text-5xl">靈感交流與分享</h1>
-              <p className="mt-3 max-w-xl text-sm font-light leading-7 text-neutral-500">
-                尋找你的下一個目的地，向其他旅行者請益，或者分享你專屬的旅程故事。
+              <h1 className="text-3xl font-extrabold tracking-tight md:text-4xl text-neutral-900">旅行動態與分享</h1>
+              <p className="mt-2 max-w-lg text-sm font-medium leading-relaxed text-neutral-500">
+                在這裡發掘靈感、尋找旅伴，或紀錄專屬於你的獨旅足跡。
               </p>
             </div>
-            {/* 搜尋輸入框 */}
-            <label className="flex h-12 w-full items-center gap-3 border border-neutral-200 bg-neutral-50 px-4 md:w-80">
+            {/* 旅遊 App 風格膠囊搜尋框 */}
+            <label className="flex h-12 w-full items-center gap-3 rounded-full border border-neutral-200 bg-neutral-50 px-5 md:w-80 hover:bg-neutral-100 transition-colors cursor-text">
               <Search className="size-4 text-neutral-400" />
               <input
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                placeholder="搜尋行程、地點或標籤"
-                className="w-full bg-transparent text-sm outline-none placeholder:text-neutral-400"
+                placeholder="搜尋地點、心得或 #標籤"
+                className="w-full bg-transparent text-sm outline-none placeholder:text-neutral-400 font-medium"
               />
             </label>
           </div>
         </div>
-      </section>
 
-      {/* 頂部固定切換選單 (Sticky Navigation Tabs) */}
-      <div className="sticky top-16 z-30 border-b border-neutral-200 bg-white/95 backdrop-blur">
-        <div className="mx-auto flex max-w-7xl gap-7 overflow-x-auto px-5 md:px-8">
+        {/* 頂部固定切換選單 (Sticky Navigation Tabs) - 融入 Banner 底部 */}
+        <div className="mx-auto flex max-w-7xl gap-2 overflow-x-auto px-5 md:px-8 no-scrollbar">
           {tabs.map((tab) => (
             <button
               key={tab.id}
               onClick={() => selectTab(tab.id)}
-              className={`shrink-0 border-b-2 py-4 text-xs font-semibold tracking-wider transition-colors ${
+              className={`shrink-0 rounded-full px-5 py-2.5 text-xs font-bold tracking-wide transition-all ${
                 activeTab === tab.id
-                  ? "border-neutral-900 text-neutral-900"
-                  : "border-transparent text-neutral-400 hover:text-neutral-700"
+                  ? "bg-neutral-900 text-white shadow-md shadow-neutral-900/10"
+                  : "bg-white border border-neutral-200 text-neutral-500 hover:border-neutral-900 hover:text-neutral-900 hover:bg-neutral-50"
               }`}
             >
               {tab.label}
             </button>
           ))}
         </div>
-      </div>
+      </section>
 
       {/* 主要內容區域：雙欄式排版 (左側動態串流 / 右側話題邊欄) */}
-      <div className="mx-auto grid max-w-7xl grid-cols-1 gap-7 px-5 py-8 md:px-8 lg:grid-cols-[minmax(0,1fr)_320px]">
+      <div className="mx-auto grid max-w-7xl grid-cols-1 gap-8 px-4 md:px-8 lg:grid-cols-[minmax(0,1fr)_320px]">
+        
         {/* 左側：發文框與貼文串流 */}
-        <main className="min-w-0 space-y-6">
+        <main className="min-w-0 space-y-8">
+          
           {/* 全域 API 錯誤提示區塊 */}
           {error && (
-            <div className="flex items-center justify-between border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-              <span>{error}</span>
-              <button onClick={() => void loadPosts()} className="flex items-center gap-1 font-semibold">
-                <RefreshCw className="size-3.5" /> 重試
+            <div className="flex items-center justify-between rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700 shadow-sm">
+              <span className="font-medium">{error}</span>
+              <button onClick={() => void loadPosts()} className="flex items-center gap-1.5 font-bold hover:text-red-900 transition-colors">
+                <RefreshCw className="size-4" /> 重新載入
               </button>
             </div>
           )}
 
-          {/* 發布貼文表單組件 */}
-          <form onSubmit={publishPost} className="border border-neutral-200 bg-white p-5 shadow-sm md:p-6">
+          {/* 發布貼文表單組件 (大圓角 App 質感) */}
+          <form ref={composeRef} onSubmit={publishPost} className="rounded-[2rem] border border-neutral-100 bg-white p-5 md:p-6 shadow-[0_4px_20px_rgba(0,0,0,0.03)] transition-all hover:shadow-[0_4px_20px_rgba(0,0,0,0.06)]">
             <div className="flex gap-4">
-              {/* 發文者頭像預設圓圈 */}
-              <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-neutral-900 text-xs font-bold text-white">
+              {/* 發文者頭像 */}
+              <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-neutral-900 text-xs font-bold text-white shadow-sm shadow-neutral-900/10">
                 {user ? getInitial(String(user.nickname || user.Account || "?")) : "?"}
               </div>
+              
               <div className="min-w-0 flex-1">
-                {/* 只有「行程請益」與「揪團出發」類型的貼文才顯示標題輸入框 */}
+                {/* 標題輸入框 (僅請益/揪團) */}
                 {(postType === "question" || postType === "group") && (
                   <input
                     value={title}
                     onChange={(event) => setTitle(event.target.value)}
                     placeholder={postType === "question" ? "輸入請益主旨..." : "輸入揪團標題..."}
-                    className="mb-3 w-full border border-neutral-200 bg-neutral-50 px-3 py-2.5 text-sm outline-none focus:border-neutral-500"
+                    className="mb-3 w-full rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm outline-none focus:border-neutral-900 focus:bg-white transition-colors font-medium"
                   />
                 )}
+                
                 {/* 貼文內文輸入框 */}
                 <textarea
                   value={draft}
                   onChange={(event) => setDraft(event.target.value)}
-                  placeholder={authLoading ? "載入中..." : currentAccount ? "分享你的旅行足跡與心得..." : "登入後即可發表動態"}
-                  rows={4}
+                  placeholder={authLoading ? "載入中..." : currentAccount ? "今天去了哪裡？分享你的足跡吧..." : "登入後即可發表動態"}
+                  rows={3}
                   disabled={!currentAccount}
-                  className="w-full resize-none border-0 bg-transparent text-sm leading-7 outline-none placeholder:text-neutral-400 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="w-full resize-none border-0 bg-transparent text-sm font-medium leading-relaxed outline-none placeholder:text-neutral-400 disabled:cursor-not-allowed disabled:opacity-60"
                 />
                 
-                {/* 上傳圖片預覽區域 */}
+                {/* 上傳圖片預覽區域 (大圓角) */}
                 {preview && (
-                  <div className="relative mt-3 h-56 overflow-hidden bg-neutral-100">
+                  <div className="relative mt-3 h-56 overflow-hidden rounded-2xl bg-neutral-100 border border-neutral-100">
                     <Image src={preview} alt="Preview" fill unoptimized className="object-cover" />
                     <button
                       type="button"
                       onClick={clearImage}
                       aria-label="移除圖片"
-                      className="absolute right-3 top-3 rounded-full bg-black/60 p-2 text-white"
+                      className="absolute right-3 top-3 rounded-full bg-black/50 backdrop-blur-md p-2 text-white hover:bg-black/70 transition-colors"
                     >
                       <X className="size-4" />
                     </button>
                   </div>
                 )}
 
-                {/* 額外資訊輸入區（打卡地點、標籤） */}
-                <div className="mt-4 grid gap-2 sm:grid-cols-2">
-                  <label className="flex items-center gap-2 bg-neutral-50 px-3 py-2.5 text-xs text-neutral-500">
-                    <MapPin className="size-3.5" />
+                {/* 額外資訊輸入區（膠囊造型） */}
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <label className="flex items-center gap-2 rounded-full border border-neutral-200 bg-neutral-50 px-3.5 py-2 text-xs text-neutral-500 hover:bg-neutral-100 transition-colors focus-within:border-neutral-900 focus-within:bg-white">
+                    <MapPin className="size-3.5 text-neutral-900" />
                     <input
                       value={location}
                       onChange={(event) => setLocation(event.target.value)}
-                      placeholder="打卡地點 (選填)"
-                      className="w-full bg-transparent outline-none"
+                      placeholder="新增地點"
+                      className="w-24 bg-transparent outline-none font-medium placeholder:font-normal focus:w-32 transition-all"
                     />
                   </label>
-                  <label className="flex items-center gap-2 bg-neutral-50 px-3 py-2.5 text-xs text-neutral-500">
-                    <Compass className="size-3.5" />
+                  <label className="flex items-center gap-2 rounded-full border border-neutral-200 bg-neutral-50 px-3.5 py-2 text-xs text-neutral-500 hover:bg-neutral-100 transition-colors focus-within:border-neutral-900 focus-within:bg-white">
+                    <Compass className="size-3.5 text-neutral-900" />
                     <input
                       value={tagText}
                       onChange={(event) => setTagText(event.target.value)}
-                      placeholder="相關標籤 (以逗號分隔)"
-                      className="w-full bg-transparent outline-none"
+                      placeholder="新增 #標籤"
+                      className="w-28 bg-transparent outline-none font-medium placeholder:font-normal focus:w-36 transition-all"
                     />
                   </label>
                 </div>
 
-                {/* 表單底部操作列（附件圖片、發布按鈕） */}
+                {/* 表單底部操作列 */}
                 <div className="mt-4 flex items-center justify-between border-t border-neutral-100 pt-4">
                   <div>
-                    {/* 隱藏的原始檔案選取器 */}
                     <input
                       ref={fileInputRef}
                       type="file"
@@ -605,17 +608,17 @@ export default function CommunityPage() {
                       type="button"
                       onClick={() => fileInputRef.current?.click()}
                       disabled={!currentAccount}
-                      className="flex items-center gap-2 px-2 py-2 text-xs font-medium text-neutral-500 hover:text-neutral-900 disabled:cursor-not-allowed disabled:opacity-40"
+                      className="flex items-center gap-2 rounded-full px-3 py-2 text-xs font-bold text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900 transition-colors disabled:cursor-not-allowed disabled:opacity-40"
                     >
-                      <ImagePlus className="size-4" /> 附加照片
+                      <ImagePlus className="size-4" /> 相片
                     </button>
                   </div>
                   <button
                     type="submit"
                     disabled={!currentAccount || !draft.trim() || submitting}
-                    className="flex items-center gap-2 bg-neutral-900 px-5 py-2.5 text-xs font-bold tracking-widest text-white transition hover:bg-neutral-700 disabled:cursor-not-allowed disabled:opacity-30"
+                    className="flex items-center gap-2 rounded-full bg-neutral-900 px-6 py-2.5 text-xs font-bold text-white transition-all hover:bg-neutral-700 hover:shadow-md hover:shadow-neutral-900/10 disabled:cursor-not-allowed disabled:opacity-30"
                   >
-                    {submitting ? "發布中..." : "發布動態"} <Send className="size-3.5" />
+                    {submitting ? "發布中..." : "發布"} <Send className="size-3" />
                   </button>
                 </div>
               </div>
@@ -624,80 +627,78 @@ export default function CommunityPage() {
 
           {/* 載入中骨架 Placeholder */}
           {loadingPosts && (
-            <div className="border border-neutral-200 bg-white py-14 text-center text-sm text-neutral-400">
-              載入動態中...
+            <div className="flex flex-col items-center justify-center rounded-[2rem] border border-neutral-100 bg-white py-20 text-neutral-400">
+              <Loader2 className="size-8 animate-spin text-neutral-900 mb-3" />
+              <p className="text-sm font-medium">載入動態中...</p>
             </div>
           )}
 
           {/* 無動態資料時的 Empty State */}
           {!loadingPosts && posts.length === 0 && (
-            <div className="border border-dashed border-neutral-300 bg-white py-16 text-center text-sm text-neutral-400">
-              目前沒有任何動態
+            <div className="flex flex-col items-center justify-center rounded-[2rem] border border-dashed border-neutral-200 bg-white py-20 text-neutral-400">
+              <div className="size-16 rounded-full bg-neutral-50 flex items-center justify-center mb-3">
+                <Compass className="size-8 text-neutral-300" />
+              </div>
+              <p className="text-sm font-bold text-neutral-500">目前還沒有相關動態</p>
+              <p className="text-xs mt-1">來發布第一篇分享吧！</p>
             </div>
           )}
 
           {/* 貼文串流列表渲染 */}
           {!loadingPosts &&
             posts.map((post) => (
-              <article key={post.id} className="overflow-hidden border border-neutral-200 bg-white shadow-sm">
-                <div className="p-5 md:p-6">
+              <article key={post.id} className="overflow-hidden rounded-[2rem] border border-neutral-100 bg-white shadow-[0_4px_20px_rgba(0,0,0,0.02)] transition-all hover:shadow-[0_8px_30px_rgba(0,0,0,0.06)]">
+                
+                {/* 貼文頭部 (作者與分類) */}
+                <div className="p-5 md:p-6 pb-2">
                   <div className="flex items-start justify-between gap-4">
-                    
-                    {/* 貼文作者區塊（點擊可路由跳轉至該作者的個人頁面） */}
                     <div 
                       className="flex min-w-0 items-center gap-3 cursor-pointer group"
                       onClick={() => {
-                        // 相容多種可能的後端欄位結構
                         const targetAccount = post.author.account || (post.author as any).Account || (post as any).Account;
-                        if (targetAccount) {
-                          router.push(`/profile/${encodeURIComponent(targetAccount)}`);
-                        } else {
-                          console.log("這篇貼文的資料長這樣：", post);
-                          alert("後端尚未回傳此作者的帳號 (account)，無法跳轉！");
-                        }
+                        if (targetAccount) router.push(`/profile/${encodeURIComponent(targetAccount)}`);
                       }}
                     >
                       {post.author.avatar ? (
-                        <div className="relative size-11 shrink-0 overflow-hidden rounded-full bg-neutral-100 group-hover:ring-2 ring-neutral-300 transition-all">
+                        <div className="relative size-12 shrink-0 overflow-hidden rounded-full bg-neutral-100 group-hover:ring-2 ring-neutral-900/20 transition-all shadow-sm">
                           <Image src={post.author.avatar} alt={post.author.name} fill unoptimized className="object-cover" />
                         </div>
                       ) : (
-                        <div className="flex size-11 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-sm font-bold text-neutral-700 group-hover:ring-2 ring-neutral-300 transition-all">
+                        <div className="flex size-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-neutral-200 to-neutral-300 text-sm font-bold text-neutral-600 group-hover:ring-2 ring-neutral-900/20 transition-all shadow-sm">
                           {getInitial(post.author.name)}
                         </div>
                       )}
                       <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-x-2">
-                          <span className="text-sm font-bold group-hover:text-[#F04D79] transition-colors">{post.author.name}</span>
+                        <div className="flex items-center gap-x-2">
+                          <span className="text-sm font-bold text-neutral-900 group-hover:text-neutral-600 transition-colors">{post.author.name}</span>
                         </div>
-                        <p className="mt-1 text-[11px] text-neutral-400">{post.time}</p>
+                        <p className="mt-0.5 text-[11px] font-medium text-neutral-400">{post.time}</p>
                       </div>
                     </div>
-
-                    {/* 貼文分類標籤 */}
-                    <span className="shrink-0 bg-neutral-100 px-2.5 py-1 text-[10px] font-bold tracking-wider text-neutral-600">
+                    {/* 貼文分類膠囊 */}
+                    <span className="shrink-0 rounded-full bg-neutral-100 px-3 py-1.5 text-[10px] font-bold tracking-wider text-neutral-900">
                       {getTypeLabel(post.type)}
                     </span>
                   </div>
 
                   {/* 貼文標題與內文 */}
-                  {post.title && <h2 className="mt-5 text-lg font-semibold leading-7">{post.title}</h2>}
-                  <p className="mt-4 whitespace-pre-line text-sm font-light leading-7 text-neutral-600">{post.content}</p>
+                  {post.title && <h2 className="mt-4 text-lg font-bold leading-tight text-neutral-900">{post.title}</h2>}
+                  <p className="mt-3 whitespace-pre-line text-sm font-medium leading-relaxed text-neutral-600">{post.content}</p>
                   
                   {/* 地點打卡標示 */}
                   {post.location && (
-                    <p className="mt-4 flex items-center gap-1.5 text-xs font-medium text-neutral-500">
-                      <MapPin className="size-3.5" /> {post.location}
-                    </p>
+                    <div className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-neutral-50 px-3 py-1.5 text-[11px] font-bold text-neutral-500">
+                      <MapPin className="size-3 text-neutral-900" /> {post.location}
+                    </div>
                   )}
                   
-                  {/* 標籤清單 (點擊可快速觸發關鍵字搜尋) */}
-                  <div className="mt-4 flex flex-wrap gap-2">
+                  {/* 標籤清單 */}
+                  <div className="mt-3 flex flex-wrap gap-2">
                     {post.tags.map((item) => (
                       <button
                         key={item}
                         onClick={() => setSearch(item)}
-                        className="bg-stone-100 px-2.5 py-1 text-[11px] text-stone-600 hover:bg-stone-200"
+                        className="rounded-full bg-neutral-50 px-3 py-1 text-[11px] font-bold text-neutral-500 hover:bg-neutral-900 hover:text-white transition-colors"
                       >
                         #{item}
                       </button>
@@ -705,48 +706,45 @@ export default function CommunityPage() {
                   </div>
                 </div>
 
-                {/* 貼文相片展示區（依據張數提供響應式網格） */}
+                {/* 貼文相片展示區 (無邊際大圓角設計) */}
                 {post.images.length > 0 && (
-                  <div className={`grid gap-0.5 bg-neutral-100 ${post.images.length > 1 ? "grid-cols-[1.45fr_1fr]" : "grid-cols-1"}`}>
-                    {post.images.map((src, index) => (
-                      <div key={src} className="relative h-72 w-full md:h-96">
-                        <Image
-                          src={src}
-                          alt={`${post.author.name} 照片 ${index + 1}`}
-                          fill
-                          unoptimized
-                          sizes={post.images.length > 1 ? "(min-width: 768px) 35vw, 50vw" : "(min-width: 1024px) 60vw, 100vw"}
-                          className="object-cover"
-                        />
-                      </div>
-                    ))}
+                  <div className="px-3 md:px-4 mt-3">
+                    <div className={`overflow-hidden rounded-2xl ${post.images.length > 1 ? "grid gap-1 grid-cols-[1.45fr_1fr]" : "grid-cols-1"}`}>
+                      {post.images.map((src, index) => (
+                        <div key={src} className="relative h-64 w-full md:h-80 bg-neutral-100">
+                          <Image
+                            src={src}
+                            alt={`${post.author.name} 照片 ${index + 1}`}
+                            fill
+                            unoptimized
+                            sizes={post.images.length > 1 ? "(min-width: 768px) 35vw, 50vw" : "(min-width: 1024px) 60vw, 100vw"}
+                            className="object-cover hover:scale-105 transition-transform duration-500"
+                          />
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
 
-                {/* 貼文社群互動功能列（按讚、留言開關、收藏） */}
-                <div className="flex items-center justify-between border-t border-neutral-100 px-5 py-3 md:px-6">
+                {/* 貼文社群互動功能列 */}
+                <div className="mt-2 flex items-center justify-between px-4 py-3 md:px-5">
                   <div className="flex items-center gap-1">
-                    {/* 按讚按鈕 */}
                     <button
                       onClick={() => void toggleReaction(post, "like")}
-                      aria-label={post.liked ? "取消讚" : "按讚"}
-                      className={`flex items-center gap-2 px-3 py-2 text-xs transition ${post.liked ? "text-rose-600" : "text-neutral-500 hover:text-neutral-900"}`}
+                      className={`flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-bold transition-all ${post.liked ? "bg-neutral-100 text-neutral-900" : "text-neutral-500 hover:bg-neutral-50 hover:text-neutral-900"}`}
                     >
-                      <Heart className={`size-4 ${post.liked ? "fill-current" : ""}`} /> {post.likes}
+                      <Heart className={`size-4 ${post.liked ? "fill-current" : ""}`} /> {post.likes > 0 && post.likes}
                     </button>
-                    {/* 展開/收合留言按鈕 */}
                     <button
                       onClick={() => toggleComments(post.id)}
-                      className="flex items-center gap-2 px-3 py-2 text-xs text-neutral-500 hover:text-neutral-900"
+                      className={`flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-bold transition-all ${openComments[post.id] ? "bg-neutral-900 text-white" : "text-neutral-500 hover:bg-neutral-50 hover:text-neutral-900"}`}
                     >
-                      <MessageCircle className="size-4" /> {post.commentCount}
+                      <MessageCircle className="size-4" /> {post.commentCount > 0 && post.commentCount}
                     </button>
                   </div>
-                  {/* 收藏按鈕 */}
                   <button
                     onClick={() => void toggleReaction(post, "save")}
-                    aria-label={post.saved ? "取消收藏" : "收藏貼文"}
-                    className={`p-2 transition ${post.saved ? "text-amber-600" : "text-neutral-400 hover:text-neutral-900"}`}
+                    className={`rounded-full p-2 transition-all ${post.saved ? "bg-amber-50 text-amber-500" : "text-neutral-400 hover:bg-neutral-50 hover:text-neutral-900"}`}
                   >
                     <Bookmark className={`size-4 ${post.saved ? "fill-current" : ""}`} />
                   </button>
@@ -754,52 +752,46 @@ export default function CommunityPage() {
 
                 {/* 🌟 留言區塊 🌟 */}
                 {openComments[post.id] && (
-                  <div className="border-t border-neutral-100 bg-neutral-50 px-5 py-4 md:px-6">
-                    {/* 留言載入中指示器 */}
+                  <div className="border-t border-neutral-100 bg-[#FBFBFB] px-5 py-5 md:px-6">
                     {loadingComments[post.id] ? (
-                      <div className="mb-4 flex items-center gap-2 text-xs text-neutral-400"><Loader2 className="size-4 animate-spin" /> 載入留言中...</div>
+                      <div className="mb-4 flex items-center justify-center gap-2 text-xs font-medium text-neutral-400 py-4"><Loader2 className="size-4 animate-spin text-neutral-900" /> 載入留言中...</div>
                     ) : (
-                      /* 留言清單渲染 */
-                      <div className="mb-4 space-y-3">
+                      <div className="mb-5 space-y-4">
                         {post.comments.map((comment) => (
-                          <div key={comment.id} className={`flex gap-2 text-xs leading-5 ${comment.parentId ? "ml-6 border-l border-neutral-200 pl-3" : ""}`}>
+                          <div key={comment.id} className={`flex gap-3 text-sm ${comment.parentId ? "ml-8 md:ml-12 border-l-2 border-neutral-200 pl-4" : ""}`}>
                             
-                            {/* 🌟 將頭像與名字包在可以點擊的區塊內（點擊可路由至該留言者個人頁面） 🌟 */}
                             <div 
-                              className="flex min-w-0 items-start gap-2 cursor-pointer group flex-1"
+                              className="flex min-w-0 items-start gap-3 cursor-pointer group flex-1"
                               onClick={() => {
-                                if (comment.account) {
-                                  router.push(`/profile/${encodeURIComponent(comment.account)}`);
-                                }
+                                if (comment.account) router.push(`/profile/${encodeURIComponent(comment.account)}`);
                               }}
                             >
                               {comment.avatar ? (
-                                <div className="relative mt-0.5 size-7 shrink-0 overflow-hidden rounded-full bg-neutral-100 group-hover:ring-2 ring-neutral-300 transition-all">
+                                <div className="relative mt-1 size-8 shrink-0 overflow-hidden rounded-full bg-neutral-100 shadow-sm group-hover:ring-2 ring-neutral-900/20 transition-all">
                                   <Image src={comment.avatar} alt={comment.author} fill unoptimized className="object-cover" />
                                 </div>
                               ) : (
-                                <div className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-neutral-200 text-[10px] font-bold text-neutral-600 group-hover:ring-2 ring-neutral-300 transition-all">
+                                <div className="mt-1 flex size-8 shrink-0 items-center justify-center rounded-full bg-neutral-200 text-[10px] font-bold text-neutral-600 shadow-sm group-hover:ring-2 ring-neutral-900/20 transition-all">
                                   {getInitial(comment.author)}
                                 </div>
                               )}
-                              <div className="min-w-0 flex-1">
-                                <div className="flex flex-wrap items-center gap-2">
-                                  <span className="font-bold text-neutral-800 group-hover:text-[#F04D79] transition-colors">{comment.author}</span>
-                                  <span className="text-[10px] text-neutral-400">{comment.time}</span>
-                                  
-                                  {/* 🌟 阻止事件冒泡 (e.stopPropagation)，避免點擊「回覆」時誤觸外層的頁面跳轉 🌟 */}
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setReplyTargets((current) => ({ ...current, [post.id]: comment }));
-                                    }}
-                                    className="text-[10px] font-semibold text-neutral-400 hover:text-neutral-800 z-10 relative"
-                                  >
-                                    回覆
-                                  </button>
+                              <div className="min-w-0 flex-1 bg-white border border-neutral-100 p-3 rounded-2xl rounded-tl-none shadow-sm">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <span className="font-bold text-xs text-neutral-900 group-hover:text-neutral-600 transition-colors">{comment.author}</span>
+                                  <span className="text-[10px] font-medium text-neutral-400">{comment.time}</span>
                                 </div>
-                                <p className="mt-1 text-neutral-500">{comment.content}</p>
+                                <p className="text-xs font-medium text-neutral-600 leading-relaxed mb-2">{comment.content}</p>
+                                
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setReplyTargets((current) => ({ ...current, [post.id]: comment }));
+                                  }}
+                                  className="text-[10px] font-bold text-neutral-400 hover:text-neutral-900 transition-colors flex items-center gap-1"
+                                >
+                                  回覆
+                                </button>
                               </div>
                             </div>
 
@@ -808,33 +800,36 @@ export default function CommunityPage() {
                       </div>
                     )}
 
-                    {/* 當前回覆目標提示列 */}
+                    {/* 回覆目標提示列 */}
                     {replyTargets[post.id] && (
-                      <div className="mb-2 flex items-center justify-between bg-white px-3 py-2 text-[11px] text-neutral-500">
-                        <span>正在回覆 {replyTargets[post.id]?.author}</span>
-                        <button
-                          type="button"
-                          onClick={() => setReplyTargets((current) => ({ ...current, [post.id]: undefined }))}
-                          className="text-neutral-400 hover:text-neutral-900"
-                        >
+                      <div className="mb-3 flex items-center justify-between rounded-xl bg-neutral-100 px-4 py-2 text-[11px] font-bold text-neutral-900">
+                        <span>正在回覆 @{replyTargets[post.id]?.author}</span>
+                        <button onClick={() => setReplyTargets((current) => ({ ...current, [post.id]: undefined }))} className="text-neutral-500 hover:text-neutral-900 transition-colors">
                           取消
                         </button>
                       </div>
                     )}
 
-                    {/* 新增留言輸入表單 */}
+                    {/* 新增留言輸入表單 (膠囊設計) */}
                     <form onSubmit={(event) => void submitComment(event, post)} className="flex gap-2">
-                      <input
-                        value={commentDrafts[post.id] || ""}
-                        onChange={(event) => setCommentDrafts((current) => ({ ...current, [post.id]: event.target.value }))}
-                        onFocus={() => openCommentsForPost(post.id)}
-                        placeholder={currentAccount ? "新增留言..." : "請先登入即可留言"}
-                        disabled={!currentAccount}
-                        className="min-w-0 flex-1 border border-neutral-200 bg-white px-3 py-2.5 text-xs outline-none focus:border-neutral-500 disabled:cursor-not-allowed disabled:opacity-50"
-                      />
-                      <button type="submit" aria-label="發送留言" className="bg-neutral-900 px-3 text-white disabled:opacity-40" disabled={!currentAccount}>
-                        <Send className="size-3.5" />
-                      </button>
+                      <div className="flex flex-1 items-center rounded-full border border-neutral-200 bg-white px-1.5 focus-within:border-neutral-900 transition-colors shadow-sm">
+                        <input
+                          value={commentDrafts[post.id] || ""}
+                          onChange={(event) => setCommentDrafts((current) => ({ ...current, [post.id]: event.target.value }))}
+                          onFocus={() => openCommentsForPost(post.id)}
+                          placeholder={currentAccount ? "留言分享你的看法..." : "請先登入即可留言"}
+                          disabled={!currentAccount}
+                          className="min-w-0 flex-1 bg-transparent px-4 py-2.5 text-xs font-medium outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                        />
+                        <button 
+                          type="submit" 
+                          aria-label="發送留言" 
+                          className="flex size-8 shrink-0 items-center justify-center rounded-full bg-neutral-900 text-white disabled:opacity-40 hover:bg-neutral-700 hover:shadow-md transition-all mr-0.5" 
+                          disabled={!currentAccount || !(commentDrafts[post.id]?.trim())}
+                        >
+                          <Send className="size-3 -ml-0.5" />
+                        </button>
+                      </div>
                     </form>
                   </div>
                 )}
@@ -843,32 +838,52 @@ export default function CommunityPage() {
         </main>
 
         {/* 右側邊欄：熱門話題 / 熱門標籤列表 */}
-        <aside className="space-y-5 lg:sticky lg:top-36 lg:self-start">
-          <section className="border border-neutral-200 bg-white p-5 shadow-sm">
-            <div className="mb-5 flex items-center justify-between">
-              <h2 className="flex items-center gap-2 text-sm font-bold">
-                <Compass className="size-4" /> 探索話題
+        <aside className="space-y-6 lg:sticky lg:top-24 lg:self-start hidden md:block">
+          <section className="rounded-[2rem] border border-neutral-100 bg-white p-6 shadow-[0_4px_20px_rgba(0,0,0,0.02)]">
+            <div className="mb-6 flex items-center justify-between">
+              <h2 className="flex items-center gap-2 text-sm font-extrabold text-neutral-900">
+                <Compass className="size-4 text-neutral-900" /> 探索話題
               </h2>
-              <span className="text-[10px] tracking-widest text-neutral-400">TRENDING</span>
+              <span className="rounded-full bg-neutral-100 px-2.5 py-1 text-[9px] font-bold tracking-widest text-neutral-900">TRENDING</span>
             </div>
-            <div className="space-y-1">
+            <div className="space-y-2">
               {visibleTopics.map((topic, index) => (
                 <button
                   key={topic.tag}
                   onClick={() => setSearch(topic.tag)}
-                  className="group flex w-full items-center gap-3 border-b border-neutral-100 py-3 text-left last:border-0"
+                  className="group flex w-full items-center gap-4 rounded-2xl border border-transparent p-3 text-left transition-all hover:bg-neutral-50 hover:border-neutral-100"
                 >
-                  <span className="text-xs font-bold text-neutral-300">{String(index + 1).padStart(2, "0")}</span>
+                  <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-[11px] font-bold text-neutral-400 group-hover:bg-neutral-200 group-hover:text-neutral-900 transition-colors">
+                    {String(index + 1).padStart(2, "0")}
+                  </div>
                   <span className="min-w-0 flex-1">
-                    <span className="block text-xs font-semibold text-neutral-700 group-hover:text-neutral-900">#{topic.tag}</span>
-                    <span className="mt-1 block text-[10px] text-neutral-400">{topic.count} 篇貼文</span>
+                    <span className="block text-sm font-bold text-neutral-700 group-hover:text-neutral-900">#{topic.tag}</span>
+                    <span className="mt-0.5 block text-[10px] font-medium text-neutral-400">{topic.count} 篇相關動態</span>
                   </span>
-                  <ChevronRight className="size-3.5 text-neutral-300" />
+                  <ChevronRight className="size-4 text-neutral-300 group-hover:text-neutral-900 group-hover:translate-x-1 transition-all" />
                 </button>
               ))}
             </div>
           </section>
         </aside>
+
+        {/* 手機版/右下角懸浮發文按鈕 (FAB) */}
+        <div className="fixed bottom-24 right-6 z-40 md:hidden">
+          <button
+            onClick={() => {
+              if (composeRef.current) {
+                composeRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                // 聚焦文字框
+                const textarea = composeRef.current.querySelector('textarea');
+                if (textarea) setTimeout(() => textarea.focus(), 500);
+              }
+            }}
+            className="flex size-14 items-center justify-center rounded-full bg-neutral-900 text-white shadow-xl shadow-neutral-900/20 hover:scale-110 transition-transform"
+          >
+            <PenLine className="size-6" />
+          </button>
+        </div>
+
       </div>
     </div>
   );

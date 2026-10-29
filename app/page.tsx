@@ -1,10 +1,7 @@
 "use client";
 
-// 載入 React 狀態鉤子與導頁組件
 import { useState } from "react";
 import { Link } from "./components/Link";
-
-// 載入 UI 圖示元件 (Lucide Icons)
 import {
     Search,
     MapPin,
@@ -17,142 +14,97 @@ import {
     Filter,
     MessageSquare,
     X,
+    CalendarDays
 } from "lucide-react";
-
-// 匯入目的地範例資料集
 import { destinations } from "./data/destinations";
 
 export default function Home() {
     /* ==========================================
      * 1. 狀態管理 (State Management)
      * ========================================== */
-    // selectedTag: 當前使用者選取的獨旅標籤 (若為 null 則代表未篩選，顯示預設推薦)
     const [selectedTag, setSelectedTag] = useState<string | null>(null);
-
-    // isMapMode: 景點探索區塊的顯示模式切換 (false: 列表模式, true: 地圖模式)
     const [isMapMode, setIsMapMode] = useState<boolean>(false);
-
-    // isAiOpen: 右下角 AI 獨旅禮賓顧問對話視窗的開啟/關閉狀態
     const [isAiOpen, setIsAiOpen] = useState<boolean>(false);
 
     /* ==========================================
-     * 2. 常數與靜態資料 (Constants & Mock Data)
+     * 2. 常數與假資料 (Constants)
      * ========================================== */
-    // 獨旅專屬快速篩選標籤
-    const soloTags = [
-        "安全首選",
-        "交通便利",
-        "社交青旅",
-        "慢活探索",
-        "自然療癒",
-    ];
-
-    // 熱門搜尋關鍵字快捷鍵
-    const hotKeywords = ["台南", "澎湖", "阿里山", "日月潭"];
-
-    // 即時情報跑馬燈資訊
-    const dynamicNews = [
-        "🔥 國旅提案：探索適合一個人慢遊的台灣目的地",
-        "✨ 山林散策：規劃阿里山森林步道與山城小旅行",
-        "💡 獨旅貼士：搭配台鐵、高鐵與客運規劃國內交通",
-    ];
+    const soloTags = ["一人旅", "安全", "預算友善", "深度體驗"];
+    const hotKeywords = ["東京", "京都", "北海道", "首爾"];
 
     /* ==========================================
-     * 3. 資料處理邏輯 (Data Processing)
+     * 3. 資料處理 (Data Processing)
      * ========================================== */
-    // 根據選取的標籤進行目的地過濾；若未選取標籤，預設僅展示前 6 筆精選資料
     const filteredDestinations = selectedTag
         ? destinations.filter((dest) => dest.tags?.includes(selectedTag))
         : destinations.slice(0, 6);
 
     return (
         <div className="flex flex-col bg-white text-neutral-900 relative">
+            
             {/* ==========================================
-             * 區塊 1: Hero Section & 全域搜尋與標籤篩選
+             * 區塊 1: 沉浸式主視覺 & 膠囊搜尋 (極簡黑白)
              * ========================================== */}
-            <section className="relative min-h-[90vh] flex items-center justify-center bg-[#F8F8F8] pt-20 pb-16">
-                <div className="relative z-10 container mx-auto px-6 text-center">
-                    {/* 副標題 / 品牌定位 */}
-                    <span className="text-xs tracking-[0.3em] uppercase text-neutral-500 mb-6 block font-medium">
+            <section className="relative min-h-[85vh] flex items-center justify-center bg-[#F8F8F8] pt-24 pb-16">
+                {/* 裝飾背景 */}
+                <div className="absolute inset-0 opacity-40 bg-[radial-gradient(#e5e5e5_1px,transparent_1px)] [background-size:16px_16px]"></div>
+                
+                <div className="relative z-10 container mx-auto px-4 md:px-6 text-center">
+                    <span className="text-xs tracking-[0.3em] uppercase text-neutral-900 mb-6 block font-bold">
                         Luxury Solo Travel Experience
                     </span>
-
-                    {/* 主標題與簡介 */}
-                    <h1 className="mb-8 max-w-5xl mx-auto text-6xl md:text-8xl font-extralight tracking-tight text-neutral-900">
-                        探索台灣之美
+                    <h1 className="mb-8 max-w-5xl mx-auto text-5xl md:text-7xl font-extrabold tracking-tight text-neutral-900">
+                        探索你的下一個<span className="text-neutral-500 italic">完美旅程</span>
                     </h1>
-                    <p className="text-lg md:text-xl mb-12 max-w-2xl mx-auto text-neutral-500 font-light tracking-wide leading-relaxed">
-                        探索台灣各地的風景與人情，規劃適合自己的國內旅程。
+                    <p className="text-base md:text-lg mb-12 max-w-2xl mx-auto text-neutral-500 font-medium tracking-wide leading-relaxed">
+                        不再需要妥協。從機票、住宿到行程安排，一站式打造專屬於你的安全、質感旅行體驗。
                     </p>
 
-                    {/* 搜尋輸入框卡片 */}
-                    <div className="max-w-4xl mx-auto bg-white shadow-[0_10px_50px_rgba(0,0,0,0.04)] border border-neutral-100 p-2 rounded-sm">
-                        <div className="flex flex-col md:flex-row gap-2">
-                            {/* 關鍵字搜尋 */}
-                            <div className="flex-1 relative flex items-center px-4">
-                                <Search className="size-4 text-neutral-400 mr-2 flex-shrink-0" />
-                                <input
-                                    placeholder="輸入關鍵字模糊搜尋（如：秘境、咖啡廳、極光...）"
-                                    className="w-full h-14 text-sm tracking-wide bg-transparent focus:outline-none placeholder:text-neutral-300"
-                                />
-                            </div>
-
-                            {/* 分隔線 (桌機版顯示) */}
-                            <div className="w-px bg-neutral-100 hidden md:block my-3"></div>
-
-                            {/* 目的地地區搜尋 */}
-                            <div className="flex-1 relative flex items-center px-4">
-                                <MapPin className="size-4 text-neutral-400 mr-2 flex-shrink-0" />
-                                <input
-                                    placeholder="國家或地區"
-                                    className="w-full h-14 text-sm tracking-wide bg-transparent focus:outline-none placeholder:text-neutral-300"
-                                />
-                            </div>
-
-                            {/* 搜尋按鈕 */}
+                    {/* 旅遊 APP 膠囊搜尋列 */}
+                    <div className="mx-auto max-w-4xl bg-white rounded-full shadow-xl shadow-slate-200/60 border border-neutral-100 p-2 flex flex-col md:flex-row items-center divide-y md:divide-y-0 md:divide-x divide-neutral-100">
+                        <div className="flex-1 px-6 py-3 w-full hover:bg-neutral-50 rounded-full transition cursor-text text-left">
+                            <div className="text-xs font-bold text-neutral-800 tracking-wider">目的地</div>
+                            <input placeholder="想去哪裡探索？" className="bg-transparent outline-none text-sm w-full text-neutral-500 mt-1 placeholder:text-neutral-300" />
+                        </div>
+                        <div className="flex-1 px-6 py-3 w-full hover:bg-neutral-50 rounded-full transition cursor-text text-left">
+                            <div className="text-xs font-bold text-neutral-800 tracking-wider">出發日期</div>
+                            <input placeholder="新增日期" className="bg-transparent outline-none text-sm w-full text-neutral-500 mt-1 placeholder:text-neutral-300" />
+                        </div>
+                        <div className="px-2 w-full md:w-auto mt-2 md:mt-0 pb-2 md:pb-0">
                             <Link to="/destinations">
-                                <button className="h-14 w-full md:w-auto px-12 bg-neutral-900 text-white text-sm tracking-widest uppercase hover:bg-neutral-800 transition-all duration-300 rounded-sm">
-                                    搜尋
+                                <button className="w-full md:w-auto bg-neutral-900 text-white px-8 py-4 rounded-full font-bold shadow-md shadow-neutral-900/10 hover:bg-neutral-700 transition-all flex items-center justify-center gap-2">
+                                    <Search className="size-4" /> 搜尋
                                 </button>
                             </Link>
                         </div>
                     </div>
 
-                    {/* 獨旅專屬標籤篩選 & 熱門關鍵字區塊 */}
-                    <div className="max-w-4xl mx-auto mt-6 text-left px-2 space-y-4">
-                        {/* 標籤按鈕列：可點擊切換篩選 */}
-                        <div className="flex flex-wrap items-center gap-2 text-xs">
-                            <span className="text-neutral-400 flex items-center gap-1 mr-2 tracking-wider">
-                                <Filter className="size-3" /> 專屬標籤：
+                    {/* 熱門標籤區 */}
+                    <div className="max-w-4xl mx-auto mt-8 text-left px-2 space-y-4">
+                        <div className="flex flex-wrap items-center justify-center md:justify-start gap-2 text-xs">
+                            <span className="text-neutral-400 flex items-center gap-1 mr-2 tracking-wider font-bold">
+                                <Filter className="size-3" /> 獨旅友善標籤
                             </span>
                             {soloTags.map((tag) => (
                                 <button
                                     key={tag}
-                                    onClick={() =>
-                                        setSelectedTag(
-                                            selectedTag === tag ? null : tag,
-                                        )
-                                    }
-                                    className={`px-3 py-1.5 tracking-wider border rounded-full transition-all duration-300 ${
+                                    onClick={() => setSelectedTag(selectedTag === tag ? null : tag)}
+                                    className={`px-4 py-2 tracking-wider border rounded-full transition-all duration-300 font-medium ${
                                         selectedTag === tag
-                                            ? "border-neutral-900 bg-neutral-900 text-white"
-                                            : "border-neutral-200 text-neutral-500 hover:border-neutral-400"
+                                            ? "border-neutral-900 bg-neutral-900 text-white shadow-md shadow-neutral-900/10"
+                                            : "border-neutral-200 bg-white text-neutral-500 hover:border-neutral-900 hover:text-neutral-900 hover:shadow-sm hover:bg-neutral-50"
                                     }`}
                                 >
                                     #{tag}
                                 </button>
                             ))}
                         </div>
-
-                        {/* 熱門關鍵字列表 */}
-                        <div className="flex flex-wrap items-center gap-3 text-xs">
-                            <span className="text-neutral-400 tracking-wider">
-                                熱門搜尋：
-                            </span>
+                        <div className="flex flex-wrap items-center justify-center md:justify-start gap-3 text-xs">
+                            <span className="text-neutral-400 tracking-wider font-bold">熱門搜尋：</span>
                             {hotKeywords.map((keyword) => (
                                 <button
                                     key={keyword}
-                                    className="text-neutral-600 hover:text-neutral-900 underline underline-offset-4 decoration-neutral-200 hover:decoration-neutral-900 transition-all"
+                                    className="text-neutral-500 hover:text-neutral-900 transition-colors font-medium"
                                 >
                                     {keyword}
                                 </button>
@@ -163,123 +115,87 @@ export default function Home() {
             </section>
 
             {/* ==========================================
-             * 區塊 2: 即時情報快訊跑馬燈 (Live News Bar)
+             * 區塊 2: 精選推薦牆 (大圓角 App 卡片風格)
              * ========================================== */}
-            <div className="bg-neutral-900 text-white py-3 overflow-hidden border-b border-neutral-800">
-                <div className="container mx-auto px-6 flex items-center gap-4 text-xs tracking-wider">
-                    {/* Live 標籤 */}
-                    <span className="bg-white text-neutral-900 px-2 py-0.5 uppercase font-medium text-[10px] tracking-widest flex items-center gap-1 flex-shrink-0">
-                        <Sparkles className="size-3 text-amber-500" /> Live
-                    </span>
-                    {/* 滾動動畫資訊內容 */}
-                    <div className="flex gap-12 animate-marquee whitespace-nowrap overflow-x-auto no-scrollbar">
-                        {dynamicNews.map((news, i) => (
-                            <span key={i} className="font-light opacity-90">
-                                {news}
-                            </span>
-                        ))}
-                    </div>
-                </div>
-            </div>
-
-            {/* ==========================================
-             * 區塊 3: 推薦牆 X 精選目的地列表
-             * ========================================== */}
-            <section className="py-32 bg-[#FBFBFB]">
-                <div className="container mx-auto px-6">
-                    {/* 區塊標題與更多按鈕 */}
-                    <div className="flex flex-col md:flex-row md:items-end justify-between mb-16 gap-6">
-                        <div className="space-y-4">
-                            <div className="flex items-center gap-2 text-xs tracking-[0.2em] uppercase text-neutral-400 font-medium">
-                                <TrendingUp className="size-4 text-neutral-900" />{" "}
-                                Featured Recommendation Wall
+            <section className="py-24 bg-[#FBFBFB]">
+                <div className="container mx-auto px-4 md:px-6">
+                    <div className="flex flex-col md:flex-row md:items-end justify-between mb-12 gap-6">
+                        <div className="space-y-3">
+                            <div className="flex items-center gap-2 text-xs tracking-[0.2em] uppercase text-neutral-900 font-bold">
+                                <TrendingUp className="size-4" /> Featured Destinations
                             </div>
-                            <h2 className="text-4xl md:text-5xl font-extralight tracking-tight text-neutral-900">
-                                {selectedTag
-                                    ? `專屬推薦：#${selectedTag}`
-                                    : "獨旅精選推薦牆"}
+                            <h2 className="text-3xl md:text-4xl font-bold tracking-tight text-neutral-900">
+                                {selectedTag ? `專屬推薦 #${selectedTag}` : "嚴選獨旅目的地"}
                             </h2>
-                            <div className="h-0.5 w-12 bg-neutral-900"></div>
-                            <p className="text-neutral-500 font-light tracking-wide text-sm italic">
-                                從台灣山海、城市街區到離島，尋找適合獨旅的旅行靈感
+                            <p className="text-neutral-500 font-medium tracking-wide text-sm">
+                                根據百萬獨旅者的真實數據，為你精選最安全、最舒適的行程。
                             </p>
                         </div>
                         <Link to="/destinations">
-                            <button className="group flex items-center gap-2 px-8 py-3 text-xs tracking-[0.2em] uppercase border border-neutral-200 hover:border-neutral-900 transition-all bg-white">
-                                查看全部{" "}
-                                <ArrowRight className="size-3 group-hover:translate-x-1 transition-transform" />
+                            <button className="group flex items-center gap-2 px-6 py-2.5 text-xs font-bold tracking-[0.1em] uppercase border border-neutral-200 hover:border-neutral-900 hover:bg-neutral-50 hover:text-neutral-900 transition-all bg-white rounded-full shadow-sm">
+                                探索更多 <ArrowRight className="size-3 group-hover:translate-x-1 transition-transform" />
                             </button>
                         </Link>
                     </div>
 
-                    {/* 目的地卡片網格 (Filtered Destination Grid) */}
                     {filteredDestinations.length === 0 ? (
-                        /* 無符合條件資料時顯示 */
-                        <div className="text-center py-12 text-neutral-400 font-light text-sm">
-                            沒有找到符合 #{selectedTag} 的地點，試試其他標籤吧！
+                        <div className="text-center py-20 text-neutral-400 font-medium text-sm bg-white rounded-3xl border border-dashed border-neutral-200">
+                            目前沒有符合 #{selectedTag} 的推薦行程
                         </div>
                     ) : (
-                        /* 目的地列表卡片 */
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-16">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8">
                             {filteredDestinations.map((destination) => (
-                                <Link
-                                    key={destination.id}
-                                    to={`/destinations/${destination.id}`}
-                                >
-                                    <div className="group cursor-pointer flex flex-col h-full justify-between">
-                                        <div>
-                                            {/* 目的地影像圖片與浮動標籤 */}
-                                            <div className="relative h-[420px] overflow-hidden mb-6 bg-neutral-100 rounded-sm">
-                                                <img
-                                                    src={destination.image}
-                                                    alt={destination.name}
-                                                    className="w-full h-full object-cover grayscale-[15%] group-hover:grayscale-0 group-hover:scale-105 transition-all duration-1000"
-                                                />
-                                                {/* 左上角類別標籤 */}
-                                                <div className="absolute top-6 left-6 bg-white/90 backdrop-blur-md px-3 py-1.5 shadow-sm border border-neutral-100">
-                                                    <span className="text-[10px] tracking-[0.15em] uppercase font-semibold text-neutral-800">
-                                                        {destination.category}
-                                                    </span>
-                                                </div>
-                                                {/* 右上角安全指數 */}
-                                                <div className="absolute top-6 right-6 bg-neutral-900/80 backdrop-blur-md px-3 py-1.5 text-white flex items-center gap-1 rounded-sm text-xs font-light">
-                                                    <Star className="size-3 text-amber-400 fill-amber-400" />
-                                                    <span>
-                                                        安全{" "}
-                                                        {destination.safetyRating || "9.5"}
-                                                    </span>
-                                                </div>
+                                <Link key={destination.id} to={`/destinations/${destination.id}`}>
+                                    <div className="group cursor-pointer flex flex-col h-full bg-white rounded-3xl border border-neutral-100 shadow-[0_4px_20px_rgba(0,0,0,0.02)] hover:shadow-[0_10px_40px_rgba(0,0,0,0.08)] hover:border-neutral-200 transition-all duration-300 p-3">
+                                        
+                                        {/* 圖片容器 (3XL 大圓角) */}
+                                        <div className="relative h-[320px] overflow-hidden mb-4 bg-neutral-100 rounded-[1.25rem]">
+                                            <img
+                                                src={destination.image}
+                                                alt={destination.name}
+                                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
+                                            />
+                                            {/* 左上角標籤 */}
+                                            <div className="absolute top-4 left-4 bg-white/95 backdrop-blur-md px-3 py-1.5 shadow-sm rounded-full">
+                                                <span className="text-[10px] tracking-[0.15em] font-bold text-neutral-900">
+                                                    {destination.category}
+                                                </span>
                                             </div>
-
-                                            {/* 景點名稱與簡述 */}
-                                            <div className="space-y-3 px-1">
-                                                <div className="flex justify-between items-baseline">
-                                                    <h3 className="text-2xl font-light tracking-wide text-neutral-900">
-                                                        {destination.name}
-                                                    </h3>
-                                                    <span className="text-xs text-neutral-400 tracking-wider font-light">
-                                                        {destination.country}
-                                                    </span>
-                                                </div>
-                                                <p className="text-neutral-500 text-sm font-light leading-relaxed line-clamp-2">
-                                                    {destination.description}
-                                                </p>
+                                            {/* 右上角毛玻璃評分 */}
+                                            <div className="absolute top-4 right-4 bg-neutral-900/75 backdrop-blur-md px-3 py-1.5 text-white flex items-center gap-1.5 rounded-full shadow-sm">
+                                                <Star className="size-3 text-amber-400 fill-amber-400" />
+                                                <span className="text-[10px] font-bold tracking-wider">安全 {destination.safetyRating || "9.5"}</span>
                                             </div>
                                         </div>
 
-                                        {/* 底部價格與進入詳情按鈕 */}
-                                        <div className="flex items-center justify-between pt-6 mt-6 border-t border-neutral-100 px-1">
-                                            <div className="flex flex-col">
-                                                <span className="text-[9px] text-neutral-400 tracking-widest uppercase mb-0.5">
-                                                    Starting from
-                                                </span>
-                                                <span className="text-lg font-light tracking-tight text-neutral-900">
-                                                    NT${" "}{destination.price.toLocaleString()}
+                                        {/* 文字資訊 */}
+                                        <div className="px-2 pb-2 flex-1 flex flex-col">
+                                            <div className="flex justify-between items-start mb-2">
+                                                <h3 className="text-xl font-bold tracking-wide text-neutral-900 group-hover:text-neutral-600 transition-colors">
+                                                    {destination.name}
+                                                </h3>
+                                                <span className="text-xs text-neutral-600 font-bold bg-neutral-100 px-2 py-1 rounded-md">
+                                                    {destination.country}
                                                 </span>
                                             </div>
-                                            <span className="text-[10px] tracking-widest uppercase font-medium border-b border-neutral-900 pb-1 group-hover:pr-2 transition-all">
-                                                Explore Detail
-                                            </span>
+                                            <p className="text-neutral-500 text-sm font-medium leading-relaxed line-clamp-2 mb-4">
+                                                {destination.description}
+                                            </p>
+                                            
+                                            {/* 底部價格 */}
+                                            <div className="mt-auto flex items-center justify-between pt-4 border-t border-neutral-50">
+                                                <div className="flex flex-col">
+                                                    <span className="text-[10px] text-neutral-400 font-bold tracking-widest uppercase mb-0.5">
+                                                        Starting from
+                                                    </span>
+                                                    <span className="text-lg font-bold text-neutral-900">
+                                                        NT$ {destination.price.toLocaleString()}
+                                                    </span>
+                                                </div>
+                                                <div className="size-8 rounded-full bg-neutral-100 flex items-center justify-center group-hover:bg-neutral-900 group-hover:text-white transition-colors text-neutral-400">
+                                                    <ArrowRight className="size-4" />
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
                                 </Link>
@@ -290,90 +206,73 @@ export default function Home() {
             </section>
 
             {/* ==========================================
-             * 區塊 4: 周邊景點與地圖/列表模式切換區塊
+             * 區塊 3: 地圖探索模式
              * ========================================== */}
-            <section className="py-32 bg-white border-t border-neutral-100">
-                <div className="container mx-auto px-6">
-                    {/* 標題與切換按鈕 */}
-                    <div className="flex flex-col md:flex-row md:items-end justify-between mb-16 gap-6">
-                        <div className="space-y-4">
-                            <h2 className="text-4xl md:text-5xl font-extralight tracking-tight text-neutral-900">
-                                周邊景點與地圖探索
+            <section className="py-24 bg-white border-y border-neutral-100">
+                <div className="container mx-auto px-4 md:px-6">
+                    <div className="flex flex-col md:flex-row md:items-end justify-between mb-12 gap-6">
+                        <div className="space-y-3">
+                            <h2 className="text-3xl md:text-4xl font-bold tracking-tight text-neutral-900">
+                                地圖探索模式
                             </h2>
-                            <div className="h-0.5 w-12 bg-neutral-900"></div>
-                            <p className="text-neutral-500 font-light tracking-wide text-sm">
-                                開啟地圖模式，快速定位身邊的獨旅友善地標與私房景點
+                            <p className="text-neutral-500 font-medium tracking-wide text-sm">
+                                直接在地圖上尋找你的下一個避風港。
                             </p>
                         </div>
-
-                        {/* 列表/地圖模式開關 */}
-                        <div className="flex border border-neutral-200 p-1 rounded-sm bg-neutral-50 self-start md:self-auto">
+                        <div className="flex border border-neutral-200 p-1 rounded-full bg-neutral-50 self-start md:self-auto">
                             <button
                                 onClick={() => setIsMapMode(false)}
-                                className={`px-6 py-2 text-xs tracking-[0.15em] uppercase font-medium transition-all ${!isMapMode ? "bg-neutral-900 text-white shadow-sm" : "text-neutral-400 hover:text-neutral-900"}`}
+                                className={`px-6 py-2.5 text-xs font-bold transition-all rounded-full ${!isMapMode ? "bg-neutral-900 text-white shadow-md shadow-neutral-900/10" : "text-neutral-500 hover:text-neutral-900"}`}
                             >
-                                列表模式
+                                網格檢視
                             </button>
                             <button
                                 onClick={() => setIsMapMode(true)}
-                                className={`px-6 py-2 text-xs tracking-[0.15em] uppercase font-medium transition-all flex items-center gap-2 ${isMapMode ? "bg-neutral-900 text-white shadow-sm" : "text-neutral-400 hover:text-neutral-900"}`}
+                                className={`px-6 py-2.5 text-xs font-bold transition-all flex items-center gap-2 rounded-full ${isMapMode ? "bg-neutral-900 text-white shadow-md shadow-neutral-900/10" : "text-neutral-500 hover:text-neutral-900"}`}
                             >
-                                <MapIcon className="size-3.5" /> 地圖模式
+                                <MapIcon className="size-4" /> 地圖檢視
                             </button>
                         </div>
                     </div>
 
-                    {/* 根據 isMapMode 狀態渲染 列表 或 地圖 UI */}
                     {!isMapMode ? (
-                        /* 模式 A：列表模式 (定位提示卡片) */
-                        <div className="bg-neutral-50 border border-neutral-100 p-8 md:p-12 text-center rounded-sm">
-                            <div className="max-w-md mx-auto space-y-6 py-12">
-                                <Compass className="size-10 mx-auto text-neutral-300" />
-                                <h3 className="text-lg font-light tracking-wide text-neutral-800">
-                                    探索您周邊的獨旅友善地標
-                                </h3>
-                                <p className="text-sm text-neutral-400 font-light leading-relaxed">
-                                    系統偵測到您目前的位置，點擊下方按鈕或切換至地圖模式，即可解鎖方圓 5 公里內最受獨旅者歡迎的極簡咖啡廳、安全文創街區與英語友善背包客棧。
+                        <div className="bg-neutral-50 border border-neutral-100 p-8 md:p-12 text-center rounded-[2rem]">
+                            <div className="max-w-md mx-auto space-y-6 py-10">
+                                <div className="size-20 bg-white rounded-full flex items-center justify-center mx-auto shadow-sm border border-neutral-200">
+                                    <Compass className="size-8 text-neutral-900" />
+                                </div>
+                                <h3 className="text-xl font-bold text-neutral-900">切換至地圖模式</h3>
+                                <p className="text-sm text-neutral-500 font-medium leading-relaxed">
+                                    開啟地圖檢視，直觀探索各地理位置的獨旅景點分布與距離關聯。
                                 </p>
-                                <button className="px-8 py-3 bg-neutral-900 text-white text-xs tracking-widest uppercase hover:bg-neutral-800 transition-all">
-                                    允許定位探索
+                                <button onClick={() => setIsMapMode(true)} className="px-8 py-3.5 bg-neutral-900 text-white text-sm font-bold rounded-full hover:bg-neutral-700 hover:shadow-md hover:shadow-neutral-900/10 transition-all">
+                                    開啟地圖
                                 </button>
                             </div>
                         </div>
                     ) : (
-                        /* 模式 B：地圖模式 (模擬互動地圖 UI) */
-                        <div className="relative h-[550px] bg-neutral-100 border border-neutral-200 rounded-sm overflow-hidden flex items-center justify-center">
-                            {/* 地圖網格背景效果 */}
+                        <div className="relative h-[550px] bg-neutral-100 border border-neutral-200 rounded-[2rem] overflow-hidden flex items-center justify-center">
                             <div className="absolute inset-0 opacity-40 bg-[radial-gradient(#e5e5e5_1px,transparent_1px)] [background-size:16px_16px] bg-white"></div>
-
-                            {/* 模擬地圖地標點 A */}
-                            <div className="absolute top-1/4 left-1/3 group cursor-pointer">
-                                <div className="bg-neutral-900 text-white text-[10px] tracking-wider px-3 py-1.5 rounded-sm shadow-xl flex items-center gap-1.5 transition-transform group-hover:-translate-y-1">
-                                    <MapPin className="size-3 text-amber-400 fill-amber-400" />{" "}
-                                    獨旅友善：藝創特區
+                            
+                            {/* 地圖打卡點 A */}
+                            <div className="absolute top-1/4 left-1/3 group cursor-pointer z-10">
+                                <div className="bg-neutral-900 text-white text-xs font-bold px-4 py-2 rounded-full shadow-xl flex items-center gap-2 transition-transform group-hover:-translate-y-1">
+                                    <MapPin className="size-3.5 text-white fill-neutral-900" /> 京都
                                 </div>
-                                <div className="w-2 h-2 bg-neutral-900 mx-auto rotate-45 -mt-1 shadow-lg"></div>
                             </div>
-
-                            {/* 模擬地圖地標點 B */}
-                            <div className="absolute bottom-1/3 right-1/4 group cursor-pointer">
-                                <div className="bg-neutral-900 text-white text-[10px] tracking-wider px-3 py-1.5 rounded-sm shadow-xl flex items-center gap-1.5 transition-transform group-hover:-translate-y-1">
-                                    <MapPin className="size-3 text-amber-400 fill-amber-400" />{" "}
-                                    24h 安全青年聚落
+                            
+                            {/* 地圖打卡點 B */}
+                            <div className="absolute bottom-1/3 right-1/4 group cursor-pointer z-10">
+                                <div className="bg-neutral-900 text-white text-xs font-bold px-4 py-2 rounded-full shadow-xl flex items-center gap-2 transition-transform group-hover:-translate-y-1">
+                                    <MapPin className="size-3.5 text-white fill-neutral-900" /> 24h 保全飯店
                                 </div>
-                                <div className="w-2 h-2 bg-neutral-900 mx-auto rotate-45 -mt-1 shadow-lg"></div>
                             </div>
-
-                            {/* 地圖左下角資訊面板 */}
-                            <div className="relative z-10 bg-white/90 backdrop-blur-md p-6 max-w-xs border border-neutral-200 shadow-xl absolute bottom-6 left-6 space-y-3">
-                                <span className="text-[9px] tracking-[0.2em] uppercase font-bold text-neutral-400 block">
-                                    Interactive Map
-                                </span>
-                                <h4 className="text-sm font-medium tracking-wide">
-                                    已為您篩選：台北市
-                                </h4>
-                                <p className="text-xs text-neutral-500 font-light leading-relaxed">
-                                    地圖已自動標註設有單人友善座位、24小時安保及女性專屬樓層的地標。
+                            
+                            <div className="relative z-20 bg-white/95 backdrop-blur-md p-6 max-w-sm border border-neutral-200 shadow-2xl absolute bottom-6 left-6 space-y-3 rounded-2xl">
+                                <span className="text-[10px] tracking-[0.2em] font-bold text-neutral-900 block uppercase">Interactive Map</span>
+                                <h4 className="text-base font-bold text-neutral-900">互動式安全地圖即將上線</h4>
+                                <p className="text-sm text-neutral-500 font-medium leading-relaxed">
+                                    我們正在整合全球犯罪率與即時治安數據，為獨旅者提供視覺化的安全庇護所地圖。
                                 </p>
                             </div>
                         </div>
@@ -382,40 +281,40 @@ export default function Home() {
             </section>
 
             {/* ==========================================
-             * 區塊 5: 旅行方式分類 (Categories)
+             * 區塊 4: 手機友善的橫向滑動分類 
              * ========================================== */}
-            <section className="py-32 bg-[#FBFBFB]">
-                <div className="container mx-auto px-6">
-                    <div className="text-center mb-20 space-y-4">
-                        <h2 className="text-4xl md:text-5xl font-extralight tracking-tight text-neutral-900">
-                            旅行方式
+            <section className="py-24 bg-[#FBFBFB]">
+                <div className="container mx-auto px-4 md:px-6">
+                    <div className="text-center mb-10 space-y-3">
+                        <h2 className="text-3xl md:text-4xl font-bold tracking-tight text-neutral-900">
+                            探索旅行主題
                         </h2>
-                        <p className="text-neutral-400 font-light tracking-[0.1em]">
-                            Find your travel inspiration
+                        <p className="text-neutral-500 font-medium">
+                            尋找專屬於你的旅行靈感
                         </p>
                     </div>
 
-                    {/* 四大旅行類別 */}
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
+                    {/* 水平滑動容器 */}
+                    <div className="flex overflow-x-auto gap-4 pb-6 no-scrollbar snap-x snap-mandatory px-4 -mx-4 md:px-0 md:mx-0">
                         {[
-                            { name: "文化探索", count: 120 },
-                            { name: "海島度假", count: 85 },
-                            { name: "戶外探險", count: 95 },
-                            { name: "美食文化", count: 150 },
+                            { name: "熱門推薦", count: 120, icon: "🔥" },
+                            { name: "海島度假", count: 85, icon: "🏝️" },
+                            { name: "歷史文化", count: 95, icon: "🏛️" },
+                            { name: "自然探索", count: 150, icon: "🏔️" },
+                            { name: "城市漫遊", count: 210, icon: "🏙️" },
+                            { name: "美食之旅", count: 320, icon: "🍜" },
                         ].map((category, idx) => (
                             <div
                                 key={idx}
-                                className="bg-white p-10 text-center border border-transparent hover:border-neutral-200 hover:shadow-xl hover:shadow-neutral-200/20 transition-all duration-500 cursor-pointer group"
+                                className="snap-center flex-shrink-0 flex items-center gap-4 px-6 py-4 bg-white border border-neutral-100 rounded-full hover:border-neutral-300 hover:shadow-md hover:shadow-neutral-900/5 transition-all duration-300 cursor-pointer group"
                             >
-                                <div className="w-16 h-16 border border-neutral-100 mx-auto mb-8 flex items-center justify-center text-xl font-extralight group-hover:bg-neutral-900 group-hover:text-white transition-all duration-500">
-                                    {category.name[0]}
+                                <div className="size-10 bg-neutral-100 rounded-full flex items-center justify-center text-xl group-hover:scale-110 group-hover:bg-neutral-200 transition-all">
+                                    {category.icon}
                                 </div>
-                                <h3 className="mb-2 text-lg font-light tracking-wide text-neutral-800">
-                                    {category.name}
-                                </h3>
-                                <p className="text-neutral-400 text-[10px] tracking-widest uppercase font-medium">
-                                    {category.count} Destinations
-                                </p>
+                                <div>
+                                    <h3 className="text-sm font-bold text-neutral-800">{category.name}</h3>
+                                    <p className="text-[10px] font-bold text-neutral-500 mt-0.5">{category.count} 個目的地</p>
+                                </div>
                             </div>
                         ))}
                     </div>
@@ -423,53 +322,51 @@ export default function Home() {
             </section>
 
             {/* ==========================================
-             * 區塊 6: AI 獨旅禮賓顧問 Floating Widget
+             * 區塊 5: AI 浮動按鈕 Widget
              * ========================================== */}
-            <div className="fixed bottom-8 right-8 z-50">
+            <div className="fixed bottom-24 md:bottom-8 right-6 md:right-8 z-50">
                 {!isAiOpen ? (
                     <button
                         onClick={() => setIsAiOpen(true)}
-                        className="bg-neutral-900 text-white p-4 rounded-full shadow-2xl hover:scale-105 transition-all duration-300 flex items-center gap-3 px-6 group"
+                        className="bg-neutral-900 text-white p-3.5 rounded-full shadow-[0_10px_30px_rgba(0,0,0,0.2)] border border-neutral-800 hover:border-neutral-600 hover:scale-105 hover:bg-neutral-800 transition-all duration-300 flex items-center gap-3 md:px-6 group"
                     >
-                        <Sparkles className="size-5 text-amber-400 group-hover:rotate-12 transition-transform" />
-                        <span className="text-xs tracking-widest uppercase font-light">
-                            AI 獨旅顧問
+                        <Sparkles className="size-5 text-white group-hover:rotate-12 transition-transform" />
+                        <span className="hidden md:inline text-sm font-bold">
+                            AI 專屬顧問
                         </span>
                     </button>
                 ) : (
-                    <div className="bg-white border border-neutral-200 shadow-2xl w-80 md:w-96 rounded-sm overflow-hidden flex flex-col">
-                        {/* 彈窗 Header */}
-                        <div className="bg-neutral-900 text-white p-4 flex items-center justify-between">
+                    <div className="bg-white border border-neutral-200 shadow-2xl shadow-neutral-900/10 w-[calc(100vw-3rem)] md:w-96 rounded-[1.5rem] overflow-hidden flex flex-col animate-in zoom-in-95 duration-200">
+                        {/* Chat Header */}
+                        <div className="bg-neutral-900 text-white p-4 flex items-center justify-between border-b border-neutral-700">
                             <div className="flex items-center gap-2">
-                                <Sparkles className="size-4 text-amber-400" />
-                                <span className="text-xs tracking-widest uppercase font-medium">
-                                    Solo Concierge AI
-                                </span>
+                                <Sparkles className="size-4 text-white" />
+                                <span className="text-sm font-bold">Solo Concierge AI</span>
                             </div>
-                            <button
-                                onClick={() => setIsAiOpen(false)}
-                                className="text-neutral-400 hover:text-white transition-colors"
-                            >
+                            <button onClick={() => setIsAiOpen(false)} className="text-neutral-400 hover:text-white transition-colors bg-white/10 p-1.5 rounded-full">
                                 <X className="size-4" />
                             </button>
                         </div>
-
-                        {/* 對話內容區塊 */}
-                        <div className="p-4 h-64 overflow-y-auto space-y-3 bg-neutral-50 text-xs">
-                            <div className="bg-white p-3 border border-neutral-100 shadow-sm text-neutral-600 leading-relaxed">
-                                您好！我是您的專屬獨旅禮賓顧問。請問您正在規劃獨自前往哪個國家，或是需要安全性評估？
+                        {/* Chat Body */}
+                        <div className="p-4 h-64 overflow-y-auto space-y-4 bg-neutral-50">
+                            <div className="flex gap-2">
+                                <div className="size-6 rounded-full bg-neutral-900 flex items-center justify-center shrink-0 shadow-sm shadow-neutral-900/10">
+                                    <Sparkles className="size-3 text-white" />
+                                </div>
+                                <div className="bg-white p-3 border border-neutral-200 shadow-sm text-neutral-700 text-sm font-medium leading-relaxed rounded-2xl rounded-tl-none">
+                                    你好！我是你的專屬獨旅顧問。無論是想尋找最安全的住宿，或是需要緊急行程備案，我隨時為你提供協助。今天想了解什麼呢？
+                                </div>
                             </div>
                         </div>
-
-                        {/* 對話輸入框 */}
+                        {/* Chat Input */}
                         <div className="p-3 bg-white border-t border-neutral-100 flex items-center gap-2">
                             <input
                                 type="text"
-                                placeholder="詢問關於獨旅安全性、行程安排..."
-                                className="flex-1 text-xs bg-neutral-50 border border-neutral-200 px-3 py-2 focus:outline-none focus:border-neutral-900"
+                                placeholder="輸入訊息..."
+                                className="flex-1 text-sm bg-[#F8F8F8] border border-neutral-200 px-4 py-3 rounded-full focus:outline-none focus:border-neutral-900 focus:bg-white transition-colors"
                             />
-                            <button className="bg-neutral-900 text-white p-2 hover:bg-neutral-800 transition-colors">
-                                <MessageSquare className="size-3.5" />
+                            <button className="bg-neutral-900 text-white p-3 rounded-full hover:bg-neutral-700 hover:shadow-md hover:shadow-neutral-900/10 transition-all">
+                                <MessageSquare className="size-4" />
                             </button>
                         </div>
                     </div>
