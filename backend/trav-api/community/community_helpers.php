@@ -106,6 +106,46 @@ function community_bind_params(mysqli_stmt $stmt, string $types, array &$params)
  * utf8mb4 可儲存 Emoji；utf8mb4_0900_ai_ci 仍需資料庫版本支援。
  * ============================================================================
  */
+function community_ensure_coordinates_column(mysqli $conn): void
+{
+    $columns = $conn->query("SHOW COLUMNS FROM `Community_Post` WHERE Field = 'Location_Coordinates'");
+    if (!$columns) {
+        throw new RuntimeException($conn->error);
+    }
+    $exists = $columns->num_rows > 0;
+    $columns->free();
+    if ($exists) return;
+
+    try {
+        if (!$conn->query("ALTER TABLE `Community_Post` ADD COLUMN `Location_Coordinates` VARCHAR(100) NULL")) {
+            throw new RuntimeException($conn->error);
+        }
+    } catch (mysqli_sql_exception $error) {
+        // 同時發文時另一個請求可能已補上欄位；其他資料庫錯誤仍須回報。
+        if ($error->getCode() !== 1060) throw $error;
+    }
+}
+
+function community_ensure_reaction_key(mysqli $conn): void
+{
+    $result = $conn->query("SHOW INDEX FROM `Community_Reaction` WHERE Key_name = 'PRIMARY'");
+    if (!$result) throw new RuntimeException($conn->error);
+    $columns = [];
+    while ($row = $result->fetch_assoc()) {
+        $columns[(int) $row['Seq_in_index']] = $row['Column_name'];
+    }
+    $result->free();
+    ksort($columns);
+    if (array_values($columns) === ['Post_ID', 'Account']) {
+        // 保留所有互動紀錄，讓同一會員可同時對同一貼文按讚與收藏。
+        if (!$conn->query('ALTER TABLE `Community_Reaction` DROP PRIMARY KEY, ADD PRIMARY KEY (`Post_ID`, `Account`, `Reaction_Type`)')) {
+            throw new RuntimeException($conn->error);
+        }
+    } elseif (array_values($columns) !== ['Post_ID', 'Account', 'Reaction_Type']) {
+        throw new RuntimeException('社群互動資料表的主鍵格式不符，請檢查資料庫結構。');
+    }
+}
+
 function community_ensure_tables(mysqli $conn): void
 {
     // 保留完整欄位、主鍵與索引定義；省略文字不能當成可執行的 SQL。
@@ -180,6 +220,10 @@ function community_ensure_tables(mysqli $conn): void
             throw new RuntimeException($conn->error);
         }
     }
+
+    // CREATE TABLE IF NOT EXISTS 不會更新舊表，需另外補上新版發文使用的座標欄位。
+    community_ensure_coordinates_column($conn);
+    community_ensure_reaction_key($conn);
 
     foreach (['Community_Post', 'Community_Post_Image', 'Community_Post_Tag', 'Community_Comment', 'Community_Reaction'] as $table) {
         $conn->query("ALTER TABLE `{$table}` CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci");
@@ -294,6 +338,11 @@ function community_public_url(?string $path): ?string
         return $path;
     }
 
+    // 相容舊版已存入資料庫的 localhost 圖片網址。
+    $path = preg_replace('~^https?://(?:localhost|127\.0\.0\.1)(?::\d+)?/(?:backend/)?(?=uploads/)~i', '/backend/', $path);
+    if (str_starts_with($path, '/backend/')) {
+        return $path;
+    }
     if (preg_match('/^https?:\/\//i', $path)) {
         return $path;
     }

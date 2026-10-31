@@ -51,7 +51,7 @@ function ensure_destinations_schema(mysqli $conn): void {
         $conn->query("UPDATE `Itinerary` SET `Public_Updated_At` = COALESCE(`Public_Updated_At`, `Start_Date`) WHERE `Is_Public` = 1 AND `Public_Updated_At` IS NULL");
     } catch (Throwable $ignored) {}
 
-    // 3. 嘗試建立舊版按讚、瀏覽與收藏表；現行 like／save 已改用共用互動表。
+    // 3. 保留歷史 Like／Save 表設定；現行 like／save／view 均使用共用互動表。
     try {
         // 建立【按讚紀錄表】
         // 複合主鍵 (PRIMARY KEY): 確保同一個 Account 對同一個 Itinerary 只能按一次讚
@@ -65,16 +65,8 @@ function ensure_destinations_schema(mysqli $conn): void {
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
         );
         
-        // 建立【瀏覽紀錄表】
-        // 以請求傳入的 Viewer_Key 去重；目前前端使用帳號或 sessionStorage 匿名識別，不是本檔計算 IP。
-        $conn->query(
-            "CREATE TABLE IF NOT EXISTS `Public_Itinerary_View` (
-                `Itinerary_ID` INT NOT NULL,
-                `Viewer_Key` VARCHAR(150) NOT NULL,
-                `Viewed_At` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                PRIMARY KEY (`Itinerary_ID`, `Viewer_Key`)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
-        );
+        // 瀏覽已整合至 Public_Itinerary_Interaction，不再建立獨立瀏覽表。
+        // 既有資料庫的結構更新由 destinations/migrations/unify_public_views.php 明確執行。
         
         // 建立【收藏紀錄表】
         // 舊版收藏結構；目前 bookmark action 不讀寫此表。CREATE IF NOT EXISTS 不會修改已有表。

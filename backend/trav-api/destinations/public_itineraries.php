@@ -333,7 +333,7 @@ function destinations_save_public_itinerary(): void
 }
 
 /**
- * action=view：以 Viewer_Key 去重後記錄瀏覽，必要時更新瀏覽數與快取。
+ * action=view：以共用互動表的 Viewer_Key 去重後記錄瀏覽，必要時更新瀏覽數與快取。
  * 來源：record_public_itinerary_view.php；保留原本輸入欄位、交易與 JSON 回應格式。
  */
 function destinations_record_public_itinerary_view(): void
@@ -345,6 +345,7 @@ function destinations_record_public_itinerary_view(): void
     $viewerKey = trim((string)($data->Viewer_Key ?? ''));
     if ($itineraryId <= 0 || $viewerKey === '' || mb_strlen($viewerKey) > 150) api_error('瀏覽資料格式錯誤。', 422);
 
+    // 資料表結構由部署時的 migration 更新；一般瀏覽請求不執行建表或 ALTER。
     $conn->begin_transaction();
     try {
         $itinerary = $conn->prepare('SELECT View_Count FROM Itinerary WHERE Itinerary_ID = ? AND Is_Public = 1 FOR UPDATE');
@@ -354,11 +355,20 @@ function destinations_record_public_itinerary_view(): void
         if (!$itinerary->get_result()->fetch_assoc()) throw new RuntimeException('找不到此公開行程。');
         $itinerary->close();
 
-        $insert = $conn->prepare('INSERT IGNORE INTO Public_Itinerary_View (Itinerary_ID, Viewer_Key) VALUES (?, ?)');
+        // 已存在的會員保留帳號關聯；匿名訪客只記 Viewer_Key，Account 為 NULL。
+        // Viewer_Key 僅用於統計去重，不是登入憑證，也不能用來授予會員操作權限。
+        $insert = $conn->prepare("INSERT INTO Public_Itinerary_Interaction (Itinerary_ID, Account, Action_Type, Viewer_Key)
+            VALUES (?, (SELECT Account FROM Member WHERE CONCAT('account:', Account) COLLATE utf8mb4_unicode_ci = ? LIMIT 1), 'view', ?)");
         if (!$insert) throw new RuntimeException('無法記錄瀏覽。');
-        $insert->bind_param('is', $itineraryId, $viewerKey);
-        if (!$insert->execute()) throw new RuntimeException('無法記錄瀏覽。');
-        $isNewView = $insert->affected_rows === 1;
+        $insert->bind_param('iss', $itineraryId, $viewerKey, $viewerKey);
+        try {
+            if (!$insert->execute()) throw new RuntimeException('無法記錄瀏覽。');
+            $isNewView = true;
+        } catch (mysqli_sql_exception $error) {
+            // 1062 代表唯一鍵重複，屬正常的重複瀏覽；其他錯誤交給外層回滾。
+            if ($error->getCode() !== 1062) throw $error;
+            $isNewView = false;
+        }
         $insert->close();
 
         if ($isNewView) {

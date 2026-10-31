@@ -275,6 +275,10 @@ function community_toggle_reaction(mysqli $conn): void
     $reactionType = $data->Reaction_Type ?? ''; // 'like' 或 'save'
 
     if ($account && $postId && $reactionType) {
+        if (!in_array($reactionType, ['like', 'save'], true)) {
+            community_json_response(['status' => 'error', 'message' => '不支援的互動種類'], 400);
+        }
+        community_ensure_reaction_key($conn);
         // 檢查目前狀態
         $check = $conn->prepare("SELECT 1 FROM Community_Reaction WHERE Post_ID = ? AND Account = ? AND Reaction_Type = ?");
         $check->bind_param("iss", $postId, $account, $reactionType);

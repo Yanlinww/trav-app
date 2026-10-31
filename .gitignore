@@ -42,3 +42,6 @@ next-env.d.ts
 
 #防止db_connect.php裡的密碼外洩
 backend/trav-api/db_connect.php
+
+# 資料庫搬移前的本機備份含會員識別資料，不提交到 Git。
+/.local-backups/

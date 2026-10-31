@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { normalizeMediaUrl } from '../lib/media-url';
 
 type AvatarImageProps = {
   src?: string | null; // 頭像來源；未提供或載入失敗時改用文字備案。
@@ -13,7 +14,8 @@ type AvatarImageProps = {
 export function AvatarImage(props: AvatarImageProps) {
   // src 改變便以新 key 重建內層元件，重置失敗狀態，讓新圖片重新嘗試載入。
   // 僅改 name 或樣式不會重建，仍沿用同一份 failed；更換成不同來源才解除原有失敗狀態。
-  return <AvatarContent key={props.src || ''} {...props} />;
+  const src = normalizeMediaUrl(props.src);
+  return <AvatarContent key={src || ''} {...props} src={src} />;
 }
 
 function AvatarContent({ src, name, className, fallbackClassName }: AvatarImageProps) {

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { normalizeMediaUrl } from '../lib/media-url';
 
 // 全站會員顯示資料，由 layout 的 AuthProvider 提供，登入頁與設定頁透過 login 更新。
 // 僅保存前端狀態，不管理權杖或驗證後端登入身分。
@@ -39,7 +40,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const savedUser = localStorage.getItem('user_info');
         if (savedUser) {
           // 將 JSON 字串還原為畫面用的會員物件，setUser 會通知訂閱 Context 的元件更新。
-          setUser(JSON.parse(savedUser));
+          const restoredUser: User = JSON.parse(savedUser);
+          setUser({ ...restoredUser, avatar: normalizeMediaUrl(restoredUser?.avatar) });
         }
       } catch (error) {
         // 儲存空間不可用或 JSON 損壞時只記錄錯誤；不會自動清除原字串或重試登入。
@@ -57,8 +59,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // 同步畫面與本機保存資料；登入成功及暱稱／頭像更新後皆可使用，不負責呼叫登入 API。
   const login = (userData: User) => {
     // 先更新目前元件樹的會員狀態，再保存字串供下次掛載還原；此處不寫入會員資料表。
-    setUser(userData);
-    localStorage.setItem('user_info', JSON.stringify(userData));
+    const normalizedUser = { ...userData, avatar: normalizeMediaUrl(userData.avatar) };
+    setUser(normalizedUser);
+    localStorage.setItem('user_info', JSON.stringify(normalizedUser));
     // 現有流程沒有捕捉 setItem 失敗，若儲存拋錯，不會自行復原已更新的 state。
   };
 
