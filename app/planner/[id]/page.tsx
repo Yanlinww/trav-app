@@ -298,7 +298,7 @@ function LuggagePanel({ itineraryId, currentUserId }: { itineraryId: string; cur
   useEffect(() => {
     if (!isLoaded) return;
     const timer = setTimeout(() => {
-      fetch("http://localhost:8080/itinerary/luggage.php?action=update", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ Itinerary_ID: itineraryId, Account: currentUserId, LuggageData: JSON.stringify(categories) }) })
+      fetch("/backend/itinerary/luggage.php?action=update", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ Itinerary_ID: itineraryId, Account: currentUserId, LuggageData: JSON.stringify(categories) }) })
       .then(res => res.json())
       .then(data => {
         if (data.status !== 'success') console.error('行李清單儲存失敗', data);
@@ -1009,7 +1009,7 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
     const previewUrl = URL.createObjectURL(file); setCoverImage(previewUrl); setIsUploading(true);
     try {
       const formData = new FormData(); formData.append("cover_image", file); formData.append("Itinerary_ID", params.id as string); formData.append("Account", user?.id || (user as any)?.Account);
-      const res = await fetch("http://localhost:8080/itinerary/uploads/upload.php?action=cover", { method: "POST", body: formData });
+      const res = await fetch("/backend/itinerary/uploads/upload.php?action=cover", { method: "POST", body: formData });
       const data = await res.json(); if (data.status === 'success') { setCoverImage(data.new_image_url); setCoverImageVersion(Date.now()); setHasRetriedCoverImage(false); } else { alert(data.message); setCoverImage(previousCoverImage); }
     } catch (error) { alert(error instanceof Error ? error.message : "圖片上傳失敗"); setCoverImage(previousCoverImage); } 
     finally { URL.revokeObjectURL(previewUrl); setIsUploading(false); if (fileInputRef.current) fileInputRef.current.value = ""; }
@@ -1152,7 +1152,7 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
   // 複製項目時保留地點，刻意清空時間，避免複製後立刻與原項目重疊。
   const handleDuplicateItem = async (item: any) => {
     try {
-      const res = await fetch("http://localhost:8080/itinerary/items.php?action=create", {
+      const res = await fetch("/backend/itinerary/items.php?action=create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1193,7 +1193,7 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
         });
         // 檢查注意：本機未同步 sortOrder，折線可能沿舊順序；fetch 未檢查 HTTP/JSON 業務錯誤。
         const sortUpdates = currentDayItems.map((item, index) => ({ id: item.id, sortOrder: index }));
-        fetch("http://localhost:8080/itinerary/items.php?action=sort", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ updates: sortUpdates }) }).catch(err => console.error(err));
+        fetch("/backend/itinerary/items.php?action=sort", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ updates: sortUpdates }) }).catch(err => console.error(err));
         const timeUpdates = currentDayItems.map((item, index) => ({ item, slot: timeSlots[index] }))
           .filter(({ item, slot }) => item.startTime !== slot.startTime || item.endTime !== slot.endTime);
         Promise.all(timeUpdates.map(({ item, slot }) => fetch("/backend/itinerary/items.php?action=update_time", {

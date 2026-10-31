@@ -49,7 +49,7 @@ export default function ProfilePage() {
     if (!currentAccount) return;
     const loadFollowStats = async () => {
       try {
-        const response = await fetch('http://localhost:8080/social.php?action=profile', {
+        const response = await fetch('/backend/social.php?action=profile', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ Account: currentAccount, Viewer_Account: currentAccount }),

@@ -87,7 +87,7 @@ export default function PublicProfilePage() {
     if (isUpdatingFollow) return;
     setIsUpdatingFollow(true);
     try {
-      const response = await fetch('http://localhost:8080/social.php?action=toggle_follow', {
+      const response = await fetch('/backend/social.php?action=toggle_follow', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         // Follower 是發起操作的人，Target 是被追蹤的人，不能對調兩者。
         body: JSON.stringify({ Follower_Account: currentAccount, Target_Account: targetAccount }),

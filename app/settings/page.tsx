@@ -88,7 +88,7 @@ function GoogleBindAction({ accountId, isGoogleBound, setIsGoogleBound }: Google
     setIsLoading(true);
     try {
       // 呼叫後端的解除綁定 API
-      const res = await fetch("http://localhost:8080/profile/profile.php?action=unbind_social", {
+      const res = await fetch("/backend/profile/profile.php?action=unbind_social", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ Account: accountId, Provider: 'google' }),
@@ -222,7 +222,7 @@ export default function SettingsPage() {
     if (!window.confirm("確定要解除 Facebook 綁定嗎？")) return;
     setIsBindingFb(true);
     try {
-      const res = await fetch("http://localhost:8080/profile/profile.php?action=unbind_social", {
+      const res = await fetch("/backend/profile/profile.php?action=unbind_social", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ Account: accountId, Provider: 'facebook' }),

@@ -34,7 +34,7 @@ type FollowListModalProps = {
 };
 
 // 目前固定指向本機 PHP 後端，與前端個人頁路由的網址不同。
-const API_BASE = 'http://localhost:8080';
+const API_BASE = '/backend';
 
 export default function FollowListModal({ account, viewerAccount = '', listType, isOwnList = false, onClose, onOwnFollowingChanged }: FollowListModalProps) {
   // 內部 state 讓使用者在彈窗內切換分頁，不必由父頁每次重新指定。
