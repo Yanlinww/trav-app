@@ -161,7 +161,6 @@ function community_create_post(mysqli $conn): void
     $title = trim((string) community_get_request_value($data, 'Title', ''));
     $content = trim((string) community_get_request_value($data, 'Content', ''));
     $location = trim((string) community_get_request_value($data, 'Location_Name', ''));
-    $coordinates = trim((string) community_get_request_value($data, 'Location_Coordinates', ''));
     $tagsInput = community_get_request_value($data, 'Tags', []);
     $tags = community_normalize_tags($tagsInput);
 
@@ -180,16 +179,15 @@ function community_create_post(mysqli $conn): void
 
     $titleValue = $title !== '' ? $title : null;
     $locationValue = $location !== '' ? $location : null;
-    $coordinatesValue = $coordinates !== '' ? $coordinates : null;
 
     $conn->begin_transaction();
 
     try {
         $stmt = $conn->prepare(
-            "INSERT INTO `Community_Post` (`Account`, `Post_Type`, `Title`, `Content`, `Location_Name`, `Location_Coordinates`)
-             VALUES (?, ?, ?, ?, ?, ?)"
+            "INSERT INTO `Community_Post` (`Account`, `Post_Type`, `Title`, `Content`, `Location_Name`)
+             VALUES (?, ?, ?, ?, ?)"
         );
-        $stmt->bind_param("ssssss", $account, $postType, $titleValue, $content, $locationValue, $coordinatesValue);
+        $stmt->bind_param("sssss", $account, $postType, $titleValue, $content, $locationValue);
         $stmt->execute();
         $postId = (int) $conn->insert_id;
         $stmt->close();

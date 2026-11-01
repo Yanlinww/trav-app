@@ -46,9 +46,9 @@ function expense_input(object $data): array {
         api_error('請輸入名稱，且不能超過 255 個字');
     }
     // filter_var 失敗會回傳 false，所以用 === false 區分它與數字 0。
-    // is_finite 排除無限大等非有限數值，最後再限制金額必須大於 0。
-    if ($amount === false || !is_finite($amount) ||$amount <= 0) {
-        api_error('金額格式錯誤，必須是大於 0 的數字');
+    // 花費以整元記錄；拒絕小數，不四捨五入。上限對應 DECIMAL(12,2) 的整數位數。
+    if ($amount === false || !is_finite($amount) || $amount <= 0 || floor($amount) !== $amount || $amount > 9999999999) {
+        api_error('金額須為 1 至 9,999,999,999 元的整數');
     }
     // 分類存英文代碼，中文顯示名稱由前端對照；第三參數 true 要求型別也相同。
     if (!in_array($category, ['food', 'hotel', 'transport', 'ticket', 'shopping', 'other'], true)) {

@@ -139,11 +139,11 @@ function BudgetPanel({ itineraryId, currentUserId }: { itineraryId: string; curr
     setFormOpen(true);
   };
 
-  // 驗證名稱與正數金額，選 create/update，成功後重讀清單與總額。
+  // 花費以整元記錄；拒絕小數，不四捨五入。上限對應資料庫 DECIMAL(12,2) 的整數位數。
   const saveExpense = async () => {
     const numericAmount = Number(amount);
-    if (!title.trim() || !Number.isFinite(numericAmount) || numericAmount <= 0) {
-      setError('請輸入名稱與大於 0 的金額');
+    if (!title.trim() || !Number.isInteger(numericAmount) || numericAmount <= 0 || numericAmount > 9999999999) {
+      setError('請輸入名稱，金額須為 1 至 9,999,999,999 元的整數');
       return;
     }
     setSaving(true);
@@ -231,7 +231,7 @@ function BudgetPanel({ itineraryId, currentUserId }: { itineraryId: string; curr
           <form onSubmit={(event) => { event.preventDefault(); void saveExpense(); }} className="w-full max-w-md space-y-4 rounded-2xl bg-white p-6 shadow-xl">
             <h3 className="text-lg font-bold text-slate-800">{editingId === null ? '新增個人花費' : '修改個人花費'}</h3>
             <label className="block text-sm text-slate-600">名稱<input required value={title} onChange={(event) => setTitle(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 outline-none focus:border-[#F04D79]" /></label>
-            <label className="block text-sm text-slate-600">金額<input required type="number" min="0.01" step="0.01" value={amount} onChange={(event) => setAmount(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 outline-none focus:border-[#F04D79]" /></label>
+            <label className="block text-sm text-slate-600">金額（元）<input required type="number" inputMode="numeric" min="1" max="9999999999" step="1" value={amount} onChange={(event) => setAmount(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 outline-none focus:border-[#F04D79]" /></label>
             <label className="block text-sm text-slate-600">類別<select value={category} onChange={(event) => setCategory(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2">{categories.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
             <label className="block text-sm text-slate-600">地點（選填）<input value={location} onChange={(event) => setLocation(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 outline-none focus:border-[#F04D79]" /></label>
             {error && <p role="alert" className="rounded-lg bg-red-50 p-3 text-xs text-red-600">{error}</p>}

@@ -97,35 +97,9 @@ function community_bind_params(mysqli_stmt $stmt, string $types, array &$params)
 }
 
 /**
- * ============================================================================
- * 資料庫結構自動確保函式 (Auto Schema Migration)
- * 定義五張表：貼文、圖片、標籤、留言、互動；以 Post_ID 連結相關資料。
- * CREATE TABLE IF NOT EXISTS 只在表不存在時建立，不會替既有表補齊缺少欄位。
- * 下方 ALTER 會轉換既有表的字元集與排序規則，呼叫本函式會實際執行 DDL。
- * 入口目前在發文流程呼叫；一般載入此檔案不會自動呼叫本函式。
- * utf8mb4 可儲存 Emoji；utf8mb4_0900_ai_ci 仍需資料庫版本支援。
- * ============================================================================
+ * 檢查互動表的複合主鍵，必要時加入 Reaction_Type，讓按讚與收藏可並存。
+ * 只接受下方列出的新舊格式；不認識的主鍵格式會回報錯誤。
  */
-function community_ensure_coordinates_column(mysqli $conn): void
-{
-    $columns = $conn->query("SHOW COLUMNS FROM `Community_Post` WHERE Field = 'Location_Coordinates'");
-    if (!$columns) {
-        throw new RuntimeException($conn->error);
-    }
-    $exists = $columns->num_rows > 0;
-    $columns->free();
-    if ($exists) return;
-
-    try {
-        if (!$conn->query("ALTER TABLE `Community_Post` ADD COLUMN `Location_Coordinates` VARCHAR(100) NULL")) {
-            throw new RuntimeException($conn->error);
-        }
-    } catch (mysqli_sql_exception $error) {
-        // 同時發文時另一個請求可能已補上欄位；其他資料庫錯誤仍須回報。
-        if ($error->getCode() !== 1060) throw $error;
-    }
-}
-
 function community_ensure_reaction_key(mysqli $conn): void
 {
     $result = $conn->query("SHOW INDEX FROM `Community_Reaction` WHERE Key_name = 'PRIMARY'");
@@ -146,6 +120,12 @@ function community_ensure_reaction_key(mysqli $conn): void
     }
 }
 
+/**
+ * 發文前確保貼文、圖片、標籤、留言與互動五張表存在。
+ * CREATE TABLE IF NOT EXISTS 不會補齊既有表的欄位；下方另檢查互動主鍵。
+ * ALTER 會轉換既有表的字元集與排序規則，呼叫時會實際執行 DDL。
+ * utf8mb4 可儲存 Emoji；utf8mb4_0900_ai_ci 需資料庫版本支援。
+ */
 function community_ensure_tables(mysqli $conn): void
 {
     // 保留完整欄位、主鍵與索引定義；省略文字不能當成可執行的 SQL。
@@ -158,7 +138,6 @@ function community_ensure_tables(mysqli $conn): void
             `Title` VARCHAR(120) NULL,
             `Content` TEXT NOT NULL,
             `Location_Name` VARCHAR(100) NULL,
-            `Location_Coordinates` VARCHAR(100) NULL,
             `Itinerary_ID` VARCHAR(50) NULL,
             `Status` VARCHAR(20) NOT NULL DEFAULT 'active',
             `Created_At` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -221,8 +200,6 @@ function community_ensure_tables(mysqli $conn): void
         }
     }
 
-    // CREATE TABLE IF NOT EXISTS 不會更新舊表，需另外補上新版發文使用的座標欄位。
-    community_ensure_coordinates_column($conn);
     community_ensure_reaction_key($conn);
 
     foreach (['Community_Post', 'Community_Post_Image', 'Community_Post_Tag', 'Community_Comment', 'Community_Reaction'] as $table) {
@@ -457,7 +434,6 @@ function community_format_post(mysqli $conn, array $row): array
         'title' => $row['Title'],
         'content' => $row['Content'],
         'location' => $row['Location_Name'],
-        'locationCoordinates' => $row['Location_Coordinates'],
         'createdAt' => $row['Created_At'],
         'time' => community_time_ago($row['Created_At']),
         'author' => [
@@ -528,7 +504,6 @@ function community_fetch_posts_by_ids(mysqli $conn, array $postIds, string $view
             'title' => $row['Title'],
             'content' => $row['Content'],
             'location' => $row['Location_Name'],
-            'locationCoordinates' => $row['Location_Coordinates'],
             'createdAt' => $row['Created_At'],
             'time' => community_time_ago($row['Created_At']),
             'author' => [
