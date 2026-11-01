@@ -6,11 +6,11 @@ import { useRouter } from 'next/navigation';
 import { Bell, Heart, MessageCircle, CheckCircle2, Loader2, Info, UserPlus } from 'lucide-react';
 
 
-// notifications.php 回傳的通知；referenceId 目前不作為本頁導航目標。
+// notifications.php 回傳的通知；按讚及留言以 referenceId 指向相關貼文。
 type Notification = {
   id: number; // 列表 key，與 referenceId 指向的業務對象不同。
   type: 'like' | 'comment' | 'follow' | 'system';
-  referenceId: string | null; // 相關業務資料的識別碼；目前點擊不靠它定位特定貼文。
+  referenceId: string | null; // 按讚／留言通知對應的貼文編號。
   message: string;
   isRead: boolean; // 控制未讀項目的外觀；不因點擊通知而在此自動變更。
   createdAt: string; // 交由畫面轉為 zh-TW 日期時間顯示。
@@ -94,10 +94,12 @@ export default function NotificationsPage() {
     }
   };
 
-  // 讚／留言前往動態牆，追蹤通知前往發送者個人頁；此操作不呼叫已讀 API。
+  // 以貼文編號開啟通知內容；留言通知一併展開留言，此操作不呼叫已讀 API。
   const handleNotificationClick = (notif: Notification) => {
     if (notif.type === 'like' || notif.type === 'comment') {
-      router.push(`/community`);
+      const params = new URLSearchParams({ postId: notif.referenceId ?? '' });
+      if (notif.type === 'comment') params.set('comments', '1');
+      router.push(`/community?${params.toString()}`);
     } else if (notif.type === 'follow' && notif.sender.account) {
       // 編碼帳號作為單一路徑參數，避免特殊字元改變個人頁網址結構。
       router.push(`/profile/${encodeURIComponent(notif.sender.account)}`);

@@ -1,10 +1,10 @@
 "use client";
 
 // 引用 React 核心 Hooks 與相關型別
-import { ChangeEvent, FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ChangeEvent, FormEvent, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 // 引用 Next.js 最佳化圖片組件與路由管理 Hook
 import Image from "next/image";
-import { useRouter } from "next/navigation"; 
+import { useRouter, useSearchParams } from "next/navigation";
 // 引用 Lucide React 圖示庫，用於 UI 介面圖示呈現
 import {
   Bookmark,
@@ -150,10 +150,19 @@ async function readApiResponse<T>(response: Response): Promise<ApiResponse<T>> {
  *  ========================================== */
 
 export default function CommunityPage() {
+  // URL 查詢參數由內層讀取，Suspense 讓正式建置可預先產生頁面外殼。
+  return <Suspense fallback={<p className="p-8 text-center text-sm text-neutral-500">載入動態中...</p>}><CommunityContent /></Suspense>;
+}
+
+function CommunityContent() {
   // 從 AuthContext 取得使用者驗證資訊與載入狀態
   const { user, loading: authLoading } = useAuth();
   // Next.js 頁面路由器
-  const router = useRouter(); 
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const targetPostId = searchParams.get("postId");
+  const focusedPost = targetPostId !== null;
+  const expandComments = searchParams.get("comments") === "1";
   // 取得當前登入者帳號（整合不同可能的欄位名稱）
   const currentAccount = user ? String(user.id || user.Account || "") : "";
 
@@ -209,7 +218,7 @@ export default function CommunityPage() {
   /**
    * 載入貼文列表（支援分類過濾、搜尋關鍵字、登入者狀態綁定）
    */
-  const loadPosts = useCallback(async () => {
+  const loadPosts = useCallback(async (signal?: AbortSignal) => {
     const params = new URLSearchParams();
     params.set("type", activeTab);
     if (search.trim()) params.set("search", search.trim());
@@ -217,22 +226,35 @@ export default function CommunityPage() {
 
     setLoadingPosts(true);
     setError("");
+    setPosts([]);
 
     try {
-      const response = await fetch(`${COMMUNITY_API}/community.php?action=posts&${params.toString()}`, {
-        cache: "no-store",
-      });
-      const data = await readApiResponse<CommunityPost[]>(response);
-      setPosts(data.data ?? []);
-      // 重新載入貼文時重置留言暫存狀態
-      setLoadedComments({});
-      setOpenComments({});
+      if (focusedPost) {
+        if (!/^[1-9]\d*$/.test(targetPostId) || Number(targetPostId) > 2147483647) {
+          throw new Error("通知未提供有效的貼文編號");
+        }
+        params.set("postId", targetPostId);
+        const response = await fetch(`${COMMUNITY_API}/community.php?action=post&${params.toString()}`, { cache: "no-store", signal });
+        const data = await readApiResponse<CommunityPost>(response);
+        if (!data.data) throw new Error("這篇貼文已不存在或無法顯示。");
+        setPosts([data.data]);
+        // 單篇 API 已附帶留言；留言通知直接展開，不重複請求。
+        setLoadedComments({ [data.data.id]: true });
+        setOpenComments({ [data.data.id]: expandComments });
+      } else {
+        const response = await fetch(`${COMMUNITY_API}/community.php?action=posts&${params.toString()}`, { cache: "no-store", signal });
+        const data = await readApiResponse<CommunityPost[]>(response);
+        setPosts(data.data ?? []);
+        setLoadedComments({});
+        setOpenComments({});
+      }
     } catch (apiError) {
+      if (signal?.aborted) return;
       setError(apiError instanceof Error ? apiError.message : "載入動態失敗");
     } finally {
-      setLoadingPosts(false);
+      if (!signal?.aborted) setLoadingPosts(false);
     }
-  }, [activeTab, currentAccount, search]);
+  }, [activeTab, currentAccount, search, focusedPost, targetPostId, expandComments]);
 
   /* ------------------- 副作用處理 (useEffect) ------------------- */
 
@@ -246,11 +268,13 @@ export default function CommunityPage() {
 
   // 當搜尋條件或分頁標籤變更時載入貼文（針對搜尋輸入實作 250ms Debounce 防抖，避免頻繁請求）
   useEffect(() => {
+    // 離開通知貼文時取消舊請求，避免較晚的回應覆蓋新畫面。
+    const controller = new AbortController();
     // 只有搜尋輸入才 debounce；初次進入與切換分類不再固定多等 250ms。
     const timer = window.setTimeout(() => {
-      void loadPosts();
+      void loadPosts(controller.signal);
     }, search.trim() ? 250 : 0);
-    return () => window.clearTimeout(timer);
+    return () => { window.clearTimeout(timer); controller.abort(); };
   }, [loadPosts, search]);
 
   /* ------------------- 事件處理常式 (Event Handlers) ------------------- */
@@ -261,6 +285,13 @@ export default function CommunityPage() {
   function selectTab(tab: TabType) {
     setActiveTab(tab);
     setPostType(tab === "all" ? "footprint" : tab);
+    if (focusedPost) router.push("/community");
+  }
+
+  // 從通知貼文搜尋或點標籤時，回到一般動態列表套用搜尋條件。
+  function searchPosts(value: string) {
+    setSearch(value);
+    if (focusedPost) router.push("/community");
   }
 
   /**
@@ -486,7 +517,7 @@ export default function CommunityPage() {
               <Search className="size-4 text-neutral-400" />
               <input
                 value={search}
-                onChange={(event) => setSearch(event.target.value)}
+                onChange={(event) => searchPosts(event.target.value)}
                 placeholder="搜尋地點、心得或 #標籤"
                 className="w-full bg-transparent text-sm outline-none placeholder:text-neutral-400 font-medium"
               />
@@ -517,6 +548,12 @@ export default function CommunityPage() {
         
         {/* 左側：發文框與貼文串流 */}
         <main className="min-w-0 space-y-8">
+          {focusedPost && (
+            <div className="flex items-center justify-between rounded-2xl border border-neutral-200 bg-white px-5 py-4 text-sm">
+              <span className="font-bold">通知相關貼文</span>
+              <button type="button" onClick={() => router.push("/community")} className="font-bold text-neutral-600 hover:text-neutral-900">返回全部動態</button>
+            </div>
+          )}
           
           {/* 全域 API 錯誤提示區塊 */}
           {error && (
@@ -529,7 +566,7 @@ export default function CommunityPage() {
           )}
 
           {/* 發布貼文表單組件 (大圓角 App 質感) */}
-          <form ref={composeRef} onSubmit={publishPost} className="rounded-[2rem] border border-neutral-100 bg-white p-5 md:p-6 shadow-[0_4px_20px_rgba(0,0,0,0.03)] transition-all hover:shadow-[0_4px_20px_rgba(0,0,0,0.06)]">
+          {!focusedPost && <form ref={composeRef} onSubmit={publishPost} className="rounded-[2rem] border border-neutral-100 bg-white p-5 md:p-6 shadow-[0_4px_20px_rgba(0,0,0,0.03)] transition-all hover:shadow-[0_4px_20px_rgba(0,0,0,0.06)]">
             <div className="flex gap-4">
               {/* 發文者頭像 */}
               <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-neutral-900 text-xs font-bold text-white shadow-sm shadow-neutral-900/10">
@@ -623,7 +660,7 @@ export default function CommunityPage() {
                 </div>
               </div>
             </div>
-          </form>
+          </form>}
 
           {/* 載入中骨架 Placeholder */}
           {loadingPosts && (
@@ -634,7 +671,7 @@ export default function CommunityPage() {
           )}
 
           {/* 無動態資料時的 Empty State */}
-          {!loadingPosts && posts.length === 0 && (
+          {!loadingPosts && !error && posts.length === 0 && (
             <div className="flex flex-col items-center justify-center rounded-[2rem] border border-dashed border-neutral-200 bg-white py-20 text-neutral-400">
               <div className="size-16 rounded-full bg-neutral-50 flex items-center justify-center mb-3">
                 <Compass className="size-8 text-neutral-300" />
@@ -697,7 +734,7 @@ export default function CommunityPage() {
                     {post.tags.map((item) => (
                       <button
                         key={item}
-                        onClick={() => setSearch(item)}
+                        onClick={() => searchPosts(item)}
                         className="rounded-full bg-neutral-50 px-3 py-1 text-[11px] font-bold text-neutral-500 hover:bg-neutral-900 hover:text-white transition-colors"
                       >
                         #{item}
@@ -850,7 +887,7 @@ export default function CommunityPage() {
               {visibleTopics.map((topic, index) => (
                 <button
                   key={topic.tag}
-                  onClick={() => setSearch(topic.tag)}
+                  onClick={() => searchPosts(topic.tag)}
                   className="group flex w-full items-center gap-4 rounded-2xl border border-transparent p-3 text-left transition-all hover:bg-neutral-50 hover:border-neutral-100"
                 >
                   <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-[11px] font-bold text-neutral-400 group-hover:bg-neutral-200 group-hover:text-neutral-900 transition-colors">
@@ -868,7 +905,7 @@ export default function CommunityPage() {
         </aside>
 
         {/* 手機版/右下角懸浮發文按鈕 (FAB) */}
-        <div className="fixed bottom-24 right-6 z-40 md:hidden">
+        {!focusedPost && <div className="fixed bottom-24 right-6 z-40 md:hidden">
           <button
             onClick={() => {
               if (composeRef.current) {
@@ -882,7 +919,7 @@ export default function CommunityPage() {
           >
             <PenLine className="size-6" />
           </button>
-        </div>
+        </div>}
 
       </div>
     </div>

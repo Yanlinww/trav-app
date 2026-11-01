@@ -1,8 +1,8 @@
 <?php
 /**
  * 社群功能入口：貼文列表、熱門標籤、留言、發文、互動及新增留言。
- * 網址格式：/community/community.php?action=posts|topics|comments|create|reaction|comment。
- * 前端讀取使用 GET、寫入使用 POST；只有 create 強制檢查 POST，並接受圖片 multipart/form-data。
+ * 網址格式：/community/community.php?action=posts|post|topics|comments|create|reaction|comment。
+ * 前端讀取使用 GET、寫入使用 POST；post 檢查 GET，create 檢查 POST 並接受圖片 multipart/form-data。
  * 其他 action 依各自的 $_GET／JSON 取值；CORS 標頭本身不會限制請求方法或驗證身分。
  * 共用查詢、格式化及回應函式保留在 community_helpers.php。
  */
@@ -404,9 +404,28 @@ function community_add_comment(mysqli $conn): void
     }
 }
 
+/** 通知連結讀取單篇貼文；沿用 active 篩選，不回傳已隱藏或已刪除的貼文。 */
+function community_get_post(mysqli $conn): void
+{
+    if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
+        community_json_response(['status' => 'error', 'message' => '只支援 GET'], 405);
+    }
+    $postId = filter_var($_GET['postId'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1, 'max_range' => 2147483647]]);
+    if ($postId === false) {
+        community_json_response(['status' => 'error', 'message' => '通知未提供有效的貼文編號'], 400);
+    }
+    $viewer = is_string($_GET['Account'] ?? null) ? $_GET['Account'] : '';
+    $post = community_fetch_single_post($conn, $postId, $viewer);
+    if (!$post) {
+        community_json_response(['status' => 'error', 'message' => '這篇貼文已不存在或無法顯示。'], 404);
+    }
+    community_json_response(['status' => 'success', 'data' => $post]);
+}
+
 // 固定 action 白名單；以網址選擇功能，請求參數沿用原端點的 GET、JSON 或 FormData。
 $handlers = [
     'posts' => 'community_list_posts', // 依分類、關鍵字及查看者帳號取得貼文；保留批次讀取標籤與圖片的流程。
+    'post' => 'community_get_post', // 通知用貼文編號讀取單篇內容與留言。
     'topics' => 'community_list_topics', // 讀取熱門標籤及其貼文數量。
     'comments' => 'community_list_comments', // 依 postId 讀取單篇貼文的留言；原本由展開留言時另行載入。
     'create' => 'community_create_post', // 建立貼文、標籤及選填圖片；同時接受 JSON 與 multipart/form-data。
