@@ -1,14 +1,14 @@
 'use client';
 
-import { useState } from "react";
-import { useAuth } from "../../context/AuthContext";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Mail, Lock, User, ArrowRight, Loader2, Plane, X, Smartphone } from "lucide-react";
+import { Mail, Lock, User, ArrowRight, Loader2, Plane, X, Smartphone, CheckCircle2 } from "lucide-react";
 import { Link } from "../../components/Link";
 
 // 註冊頁只建立會員，成功後轉至登入頁，不會自動更新 AuthContext。
 export default function RegisterPage() {
   const [isLoading, setIsLoading] = useState(false);
+  const [registrationSucceeded, setRegistrationSucceeded] = useState(false);
   // 表單 state 是待送出的草稿；這些值尚未代表資料庫已存在的會員。
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -17,10 +17,18 @@ export default function RegisterPage() {
 
   const router = useRouter();
 
+  // 成功提示停留 1.5 秒後前往登入；離開頁面時取消計時，不自動登入。
+  useEffect(() => {
+    if (!registrationSucceeded) return;
+    const timer = window.setTimeout(() => router.replace("/auth/login"), 1500);
+    return () => window.clearTimeout(timer);
+  }, [registrationSucceeded, router]);
+
   // 表單送出：確認條款 → 呼叫 PHP 註冊 → 依業務結果提示／導頁；欄位另由 HTML 表單限制。
   const handleRegister = async (e: React.FormEvent) => {
     // 阻止原生表單換頁，改用下方 fetch 送出；條款未勾選時在發送前返回。
     e.preventDefault();
+    if (isLoading || registrationSucceeded) return;
 
     if (!agreeTerms) {
       // 條款勾選只在前端阻擋提交，不包含在下方註冊 JSON，也不會在這裡保存同意紀錄。
@@ -45,13 +53,12 @@ export default function RegisterPage() {
         }),
       });
       
-      // 讀取後端的 status／message；此流程未另檢查 res.ok，非 JSON 回應會進入 catch。
+      // HTTP 與業務狀態都成功才顯示成功畫面；非 JSON 回應會進入 catch。
       const data = await res.json();
 
       // 以回應的 status 判定註冊結果；錯誤訊息由後端提供。
-      if (data.status === 'success') {
-        alert(data.message); 
-        router.push("/auth/login"); // 建立完成後由使用者另行登入。
+      if (res.ok && data.status === 'success') {
+        setRegistrationSucceeded(true);
       } else {
         // 業務失敗保留輸入草稿供修正，不建立會員 state，也不轉向登入頁。
         alert("❌ 註冊失敗密碼：" + data.message); 
@@ -61,7 +68,7 @@ export default function RegisterPage() {
       console.error(err);
       alert("無法連線至後端伺服器！請確認 Docker Desktop 中的 backend 容器是否已亮綠燈並正常運作");
     } finally {
-      // 成功或失敗都恢復按鈕狀態，避免畫面持續顯示處理中。
+      // 結束請求中的狀態；成功後仍由 registrationSucceeded 禁止重複送出。
       setIsLoading(false);
     }
   };
@@ -72,8 +79,24 @@ export default function RegisterPage() {
     <div className="min-h-screen flex items-center justify-center bg-[url('https://images.unsplash.com/photo-1488646953014-85cb44e25828?auto=format&fit=crop&q=80')] bg-cover bg-center relative p-4">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm"></div>
 
+      {/* 與登入成功相同的勾選圖示、藍灰配色及背景模糊，取代原生成功 alert。 */}
+      {registrationSucceeded && (
+        <div role="dialog" aria-modal="true" aria-labelledby="register-success-title" aria-describedby="register-success-message" className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-sm rounded-3xl border border-[#d7e4ec] bg-white p-8 text-center shadow-[0_20px_50px_rgba(66,96,120,0.22)] animate-in zoom-in-95 fade-in duration-200">
+            <div className="mx-auto flex size-16 items-center justify-center rounded-full bg-[#edf4f8]">
+              <CheckCircle2 aria-hidden="true" className="size-8 text-[#5e7891]" />
+            </div>
+            <h3 id="register-success-title" className="mt-5 text-xl font-bold text-[#30485f]">註冊成功</h3>
+            <p id="register-success-message" className="mt-2 text-sm font-medium leading-6 text-[#718da1]">歡迎加入 TRAVMADE！<br />正在前往登入頁面…</p>
+            <div className="mt-6 flex justify-center">
+              <Loader2 aria-label="正在前往登入頁面" className="size-5 animate-spin text-[#5e7891]" />
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 主卡片：左右分欄設計 */}
-      <div className="relative w-full max-w-4xl bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col md:flex-row z-10 animate-in fade-in zoom-in-95 duration-300">
+      <div inert={registrationSucceeded} className="relative w-full max-w-4xl bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col md:flex-row z-10 animate-in fade-in zoom-in-95 duration-300">
         
         {/* 關閉按鈕 */}
         <button 
@@ -184,7 +207,7 @@ export default function RegisterPage() {
             {/* 送出註冊按鈕 */}
             <button
               type="submit"
-              disabled={isLoading}
+              disabled={isLoading || registrationSucceeded}
               className="w-full bg-black text-white py-3.5 rounded-lg text-sm tracking-widest uppercase font-medium hover:bg-gray-800 transition-all flex items-center justify-center gap-2 disabled:opacity-70 group"
             >
               {isLoading ? <Loader2 className="animate-spin size-5" /> : <>建立帳號 <ArrowRight className="size-4 group-hover:translate-x-1 transition-transform" /></>}

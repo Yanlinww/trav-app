@@ -26,6 +26,7 @@ function destinations_list_public_itineraries(): void
     $savedOnly = !empty($data->Saved_Only);
     $limit = min(max((int)($data->Limit ?? 24), 1), 48);
     $location = normalize_public_itinerary_location($data->Location ?? '');
+    if ($location === null) api_error('請選擇有效的目的地縣市。', 422);
     $sort = (string)($data->Sort ?? 'popular');
     if (!in_array($sort, ['popular', 'newest', 'copied'], true)) $sort = 'popular';
 
@@ -293,12 +294,13 @@ function destinations_save_public_itinerary(): void
     $publicCoverImage = trim((string)($data->Public_Cover_Image ?? ''));
     $publicDescription = trim((string)($data->Public_Description ?? ''));
     $publicLocation = normalize_public_itinerary_location($data->Public_Location ?? '');
+    // 即使繞過前端選單直接呼叫API，也只能儲存固定縣市或留空。
+    if ($publicLocation === null) api_error('請從選單選擇目的地縣市。', 422);
 
     if ($account === '' || $itineraryId <= 0) api_error('缺少行程或使用者資料。', 400);
     if (mb_strlen($publicTitle) > 255) api_error('公開標題最多 255 個字。', 422);
     if (mb_strlen($publicCoverImage) > 2000) api_error('封面連結過長。', 422);
     if (mb_strlen($publicDescription) > 1000) api_error('行程簡介最多 1000 個字。', 422);
-    if (mb_strlen($publicLocation) > 150) api_error('公開目的地最多 150 個字。', 422);
 
     $conn->begin_transaction();
     try {

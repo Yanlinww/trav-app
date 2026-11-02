@@ -83,33 +83,22 @@ function ensure_destinations_schema(mysqli $conn): void {
 }
 
 /**
- * ============================================================================
- * 字串清理函式：正規化公開行程的地點 (Normalize Location)
- * 作用：使用者輸入的旅遊地點可能很亂（例如：「臺北/宜蘭, 花蓮 > 台東」）
- * 此函式會把它清洗成乾淨統一的格式：「台北・宜蘭・花蓮・台東」
- * ============================================================================
+ * 固定台灣22縣市：與前端共用JSON清單，不接受任意文字或多地點組合。
+ * 空字串代表選填，null代表非法值；相容臺／台及台中市、宜蘭縣等完整名稱。
+ * 新竹與嘉義須選明確的縣或市，不自行猜測。
  */
-function normalize_public_itinerary_location($rawLocation): string {
-    // 防呆：如果傳進來的不是字串，直接回傳空字串
-    if (!is_string($rawLocation)) return '';
-
-    // 1. 字元替換：統一將正體字的「臺」換成常用的「台」，並去除前後空白
-    $cleanString = str_replace('臺', '台', trim($rawLocation));
-
-    // 2. 切割字串：使用正則表達式 (Regular Expression)
-    // 遇到 [・ | , ， 、 / ／ > ＞] 這些符號時，就把它切斷成陣列
-    // /u 代表支援 UTF-8 (多位元組中文字)
-    $parts = preg_split('/[・|,，、\/／>＞]+/u', $cleanString) ?: [];$locations = [];
-    foreach ($parts as$part) {
-        // 3. 去除多餘空白：把字串內部多個連續空白替換成一個單一空白
-        $part = preg_replace('/\s+/u', ' ', trim($part));
-        
-        // 4. 去除重複：利用陣列的 Key 不能重複的特性，自動過濾掉重複的地點 (例如使用者打：台北,台北)
-        if ($part !== '') {
-            $locations[$part] = true;
-        }
+function normalize_public_itinerary_location($rawLocation): ?string {
+    if ($rawLocation === null) return '';
+    if (!is_string($rawLocation)) return null;
+    static $allowed = null;
+    if ($allowed === null) {
+        $groups = json_decode(file_get_contents(__DIR__ . '/taiwan_regions.json'), true, 512, JSON_THROW_ON_ERROR);
+        $allowed = array_merge(...array_values($groups));
     }
-
-    // 5. 組合結果：只取前 4 個地點 (避免畫面塞不下)，並用全形的「・」串接起來
-    return implode('・', array_slice(array_keys($locations), 0, 4));
+    $clean = str_replace('臺', '台', trim($rawLocation));
+    if ($clean === '' || in_array($clean, $allowed, true)) return $clean;
+    $shortName = preg_replace('/[縣市]$/u', '', $clean);
+    $cities = ['台北', '新北', '基隆', '桃園', '台中', '台南', '高雄'];
+    $officialName = $shortName . (in_array($shortName, $cities, true) ? '市' : '縣');
+    return !preg_match('/[縣市]$/u', $shortName) && $clean === $officialName && in_array($shortName, $allowed, true) ? $shortName : null;
 }
