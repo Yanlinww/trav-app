@@ -1,8 +1,8 @@
 <?php
 /**
  * 社群功能入口：貼文列表、熱門標籤、留言、發文、互動及新增留言。
- * 網址格式：/community/community.php?action=posts|post|topics|comments|create|reaction|comment。
- * 前端讀取使用 GET、寫入使用 POST；post 檢查 GET，create 檢查 POST 並接受圖片 multipart/form-data。
+ * 網址格式：/community/community.php?action=posts|post|topics|comments|create|update|reaction|comment。
+ * 前端讀取使用 GET、寫入使用 POST；post 檢查 GET，create/update 檢查 POST 並接受圖片 multipart/form-data。
  * 其他 action 依各自的 $_GET／JSON 取值；CORS 標頭本身不會限制請求方法或驗證身分。
  * 共用查詢、格式化及回應函式保留在 community_helpers.php。
  */
@@ -201,48 +201,66 @@ function community_create_post(mysqli $conn): void
             $tagStmt->close();
         }
 
-        if ($isMultipart && isset($_FILES['image']) && $_FILES['image']['error'] !== UPLOAD_ERR_NO_FILE) {
-            if ($_FILES['image']['error'] !== UPLOAD_ERR_OK) {
-                throw new RuntimeException('圖片上傳失敗');
+        // 支援多圖上傳 (images[]) 或單圖 (image)
+        $filesToProcess = [];
+        if ($isMultipart) {
+            if (isset($_FILES['images']) && is_array($_FILES['images']['name'])) {
+                $count = count($_FILES['images']['name']);
+                for ($i = 0; $i < $count; $i++) {
+                    if ($_FILES['images']['error'][$i] === UPLOAD_ERR_OK) {
+                        $filesToProcess[] = [
+                            'name' => $_FILES['images']['name'][$i],
+                            'type' => $_FILES['images']['type'][$i],
+                            'tmp_name' => $_FILES['images']['tmp_name'][$i],
+                            'error' => $_FILES['images']['error'][$i],
+                            'size' => $_FILES['images']['size'][$i]
+                        ];
+                    }
+                }
+            } elseif (isset($_FILES['image']) && $_FILES['image']['error'] === UPLOAD_ERR_OK) {
+                $filesToProcess[] = $_FILES['image'];
             }
+        }
 
-            if ($_FILES['image']['size'] > 5 * 1024 * 1024) {
-                throw new RuntimeException('圖片不可超過 5MB');
-            }
-
-            $mime = mime_content_type($_FILES['image']['tmp_name']);
-            $extensions = [
-                'image/jpeg' => 'jpg',
-                'image/png' => 'png',
-                'image/webp' => 'webp',
-                'image/gif' => 'gif',
-            ];
-
-            if (!isset($extensions[$mime])) {
-                throw new RuntimeException('只允許 JPG、PNG、WEBP、GIF 圖片');
-            }
-
+        if (!empty($filesToProcess)) {
             $uploadDir = dirname(__DIR__) . '/uploads/community';
             if (!is_dir($uploadDir) && !mkdir($uploadDir, 0775, true)) {
                 throw new RuntimeException('無法建立圖片資料夾');
             }
 
-            $fileName = 'community_' . $postId . '_' . time() . '.' . $extensions[$mime];
-            $targetPath = $uploadDir . '/' . $fileName;
+            foreach ($filesToProcess as $index => $file) {
+                if ($file['size'] > 5 * 1024 * 1024) {
+                    throw new RuntimeException('圖片不可超過 5MB');
+                }
 
-            if (!move_uploaded_file($_FILES['image']['tmp_name'], $targetPath)) {
-                throw new RuntimeException('無法儲存圖片');
+                $mime = mime_content_type($file['tmp_name']);
+                $extensions = [
+                    'image/jpeg' => 'jpg',
+                    'image/png'  => 'png',
+                    'image/webp' => 'webp',
+                    'image/gif'  => 'gif',
+                ];
+
+                if (!isset($extensions[$mime])) {
+                    throw new RuntimeException('只允許 JPG、PNG、WEBP、GIF 圖片');
+                }
+
+                $fileName = 'community_' . $postId . '_' . time() . '_' . $index . '.' . $extensions[$mime];
+                $targetPath = $uploadDir . '/' . $fileName;
+
+                if (!move_uploaded_file($file['tmp_name'], $targetPath)) {
+                    throw new RuntimeException('無法儲存圖片');
+                }
+
+                $imageUrl = 'uploads/community/' . $fileName;
+                $sortOrder = $index;
+                $imageStmt = $conn->prepare("INSERT INTO `Community_Post_Image` (`Post_ID`, `Image_URL`, `Sort_Order`) VALUES (?, ?, ?)");
+                $imageStmt->bind_param("isi", $postId, $imageUrl, $sortOrder);
+                $imageStmt->execute();
+                $imageStmt->close();
             }
-
-            $imageUrl = 'uploads/community/' . $fileName;
-            $sortOrder = 0;
-            $imageStmt = $conn->prepare("INSERT INTO `Community_Post_Image` (`Post_ID`, `Image_URL`, `Sort_Order`) VALUES (?, ?, ?)");
-            $imageStmt->bind_param("isi", $postId, $imageUrl, $sortOrder);
-            $imageStmt->execute();
-            $imageStmt->close();
         }
 
-        // 交易只涵蓋資料庫寫入；已移動的圖片不會因稍後 rollback 自動刪除。
         $conn->commit();
 
         $post = community_fetch_single_post($conn, $postId, $account);
@@ -251,6 +269,178 @@ function community_create_post(mysqli $conn): void
             "message" => "貼文已發布",
             "data" => $post,
         ]);
+    } catch (Throwable $error) {
+        $conn->rollback();
+        community_json_response([
+            "status" => "error",
+            "message" => $error->getMessage(),
+        ], 500);
+    }
+}
+
+/**
+ * update (POST)：編輯貼文、標籤及圖片（包含刪除舊圖與新增圖片）。
+ */
+function community_update_post(mysqli $conn): void
+{
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        community_json_response(["status" => "error", "message" => "只支援 POST"], 405);
+    }
+
+    $account = $_POST['Account'] ?? '';
+    $postId = (int)($_POST['Post_ID'] ?? 0);
+    $title = trim($_POST['Title'] ?? '');
+    $content = trim($_POST['Content'] ?? '');
+    $location = trim($_POST['Location_Name'] ?? '');
+    $tagsInput = $_POST['Tags'] ?? '';
+    
+    // 前端保留下來的舊圖片 URL 清單
+    $existingImages = $_POST['Existing_Images'] ?? [];
+    if (!is_array($existingImages)) {
+        $existingImages = [];
+    }
+
+    if (!$account || !$postId || $content === '') {
+        community_json_response(["status" => "error", "message" => "缺少必填欄位"], 400);
+    }
+
+    // 檢查權限
+    $stmt = $conn->prepare("SELECT Account FROM Community_Post WHERE Post_ID = ? AND Status = 'active'");
+    $stmt->bind_param("i", $postId);
+    $stmt->execute();
+    $res = $stmt->get_result();
+    $postOwner = $res->fetch_assoc()['Account'] ?? null;
+    $stmt->close();
+
+    if (!$postOwner) {
+        community_json_response(["status" => "error", "message" => "找不到該貼文"], 404);
+    }
+    if ($postOwner !== $account) {
+        community_json_response(["status" => "error", "message" => "權限不足，無法編輯此貼文"], 403);
+    }
+
+    $conn->begin_transaction();
+
+    try {
+        // 1. 更新貼文文字內容
+        $titleValue = $title !== '' ? $title : null;
+        $locationValue = $location !== '' ? $location : null;
+        $updStmt = $conn->prepare("UPDATE Community_Post SET Title = ?, Content = ?, Location_Name = ? WHERE Post_ID = ?");
+        $updStmt->bind_param("sssi", $titleValue, $content, $locationValue, $postId);
+        $updStmt->execute();
+        $updStmt->close();
+
+        // 2. 更新標籤 (先刪除舊的，再插入新的)
+        $delTags = $conn->prepare("DELETE FROM Community_Post_Tag WHERE Post_ID = ?");
+        $delTags->bind_param("i", $postId);
+        $delTags->execute();
+        $delTags->close();
+
+        $tags = community_normalize_tags($tagsInput);
+        if (!empty($tags)) {
+            $tagStmt = $conn->prepare("INSERT IGNORE INTO Community_Post_Tag (Post_ID, Tag_Name) VALUES (?, ?)");
+            foreach ($tags as $tag) {
+                $tagStmt->bind_param("is", $postId, $tag);
+                $tagStmt->execute();
+            }
+            $tagStmt->close();
+        }
+
+        // 3. 處理圖片刪除：比對資料庫原本的圖與前端保留的圖
+        $imgStmt = $conn->prepare("SELECT Image_URL FROM Community_Post_Image WHERE Post_ID = ?");
+        $imgStmt->bind_param("i", $postId);
+        $imgStmt->execute();
+        $imgRes = $imgStmt->get_result();
+        
+        $dbImages = [];
+        while ($row = $imgRes->fetch_assoc()) {
+            $dbImages[] = $row['Image_URL'];
+        }
+        $imgStmt->close();
+
+        $imagesToDelete = [];
+        foreach ($dbImages as $dbImg) {
+            $keep = false;
+            foreach ($existingImages as $extImg) {
+                // 利用 strpos 避免 http://localhost/ 這種前綴影響比對
+                if (strpos($extImg, $dbImg) !== false) {
+                    $keep = true;
+                    break;
+                }
+            }
+            if (!$keep) {
+                $imagesToDelete[] = $dbImg;
+            }
+        }
+
+        if (!empty($imagesToDelete)) {
+            $delImgStmt = $conn->prepare("DELETE FROM Community_Post_Image WHERE Post_ID = ? AND Image_URL = ?");
+            foreach ($imagesToDelete as $delUrl) {
+                // 刪除伺服器實體檔案
+                $filePath = dirname(__DIR__) . '/' . ltrim($delUrl, '/');
+                if (file_exists($filePath) && is_file($filePath)) {
+                    unlink($filePath);
+                }
+                // 刪除資料庫記錄
+                $delImgStmt->bind_param("is", $postId, $delUrl);
+                $delImgStmt->execute();
+            }
+            $delImgStmt->close();
+        }
+
+        // 4. 處理新上傳圖片
+        if (isset($_FILES['New_Images']) && is_array($_FILES['New_Images']['name'])) {
+            $uploadDir = dirname(__DIR__) . '/uploads/community';
+            if (!is_dir($uploadDir) && !mkdir($uploadDir, 0775, true)) {
+                throw new RuntimeException('無法建立圖片資料夾');
+            }
+
+            $fileCount = count($_FILES['New_Images']['name']);
+            for ($i = 0; $i < $fileCount; $i++) {
+                if ($_FILES['New_Images']['error'][$i] === UPLOAD_ERR_OK) {
+                    if ($_FILES['New_Images']['size'][$i] > 5 * 1024 * 1024) {
+                        throw new RuntimeException('圖片不可超過 5MB');
+                    }
+
+                    $mime = mime_content_type($_FILES['New_Images']['tmp_name'][$i]);
+                    $extensions = [
+                        'image/jpeg' => 'jpg',
+                        'image/png'  => 'png',
+                        'image/webp' => 'webp',
+                        'image/gif'  => 'gif',
+                    ];
+
+                    if (!isset($extensions[$mime])) {
+                        throw new RuntimeException('只允許 JPG、PNG、WEBP、GIF 圖片');
+                    }
+
+                    $fileName = 'community_' . $postId . '_upd_' . time() . '_' . $i . '.' . $extensions[$mime];
+                    $targetPath = $uploadDir . '/' . $fileName;
+
+                    if (!move_uploaded_file($_FILES['New_Images']['tmp_name'][$i], $targetPath)) {
+                        throw new RuntimeException('無法儲存新圖片');
+                    }
+
+                    $imageUrl = 'uploads/community/' . $fileName;
+                    $sortOrder = 99; // 可依需求調整排序邏輯
+                    $imageStmt = $conn->prepare("INSERT INTO Community_Post_Image (Post_ID, Image_URL, Sort_Order) VALUES (?, ?, ?)");
+                    $imageStmt->bind_param("isi", $postId, $imageUrl, $sortOrder);
+                    $imageStmt->execute();
+                    $imageStmt->close();
+                }
+            }
+        }
+
+        $conn->commit();
+
+        // 5. 取得更新後的完整貼文回傳
+        $post = community_fetch_single_post($conn, $postId, $account);
+        community_json_response([
+            "status" => "success",
+            "message" => "貼文已更新",
+            "data" => $post,
+        ]);
+
     } catch (Throwable $error) {
         $conn->rollback();
         community_json_response([
@@ -424,13 +614,14 @@ function community_get_post(mysqli $conn): void
 
 // 固定 action 白名單；以網址選擇功能，請求參數沿用原端點的 GET、JSON 或 FormData。
 $handlers = [
-    'posts' => 'community_list_posts', // 依分類、關鍵字及查看者帳號取得貼文；保留批次讀取標籤與圖片的流程。
-    'post' => 'community_get_post', // 通知用貼文編號讀取單篇內容與留言。
-    'topics' => 'community_list_topics', // 讀取熱門標籤及其貼文數量。
-    'comments' => 'community_list_comments', // 依 postId 讀取單篇貼文的留言；原本由展開留言時另行載入。
-    'create' => 'community_create_post', // 建立貼文、標籤及選填圖片；同時接受 JSON 與 multipart/form-data。
-    'reaction' => 'community_toggle_reaction', // 切換貼文的 like 或 save；按讚時保留通知原作者的流程。
-    'comment' => 'community_add_comment', // 新增留言／回覆，通知貼文作者或被回覆者，並回傳新留言。
+    'posts' => 'community_list_posts',
+    'post' => 'community_get_post',
+    'topics' => 'community_list_topics',
+    'comments' => 'community_list_comments',
+    'create' => 'community_create_post',
+    'update' => 'community_update_post', // 🌟 新增的編輯貼文路由 🌟
+    'reaction' => 'community_toggle_reaction',
+    'comment' => 'community_add_comment',
 ];
 $action = $_GET['action'] ?? '';
 if (!is_string($action) || !isset($handlers[$action])) {
