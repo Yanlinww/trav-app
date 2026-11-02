@@ -13,6 +13,7 @@ import {
   Search, Settings2, Share2, SlidersHorizontal, Sparkles, Upload, Users, X 
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { normalizePublicLocation, publicDestinationGroups } from '../lib/public-destination';
 
 // ============================================================================
 // 2. TypeScript 型別定義 (Types)
@@ -92,21 +93,6 @@ const itinerarySortOptions = [
 ] as const;
 
 type ItinerarySort = (typeof itinerarySortOptions)[number]['value'];
-
-/**
- * 格式化與清理公開地點字串
- * 將 "台北 / 宜蘭 , 花蓮" 轉換為乾淨的 "台北・宜蘭・花蓮"
- */
-function normalizePublicLocation(value?: string | null): string {
-  if (!value) return '';
-  const parts = value
-    .replace(/臺/g, '台') // 統一正簡體
-    .split(/[・|,，、/／>＞]+/u) // 根據各種可能的標點符號切割
-    .map((part) => part.trim().replace(/\s+/g, ' ')) // 去除多餘空白
-    .filter(Boolean); // 過濾掉空字串
-  // 使用 Set 過濾重複地點，並限制最多回傳 4 個
-  return Array.from(new Set(parts)).slice(0, 4).join('・');
-}
 
 /**
  * 行程排序邏輯
@@ -408,8 +394,9 @@ export default function DestinationsPage() {
     setPublicTitle(itinerary.publicTitle || itinerary.title || '');
     setPublicCoverImage(itinerary.publicCoverImage || itinerary.coverImage || '');
     setPublicDescription(itinerary.publicDescription || '');
-    setPublicLocation(itinerary.publicLocation || '');
-    setManageError('');
+    const location = normalizePublicLocation(itinerary.publicLocation);
+    setPublicLocation(location ?? '');
+    setManageError(location === null ? '原目的地不在固定縣市清單中，請重新選擇主要目的地。' : '');
   };
 
   /** 開啟「上傳/管理」Modal */
@@ -461,6 +448,11 @@ export default function DestinationsPage() {
       setManageError('請填寫公開行程標題。');
       return;
     }
+    const location = normalizePublicLocation(publicLocation);
+    if (location === null) {
+      setManageError('請從選單選擇目的地縣市。');
+      return;
+    }
 
     setIsSavingPublic(true);
     setManageError('');
@@ -475,7 +467,7 @@ export default function DestinationsPage() {
           Public_Title: publicTitle.trim(),
           Public_Cover_Image: publicCoverImage.trim(),
           Public_Description: publicDescription.trim(),
-          Public_Location: publicLocation.trim(),
+          Public_Location: location,
         }),
       });
       const data = await response.json();
@@ -811,9 +803,17 @@ export default function DestinationsPage() {
                         </select>
                       </label>
                     </div>
+                    <div className="mt-3">
+                      <label className="block text-xs font-bold text-[#7891a4]">目的地縣市
+                        <select value={selectedLocation} onChange={(event) => updateLocationFilter(event.target.value)} className="mt-1.5 w-full rounded-xl border border-[#d6e3eb] bg-[#f8fbfd] px-3 py-2.5 text-sm font-medium text-[#4e697e] outline-none focus:border-[#7d9aaf]">
+                          <option value="">不限地區</option>
+                          {Object.entries(publicDestinationGroups).map(([group, locations]) => <optgroup key={group} label={group}>{locations.map(location => <option key={location} value={location}>{location}</option>)}</optgroup>)}
+                        </select>
+                      </label>
+                    </div>
                     {popularLocationSummaries.length > 0 && (
                       <div className="mt-4">
-                        <p className="mb-1.5 text-[11px] font-bold tracking-wide text-[#8ca3b4]">目的地</p>
+                        <p className="mb-1.5 text-[11px] font-bold tracking-wide text-[#8ca3b4]">熱門目的地</p>
                         <div className="flex flex-wrap gap-2">
                           {popularLocationSummaries.slice(0, 8).map(({ location, count }) => (
                             <button type="button" key={location} onClick={() => updateLocationFilter(location)} className={`inline-flex items-center gap-1 rounded-full border px-3 py-1.5 text-xs font-bold transition ${selectedLocation === location ? 'border-[#5e7891] bg-[#5e7891] text-white shadow-sm' : 'border-[#d6e3eb] bg-[#f8fbfd] text-[#668096] hover:border-[#a9bfce] hover:bg-[#f0f6f9]'}`}>
@@ -1021,8 +1021,11 @@ export default function DestinationsPage() {
                     <input value={publicTitle} onChange={(event) => setPublicTitle(event.target.value)} maxLength={255} placeholder="例如：台北三天兩夜慢遊行程" className="mt-2 w-full rounded-xl border border-[#cbdce7] bg-white px-4 py-3 text-sm text-[#365168] outline-none transition focus:border-[#7d9aaf]" />
                   </label>
                   <label className="block text-sm font-bold text-[#4e697e]">目的地 <span className="font-medium text-[#9aafbd]">（選填）</span>
-                    <input value={publicLocation} onChange={(event) => setPublicLocation(event.target.value)} onBlur={() => setPublicLocation((value) => normalizePublicLocation(value))} maxLength={150} placeholder="例如：台中、台南、花蓮或澎湖" className="mt-2 w-full rounded-xl border border-[#cbdce7] bg-white px-4 py-3 text-sm text-[#365168] outline-none transition focus:border-[#7d9aaf]" />
-                    <span className="mt-1 block text-xs font-medium text-[#9aafbd]">建議使用「國家・城市」；儲存時會統一分隔符號，讓其他旅人可直接依目的地篩選。</span>
+                    <select value={publicLocation} onChange={(event) => setPublicLocation(event.target.value)} className="mt-2 w-full rounded-xl border border-[#cbdce7] bg-white px-4 py-3 text-sm text-[#365168] outline-none transition focus:border-[#7d9aaf]">
+                      <option value="">請選擇目的地縣市</option>
+                      {Object.entries(publicDestinationGroups).map(([group, locations]) => <optgroup key={group} label={group}>{locations.map(location => <option key={location} value={location}>{location}</option>)}</optgroup>)}
+                    </select>
+                    <span className="mt-1 block text-xs font-medium text-[#9aafbd]">請選擇主要旅遊縣市；跨縣市行程請選主要目的地。</span>
                     {popularLocationSummaries.length > 0 && <span className="mt-3 flex flex-wrap gap-2">{popularLocationSummaries.slice(0, 6).map(({ location }) => <button type="button" key={location} onClick={() => setPublicLocation(location)} className={`rounded-full border px-2.5 py-1 text-[11px] font-bold transition ${normalizePublicLocation(publicLocation) === location ? 'border-[#5e7891] bg-[#5e7891] text-white' : 'border-[#d6e3eb] bg-[#f8fbfd] text-[#668096] hover:border-[#a9bfce]'}`}>#{location}</button>)}</span>}
                   </label>
                   <label className="block text-sm font-bold text-[#4e697e]">公開封面連結 <span className="font-medium text-[#9aafbd]">（選填）</span>

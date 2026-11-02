@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import { GoogleMap, useJsApiLoader, Marker, InfoWindow } from '@react-google-maps/api';
 import PlaceAutocomplete from '../../components/PlaceAutocomplete';
+import { toMapPosition, groupItineraryMapItems } from '../../lib/map-coordinates';
 
 import { 
   DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent
@@ -440,7 +441,7 @@ function SortableItem({
             {timeFlags?.hasConflict && <span className="text-[10px] font-bold text-red-500 bg-red-50 rounded-full px-2 py-0.5">時間重疊</span>}
             {timeFlags?.isOvernight && <span className="text-[10px] font-bold text-indigo-500 bg-indigo-50 rounded-full px-2 py-0.5">跨午夜</span>}
             {!item.startTime && !item.endTime && <span className="text-[10px] font-bold text-amber-600 bg-amber-50 rounded-full px-2 py-0.5">未設定時間</span>}
-            {(!Number.isFinite(Number(item.Latitude)) || !Number.isFinite(Number(item.Longitude))) && <span className="text-[10px] font-bold text-slate-500 bg-slate-100 rounded-full px-2 py-0.5">自訂地點</span>}
+            {!toMapPosition(item.Latitude, item.Longitude) && <span className="text-[10px] font-bold text-slate-500 bg-slate-100 rounded-full px-2 py-0.5">自訂地點</span>}
           </div>
           {/* 雙擊名稱編輯，失焦或 Enter 儲存，Escape 取消。 */}
           {editingItemId === item.id ? (
@@ -640,17 +641,16 @@ export default function ItineraryEditor() {
   }, [fetchPlaceDetails]);
 
   // 點清單項目時選取標點並移動地圖中心，不自動捲動清單。
-  // 檢查注意：Number(null)=0，尚未明確排除空座標。
+  // 沒有位置的交通／休息項目保留在清單，不將空值轉成 (0, 0) 移動地圖。
   const focusMapOnItem = useCallback((item: any) => {
-    const lat = Number(item.Latitude);
-    const lng = Number(item.Longitude);
-    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+    const position = toMapPosition(item.Latitude, item.Longitude);
+    if (!position) return;
 
     setSelectedPlace(null);
     setSelectedMapItem(item);
-    setMapCenter({ lat, lng });
+    setMapCenter(position);
     setMapZoom(16);
-    mapRef.current?.panTo({ lat, lng });
+    mapRef.current?.panTo(position);
     mapRef.current?.setZoom(16);
   }, []);
 
@@ -684,16 +684,14 @@ export default function ItineraryEditor() {
     // 按 sortOrder 直接連線，這不是實際道路導航或交通路徑。
     const routeItems = itineraryItems
       .filter((item) => item.dayNumber === activeDay)
-      .filter((item) => Number.isFinite(Number(item.Latitude)) && Number.isFinite(Number(item.Longitude)))
       .sort((a, b) => Number(a.sortOrder ?? 0) - Number(b.sortOrder ?? 0));
 
-    if (routeItems.length < 2) return;
-
-    // 篩選後至少保留兩個位置才建立線段；此處沿用 Number 轉型後的有限值檢查。
-    const path = routeItems.map((item) => ({
-      lat: Number(item.Latitude),
-      lng: Number(item.Longitude),
-    }));
+    // 只連接有完整有效座標的地點，空座標項目不產生標點或跨洲線。
+    const path = routeItems.flatMap((item) => {
+      const position = toMapPosition(item.Latitude, item.Longitude);
+      return position ? [position] : [];
+    });
+    if (path.length < 2) return;
 
     routePolylineRef.current = new window.google.maps.Polyline({
       path,
@@ -912,17 +910,14 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
   // Google 地點和既有行程項目沒有共同 ID，這裡用接近的座標判斷是否已加入。
   // 跨所有天數以座標差各小於 0.00015 比對，近似位置不等於唯一地點 ID。
   const findItineraryItemForPlace = (place: any) => {
-    const latitude = Number(place?.location?.latitude);
-    const longitude = Number(place?.location?.longitude);
-    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+    const position = toMapPosition(place?.location?.latitude, place?.location?.longitude);
+    if (!position) return null;
 
     return itineraryItems.find((item) => {
-      const itemLatitude = Number(item.Latitude);
-      const itemLongitude = Number(item.Longitude);
-      return Number.isFinite(itemLatitude)
-        && Number.isFinite(itemLongitude)
-        && Math.abs(itemLatitude - latitude) < 0.00015
-        && Math.abs(itemLongitude - longitude) < 0.00015;
+      const itemPosition = toMapPosition(item.Latitude, item.Longitude);
+      return itemPosition
+        && Math.abs(itemPosition.lat - position.lat) < 0.00015
+        && Math.abs(itemPosition.lng - position.lng) < 0.00015;
     }) || null;
   };
 
@@ -936,7 +931,7 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
   /**
    * 把 PHP 回應轉成卡片、拖曳及地圖共用的資料格式，成功後取代完整項目清單。
    * ID 轉字串以配合拖曳 ID 比較；HH:mm:ss 轉 HH:mm；原始非法時間另存 hasInvalidTime。
-   * 座標保留 null，其餘轉數字；這裡只正規化資料，並未檢查所有座標使用處的 null 處理。
+   * 有效座標轉成數字；缺值或非法座標統一保留為 null，避免地圖誤標 (0, 0)。
    */
   const fetchItems = useCallback(async (id: string) => {
     try {
@@ -948,14 +943,15 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
         const nextItems = data.data.map((item: any) => {
           const startTime = normalizeLoadedTime(item.startTime);
           const endTime = normalizeLoadedTime(item.endTime);
+          const position = toMapPosition(item.Latitude, item.Longitude);
           return {
             ...item,
             id: String(item.id),
             startTime,
             endTime,
             hasInvalidTime: Boolean((item.startTime && !startTime) || (item.endTime && !endTime)),
-            Latitude: item.Latitude === null ? null : Number(item.Latitude),
-            Longitude: item.Longitude === null ? null : Number(item.Longitude),
+            Latitude: position?.lat ?? null,
+            Longitude: position?.lng ?? null,
           };
         });
         setItineraryItems(nextItems);
@@ -1224,6 +1220,9 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
   // 畫面只顯示選取天數的項目；完整清單仍保留在 itineraryItems 供切天與時間檢查使用。
   // 保留原陣列順序篩選當天，沒有再次按 sortOrder 排。
   const currentDayItems = itineraryItems.filter((item) => item.dayNumber === activeDay);
+  const currentDayMapGroups = groupItineraryMapItems(currentDayItems);
+  const selectedMapPosition = selectedMapItem && toMapPosition(selectedMapItem.Latitude, selectedMapItem.Longitude);
+  const selectedMapGroup = currentDayMapGroups.find(group => group.visits.some(({ item }) => item.id === selectedMapItem?.id));
 
   return (
     // 手機面板可覆蓋全站 Header；md 以上固定退到它下方，並預留 4rem 高度。
@@ -1369,7 +1368,8 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
                 mapContainerStyle={{ width: '100%', height: '100%' }}
                 center={mapCenter}
                 zoom={mapZoom}
-                options={{ disableDefaultUI: true, zoomControl: mobilePlannerView !== 'map', gestureHandling: 'greedy', draggable: true, scrollwheel: true }}
+                // 最遠縮至第 6 級，避免縮至世界尺度出現重複地圖與大片灰底；仍允許拖曳地圖。
+                options={{ minZoom: 6, disableDefaultUI: true, zoomControl: mobilePlannerView !== 'map', gestureHandling: 'greedy', draggable: true, scrollwheel: true }}
                 onClick={(event) => {
                   const mapEvent = event as google.maps.MapMouseEvent & { placeId?: string };
                   if (mapEvent.placeId) {
@@ -1410,24 +1410,23 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
                     {mapStatusMessage}
                   </div>
                 )}
-                {/* 當天行程與搜尋結果各自顯示標記，縮小地圖時也不合併；搜尋結果不會因此寫進行程。 */}
-                      {currentDayItems
-                        .filter((item) => Number.isFinite(Number(item.Latitude)) && Number.isFinite(Number(item.Longitude)))
-                        .map((item, index) => (
+                {/* 同一位置的入住、返回等項目共用標記，顯示所有造訪序號；不同位置仍各自顯示。 */}
+                      {currentDayMapGroups
+                        .map(({ visits, position }) => (
                           <Marker
-                            key={`itinerary-${item.id}`}
-                            position={{ lat: Number(item.Latitude), lng: Number(item.Longitude) }}
-                            title={item.title || '行程地點'}
-                            label={{ text: String(index + 1), color: "white", fontWeight: "bold" }}
+                            key={`itinerary-${visits[0].item.id}`}
+                            position={position}
+                            title={visits.map(({ item, number }) => `${number}. ${item.title || '行程地點'}`).join('／')}
+                            label={{ text: visits.map(visit => visit.number).join('/'), color: "white", fontWeight: "bold", fontSize: visits.length > 1 ? '11px' : '14px' }}
                             icon={isLoaded && window.google ? {
                               path: window.google.maps.SymbolPath.CIRCLE,
                               fillColor: '#F04D79',
                               fillOpacity: 1,
                               strokeColor: 'white',
                               strokeWeight: 2,
-                              scale: selectedMapItem?.id === item.id ? 13 : 10,
+                              scale: Math.max(10, 5 + visits.map(visit => visit.number).join('/').length * 3.3) + (visits.some(({ item }) => item.id === selectedMapItem?.id) ? 3 : 0),
                             } : undefined}
-                            onClick={() => focusMapOnItem(item)}
+                            onClick={() => focusMapOnItem(visits[0].item)}
                           />
                         ))}
 
@@ -1456,13 +1455,24 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
                       ))}
 
                 {/* 已加入項目資訊框可查看清單或重新選位置。 */}
-                {selectedMapItem && (
+                {selectedMapItem && selectedMapPosition && (
                   <InfoWindow
-                    position={{ lat: Number(selectedMapItem.Latitude), lng: Number(selectedMapItem.Longitude) }}
+                    position={selectedMapPosition}
                     onCloseClick={() => setSelectedMapItem(null)}
                   >
                     <div className="p-1 max-w-[220px] text-slate-800">
                       <h3 className="font-bold text-base mb-1">{selectedMapItem.title}</h3>
+                      {selectedMapGroup && selectedMapGroup.visits.length > 1 && (
+                        <div className="my-2 space-y-1">
+                          <p className="text-xs text-slate-500">此處有 {selectedMapGroup.visits.length} 次安排</p>
+                          {selectedMapGroup.visits.map(({ item, number }) => (
+                            <button key={item.id} type="button" onClick={() => focusMapOnItem(item)} aria-pressed={item.id === selectedMapItem.id}
+                              className={`block w-full rounded-md px-2 py-1.5 text-left text-xs ${item.id === selectedMapItem.id ? 'bg-pink-50 text-pink-700' : 'bg-slate-50 text-slate-600'}`}>
+                              {number}. {item.title}<span className="block text-[11px]">{item.startTime || ''}{item.endTime ? `–${item.endTime}` : ''}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
                       {(selectedMapItem.startTime || selectedMapItem.endTime) && (
                         <p className="text-xs text-slate-500">
                           {selectedMapItem.startTime || ''}{selectedMapItem.endTime ? ` - ${selectedMapItem.endTime}` : ''}
@@ -1582,7 +1592,7 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
               {mobilePlannerView === 'map' && (
                 <div className="absolute bottom-24 right-4 z-[100] flex flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg md:hidden">
                   <button type="button" onClick={() => { const zoom = mapRef.current?.getZoom(); if (typeof zoom !== 'number') return; const nextZoom = Math.min(20, zoom + 1); mapRef.current?.setZoom(nextZoom); setMapZoom(nextZoom); }} className="flex size-10 items-center justify-center border-b border-slate-200 text-2xl font-light text-slate-600 transition hover:bg-slate-50" aria-label="放大地圖">+</button>
-                  <button type="button" onClick={() => { const zoom = mapRef.current?.getZoom(); if (typeof zoom !== 'number') return; const nextZoom = Math.max(3, zoom - 1); mapRef.current?.setZoom(nextZoom); setMapZoom(nextZoom); }} className="flex size-10 items-center justify-center text-2xl font-light text-slate-600 transition hover:bg-slate-50" aria-label="縮小地圖">−</button>
+                  <button type="button" onClick={() => { const zoom = mapRef.current?.getZoom(); if (typeof zoom !== 'number') return; const nextZoom = Math.max(6, zoom - 1); mapRef.current?.setZoom(nextZoom); setMapZoom(nextZoom); }} className="flex size-10 items-center justify-center text-2xl font-light text-slate-600 transition hover:bg-slate-50" aria-label="縮小地圖">−</button>
                 </div>
               )}
               <div className="absolute left-4 top-20 z-[110] md:top-4 md:hidden">
