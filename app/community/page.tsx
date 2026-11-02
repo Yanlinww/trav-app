@@ -540,8 +540,14 @@ function CommunityContent() {
   /* ------------------- UI 渲染區塊 (JSX Render) ------------------- */
   return (
     <div className="min-h-screen bg-[#f9fafb] text-neutral-900 relative pb-20">
-      <section className="bg-white rounded-b-[2rem] shadow-sm shadow-slate-200/50 mb-8 border-b border-neutral-100 pb-4 relative z-10">
-        <div className="mx-auto max-w-7xl px-5 py-8 md:px-8 md:py-12">
+      
+      {/* 🌟 1. 豐富頁首橫幅 (增加裝飾性背景光暈) 🌟 */}
+      <section className="relative overflow-hidden bg-white rounded-b-[3rem] shadow-[0_8px_30px_rgba(0,0,0,0.03)] mb-8 border-b border-neutral-100 pb-4 z-10">
+        {/* 裝飾性漸層光暈 */}
+        <div className="absolute -top-40 -right-40 size-96 rounded-full bg-slate-100/70 blur-3xl pointer-events-none"></div>
+        <div className="absolute -bottom-20 -left-20 size-72 rounded-full bg-neutral-100/60 blur-3xl pointer-events-none"></div>
+        
+        <div className="relative mx-auto max-w-7xl px-5 py-8 md:px-8 md:py-12">
           <div className="flex flex-col justify-between gap-6 md:flex-row md:items-end">
             <div>
               <p className="mb-2 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-900">
@@ -564,7 +570,7 @@ function CommunityContent() {
           </div>
         </div>
 
-        <div className="mx-auto flex max-w-7xl gap-2 overflow-x-auto px-5 md:px-8 no-scrollbar">
+        <div className="relative mx-auto flex max-w-7xl gap-2 overflow-x-auto px-5 md:px-8 no-scrollbar">
           {tabs.map((tab) => (
             <button
               key={tab.id}
@@ -583,7 +589,7 @@ function CommunityContent() {
       <div className="mx-auto grid max-w-7xl grid-cols-1 gap-8 px-4 md:px-8 lg:grid-cols-[minmax(0,1fr)_320px]">
         <main className="min-w-0 space-y-8">
           {focusedPost && (
-            <div className="flex items-center justify-between rounded-2xl border border-neutral-200 bg-white px-5 py-4 text-sm">
+            <div className="flex items-center justify-between rounded-2xl border border-neutral-200 bg-white px-5 py-4 text-sm shadow-[0_4px_20px_rgba(0,0,0,0.02)]">
               <span className="font-bold">通知相關貼文</span>
               <button type="button" onClick={() => router.push("/community")} className="font-bold text-neutral-600 hover:text-neutral-900">返回全部動態</button>
             </div>
@@ -598,7 +604,7 @@ function CommunityContent() {
             </div>
           )}
 
-          {!focusedPost && <form ref={composeRef} onSubmit={publishPost} className="rounded-[2rem] border border-neutral-100 bg-white p-5 md:p-6 shadow-[0_4px_20px_rgba(0,0,0,0.03)] transition-all hover:shadow-[0_4px_20px_rgba(0,0,0,0.06)]">
+          {!focusedPost && <form ref={composeRef} onSubmit={publishPost} className="rounded-[2.5rem] border border-neutral-100/80 bg-white p-5 md:p-6 shadow-sm transition-all duration-500 hover:-translate-y-1 hover:shadow-[0_10px_30px_rgba(0,0,0,0.04)]">
             <div className="flex gap-4">
               <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-neutral-900 text-xs font-bold text-white shadow-sm shadow-neutral-900/10">
                 {user ? getInitial(String(user.nickname || user.Account || "?")) : "?"}
@@ -703,14 +709,14 @@ function CommunityContent() {
           </form>}
 
           {loadingPosts && (
-            <div className="flex flex-col items-center justify-center rounded-[2rem] border border-neutral-100 bg-white py-20 text-neutral-400">
+            <div className="flex flex-col items-center justify-center rounded-[2.5rem] border border-neutral-100 bg-white py-20 text-neutral-400">
               <Loader2 className="size-8 animate-spin text-neutral-900 mb-3" />
               <p className="text-sm font-medium">載入動態中...</p>
             </div>
           )}
 
           {!loadingPosts && !error && posts.length === 0 && (
-            <div className="flex flex-col items-center justify-center rounded-[2rem] border border-dashed border-neutral-200 bg-white py-20 text-neutral-400">
+            <div className="flex flex-col items-center justify-center rounded-[2.5rem] border border-dashed border-neutral-200 bg-white py-20 text-neutral-400">
               <div className="size-16 rounded-full bg-neutral-50 flex items-center justify-center mb-3">
                 <Compass className="size-8 text-neutral-300" />
               </div>
@@ -721,7 +727,8 @@ function CommunityContent() {
 
           {!loadingPosts &&
             posts.map((post) => (
-              <article key={post.id} className="overflow-hidden rounded-[2rem] border border-neutral-100 bg-white shadow-[0_4px_20px_rgba(0,0,0,0.02)] transition-all hover:shadow-[0_8px_30px_rgba(0,0,0,0.06)]">
+              /* 🌟 2. 貼文卡片增加「懸浮動畫」與「立體陰影」 🌟 */
+              <article key={post.id} className="group/card overflow-hidden rounded-[2.5rem] border border-neutral-100/80 bg-white shadow-sm transition-all duration-500 hover:-translate-y-1.5 hover:shadow-[0_20px_40px_rgba(0,0,0,0.06)] hover:border-neutral-200">
                 <div className="p-5 md:p-6 pb-2">
                   <div className="flex items-start justify-between gap-4">
                     <div
@@ -768,9 +775,10 @@ function CommunityContent() {
                   {post.title && <h2 className="mt-4 text-lg font-bold leading-tight text-neutral-900">{post.title}</h2>}
                   <p className="mt-3 whitespace-pre-line text-sm font-medium leading-relaxed text-neutral-600">{post.content}</p>
 
+                  {/* 🌟 3. 標籤與地點加入微對比色彩與懸浮效果 🌟 */}
                   {post.location && (
-                    <div className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-neutral-50 px-3 py-1.5 text-[11px] font-bold text-neutral-500">
-                      <MapPin className="size-3 text-neutral-900" /> {post.location}
+                    <div className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-slate-100 bg-slate-50/50 px-3 py-1.5 text-[11px] font-bold text-slate-600">
+                      <MapPin className="size-3 text-slate-900" /> {post.location}
                     </div>
                   )}
 
@@ -779,7 +787,7 @@ function CommunityContent() {
                       <button
                         key={item}
                         onClick={() => searchPosts(item)}
-                        className="rounded-full bg-neutral-50 px-3 py-1 text-[11px] font-bold text-neutral-500 hover:bg-neutral-900 hover:text-white transition-colors"
+                        className="rounded-full border border-neutral-100 bg-white px-3 py-1 text-[11px] font-bold text-neutral-500 shadow-sm transition-all hover:border-neutral-900 hover:bg-neutral-900 hover:text-white hover:shadow-md"
                       >
                         #{item}
                       </button>
@@ -787,7 +795,6 @@ function CommunityContent() {
                   </div>
                 </div>
 
-                {/* 🌟 貼文圖片展示區：加入點擊放大燈箱事件 🌟 */}
                 {post.images && post.images.length > 0 && (
                   <div className="px-3 md:px-4 mt-5">
                     {post.images.length === 1 && (
@@ -968,7 +975,7 @@ function CommunityContent() {
         </main>
 
         <aside className="space-y-6 lg:sticky lg:top-24 lg:self-start hidden md:block">
-          <section className="rounded-[2rem] border border-neutral-100 bg-white p-6 shadow-[0_4px_20px_rgba(0,0,0,0.02)]">
+          <section className="rounded-[2.5rem] border border-neutral-100/80 bg-white p-6 shadow-sm">
             <div className="mb-6 flex items-center justify-between">
               <h2 className="flex items-center gap-2 text-sm font-extrabold text-neutral-900">
                 <Compass className="size-4 text-neutral-900" /> 探索話題
@@ -1015,7 +1022,7 @@ function CommunityContent() {
       {/* 🌟 編輯貼文彈出視窗 (Modal) 🌟 */}
       {editingPost && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-neutral-900/40 p-4 backdrop-blur-sm transition-all">
-          <div className="w-full max-w-lg rounded-[2rem] bg-white p-6 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+          <div className="w-full max-w-lg rounded-[2.5rem] bg-white p-6 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-bold text-neutral-900">編輯貼文</h3>
               <button onClick={() => setEditingPost(null)} className="rounded-full p-2 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-900 transition-colors">
