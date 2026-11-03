@@ -144,6 +144,8 @@ export default function SettingsPage() {
 
   // 💡 【效能優化】統一取得乾淨的帳號 ID，消除後面每個 API 都要重複寫 user?.id || user?.Account 的冗餘程式碼
   const accountId = user?.id || (user as any)?.Account || '';
+  // 登入資料的 email 為目前會員郵件；相容舊欄位 Email，僅在帳號本身是郵件格式時作備援。
+  const accountEmail = user?.email?.trim() || user?.Email?.trim() || (accountId.includes('@') ? accountId : '');
 
   // --- 狀態管理：目前在哪個分頁與社群綁定狀態 ---
   const [activeTab, setActiveTab] = useState<SettingsTab>('profile'); // 紀錄目前停在哪個分頁，預設為「個人檔案」
@@ -552,6 +554,14 @@ export default function SettingsPage() {
                     {/* 最關鍵的隱形上傳按鈕：它被設定為 position: absolute 蓋滿整個圓形，並且完全透明 (opacity-0)。這樣使用者點擊圖案時，其實是點到這個 input */}
                     <input type="file" accept="image/*" className="absolute inset-0 opacity-0 cursor-pointer" onChange={handleAvatarChange} />
                   </div>
+                </div>
+
+                {/* 郵件僅供查看及複製，不加入暱稱／頭像的儲存資料。 */}
+                <div className="space-y-2 max-w-md">
+                  <label htmlFor="account-email" className="block text-[10px] font-mono font-bold text-neutral-400 tracking-widest uppercase">
+                    ACCOUNT EMAIL <span className="ml-1 tracking-normal font-sans">帳號電子郵件</span>
+                  </label>
+                  <input id="account-email" type="text" value={accountEmail || '未提供電子郵件'} readOnly className="w-full px-4 py-3 bg-neutral-50 border border-neutral-200 outline-none focus:border-neutral-500 text-neutral-600 rounded-sm text-sm" />
                 </div>
 
                 {/* 暱稱輸入框 */}

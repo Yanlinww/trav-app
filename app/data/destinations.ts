@@ -4,7 +4,8 @@ export interface Destination {
     name: string; // 首頁卡片標題與封面替代文字。
     country: string; // 沿用 country 欄位名稱，內容為台灣縣市或地區。
     description: string; // 卡片簡介，顯示時由頁面樣式限制長度。
-    image: string; // 卡片封面網址。
+    image: string; // 卡片封面網址；首頁前六張使用專案內的地區實景照片。
+    imageAlt?: string; // 實景照片的地點說明，讓替代文字與照片內容一致。
     price: number; // 首頁以 NT$ 顯示的示意預算，非即時報價。
     rating: number; // 範例評分，非即時取得的 Google 評價。
     reviews: number; // 範例評論數。
@@ -27,7 +28,8 @@ export const destinations: Destination[] = [
         "name": "台南古城慢遊",
         "country": "台南市",
         "description": "走訪老街、廟宇與歷史街區，感受台南的文化與日常風景",
-        "image": "https://images.unsplash.com/photo-1528164344705-47542687000d?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxqYXBhbiUyMHRlbXBsZSUyMHNjZW5pY3xlbnwxfHx8fDE3Nzk2MDQwMjV8MA&ixlib=rb-4.1.0&q=80&w=1080",
+        "image": "/images/destinations/tainan.jpg",
+        "imageAlt": "台南神農街",
         "price": 5800,
         "rating": 4.8,
         "reviews": 1234,
@@ -46,7 +48,8 @@ export const destinations: Destination[] = [
         "name": "澎湖海島假期",
         "country": "澎湖縣",
         "description": "漫步海邊與聚落，安排澎湖離島的放鬆小旅行",
-        "image": "https://images.unsplash.com/photo-1544945582-052b29cd29e4?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHx0cm9waWNhbCUyMGJlYWNoJTIwcGFyYWRpc2V8ZW58MXx8fHwxNzc5NDE3MTEwfDA&ixlib=rb-4.1.0&q=80&w=1080",
+        "image": "/images/destinations/penghu.jpg",
+        "imageAlt": "澎湖七美雙心石滬",
         "price": 9800,
         "rating": 4.9,
         "reviews": 2156,
@@ -65,7 +68,8 @@ export const destinations: Destination[] = [
         "name": "鹿港老街漫步",
         "country": "彰化縣",
         "description": "穿梭鹿港歷史街巷，欣賞傳統建築與工藝，品味在地美食",
-        "image": "https://images.unsplash.com/photo-1616036902568-fa623d8f0c0a?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxldXJvcGVhbiUyMGNpdHklMjBzdHJlZXR8ZW58MXx8fHwxNzc5NjA0MDI2fDA&ixlib=rb-4.1.0&q=80&w=1080",
+        "image": "/images/destinations/lukang.jpg",
+        "imageAlt": "鹿港老街三槐挺秀古宅",
         "price": 3800,
         "rating": 4.7,
         "reviews": 987,
@@ -84,7 +88,8 @@ export const destinations: Destination[] = [
         "name": "阿里山森林散策",
         "country": "嘉義縣",
         "description": "走進阿里山森林步道，欣賞山林景色，安排適合自己的步行路線",
-        "image": "https://images.unsplash.com/photo-1604223190546-a43e4c7f29d7?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxtb3VudGFpbiUyMGxhbmRzY2FwZSUyMGhpa2luZ3xlbnwxfHx8fDE3Nzk0MzU0ODJ8MA&ixlib=rb-4.1.0&q=80&w=1080",
+        "image": "/images/destinations/alishan.jpg",
+        "imageAlt": "阿里山森林步道",
         "price": 6800,
         "rating": 4.6,
         "reviews": 654,
@@ -103,7 +108,8 @@ export const destinations: Destination[] = [
         "name": "日月潭湖畔慢活",
         "country": "南投縣",
         "description": "沿著日月潭湖畔散步或騎單車，享受放慢步調的國內假期",
-        "image": "https://images.unsplash.com/photo-1549294413-26f195200c16?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxsdXh1cnklMjBob3RlbCUyMHJlc29ydHxlbnwxfHx8fDE3Nzk0NjA3OTR8MA&ixlib=rb-4.1.0&q=80&w=1080",
+        "image": "/images/destinations/sunmoon.png",
+        "imageAlt": "日月潭湖面全景",
         "price": 5200,
         "rating": 4.7,
         "reviews": 1543,
@@ -122,7 +128,8 @@ export const destinations: Destination[] = [
         "name": "花蓮山海小旅行",
         "country": "花蓮縣",
         "description": "探索花蓮海岸、城市街區與在地文化，體驗台灣東部的自然風景",
-        "image": "https://images.unsplash.com/photo-1577971132997-c10be9372519?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxzYWZhcmklMjB3aWxkbGlmZSUyMGFmcmljYXxlbnwxfHx8fDE3Nzk0MzE4MDV8MA&ixlib=rb-4.1.0&q=80&w=1080",
+        "image": "/images/destinations/hualien.jpg",
+        "imageAlt": "花蓮七星潭海岸",
         "price": 7200,
         "rating": 4.9,
         "reviews": 876,
