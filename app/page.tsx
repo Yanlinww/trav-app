@@ -55,7 +55,7 @@ export default function Home() {
                     <div className="relative mx-auto w-full max-w-lg pb-9 pl-2 pr-5 md:pb-12 md:pr-8">
                         <div aria-hidden="true" className="absolute inset-0 bottom-9 left-7 rotate-[4deg] rounded-t-[10rem] rounded-b-[2rem] bg-[#e6dfd0]" />
                         <div className="relative h-[360px] overflow-hidden rounded-t-[10rem] rounded-b-[2rem] sm:h-[440px] lg:h-[475px]">
-                            <img src={destinations[3].image} alt="層疊山巒與晨光的旅行意象" fetchPriority="high" className="h-full w-full object-cover" />
+                            <img src={destinations[3].image} alt={destinations[3].imageAlt || destinations[3].name} fetchPriority="high" className="h-full w-full object-cover" />
                             <div className="absolute inset-0 bg-gradient-to-t from-[#18362d]/75 via-transparent to-transparent" />
                             <div className="absolute bottom-9 left-7 right-7 text-white">
                                 <span className="mb-3 inline-flex items-center gap-2 text-[10px] tracking-[0.22em]"><Sun size={14} /> FIND YOUR OWN PACE</span>
@@ -161,7 +161,7 @@ export default function Home() {
                                         <div className="relative h-[320px] overflow-hidden mb-4 bg-neutral-100 rounded-[1.25rem]">
                                             <img
                                                 src={destination.image}
-                                                alt={destination.name}
+                                                alt={destination.imageAlt || destination.name}
                                                 className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
                                             />
                                             {/* 左上角：分類標籤 */}
@@ -211,6 +211,9 @@ export default function Home() {
                             ))}
                         </div>
                     )}
+                    <p className="mt-6 text-right text-xs text-neutral-500">
+                        <a href="/images/destinations/ATTRIBUTION.md" target="_blank" rel="noopener noreferrer" className="underline underline-offset-4 hover:text-neutral-800">照片來源與授權</a>
+                    </p>
                 </div>
             </section>
 
