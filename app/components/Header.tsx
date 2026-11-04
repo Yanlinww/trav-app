@@ -28,14 +28,14 @@ export function Header() {
     <header className="sticky top-0 z-50 bg-white border-b border-neutral-100 shadow-sm">
       <nav className="w-full px-4 h-16 flex items-center justify-between">
         {/* Logo 靠視窗左側保留內距，點擊後仍可返回首頁。 */}
-        <Link to="/" className="flex items-center gap-2">
+        <Link to="/" className="flex shrink-0 items-center gap-3">
           <Image
-            src="/brand/travmate-logo-v1.png"
-            alt="TRAVMATE 旅遊探索"
-            width={36}
-            height={36}
+            src="/brand/travmade-logo.png"
+            alt="Travmade 旅行小熊 Logo"
+            width={56}
+            height={56}
             priority
-            className="size-8 shrink-0 object-contain sm:size-9"
+            className="size-12 shrink-0 object-contain sm:size-14"
           />
           <span className="font-black text-xl tracking-widest text-neutral-900 uppercase">Travmade</span>
         </Link>
