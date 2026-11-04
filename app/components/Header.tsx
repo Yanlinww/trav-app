@@ -26,8 +26,8 @@ export function Header() {
   // 頁首由 sticky 固定在頂部；下方手機主導覽另外以 fixed 貼齊視窗底部。
   return (
     <header className="sticky top-0 z-50 bg-white border-b border-neutral-100 shadow-sm">
-      <nav className="container mx-auto px-4 h-16 flex items-center justify-between">
-        {/* Logo */}
+      <nav className="w-full px-4 h-16 flex items-center justify-between">
+        {/* Logo 靠視窗左側保留內距，點擊後仍可返回首頁。 */}
         <Link to="/" className="flex items-center gap-2">
           <Image
             src="/brand/travmate-logo-v1.png"
@@ -40,8 +40,8 @@ export function Header() {
           <span className="font-black text-xl tracking-widest text-neutral-900 uppercase">Travmade</span>
         </Link>
 
-        {/* md 以上顯示桌機導覽，導覽項目與目前路由樣式由 TopNav 管理。 */}
-        <div className="hidden md:flex items-center gap-6">
+        {/* 桌機導覽靠右排列，與右側會員區保留間距；導覽項目與選取樣式由 TopNav 管理。 */}
+        <div className="hidden md:ml-auto md:mr-6 md:flex items-center gap-6">
           <TopNav />
         </div>
 

@@ -7,9 +7,11 @@ import FollowListModal from '../components/FollowListModal';
 import { useRouter } from 'next/navigation';
 import { 
   Camera, MapPin, Bookmark,
-  Link2, X, Loader2, Plus, Eye
+  Link2, X, Loader2, Plus, Eye, Trash2
 } from 'lucide-react';
 import { FaFacebook, FaInstagram, FaTwitter, FaYoutube, FaTiktok } from 'react-icons/fa';
+
+type TravelPhoto = { File_ID: number | string; File_URL: string };
 
 // 本人頁依登入帳號載入照片、行程與社群資料；編輯操作分別送往對應 PHP API。
 export default function ProfilePage() {
@@ -21,8 +23,12 @@ export default function ProfilePage() {
   
   // 📸 照片上傳與檔案狀態
   const [isUploading, setIsUploading] = useState(false);
-  const [userFiles, setUserFiles] = useState<any[]>([]); 
+  const [userFiles, setUserFiles] = useState<TravelPhoto[]>([]);
   const [isLoadingFiles, setIsLoadingFiles] = useState(true);
+  // 先選照片顯示確認視窗，確定後才送出刪除；處理中禁止重複操作。
+  const [photoToDelete, setPhotoToDelete] = useState<TravelPhoto | null>(null);
+  const [isDeletingPhoto, setIsDeletingPhoto] = useState(false);
+  const [photoDeleteError, setPhotoDeleteError] = useState('');
   // 由照片區卡片觸發隱藏的 file input；上傳結束後也用此 ref 清空選取值。
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -79,6 +85,28 @@ export default function ProfilePage() {
       else setUserFiles([]);
     } catch (error) { console.error("無法取得照片", error); } 
     finally { setIsLoadingFiles(false); }
+  };
+
+  // 後端成功刪除後才移除畫面卡片；失敗保留照片與確認視窗，供使用者重試。
+  const handleDeletePhoto = async () => {
+    if (!photoToDelete || !currentAccount || isDeletingPhoto) return;
+    setIsDeletingPhoto(true);
+    setPhotoDeleteError('');
+    try {
+      const response = await fetch('/backend/files.php?action=delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ Account: currentAccount, File_ID: photoToDelete.File_ID }),
+      });
+      const result = await response.json();
+      if (!response.ok || result.status !== 'success') throw new Error(result.message || '刪除照片失敗，請稍後再試');
+      setUserFiles((photos) => photos.filter((photo) => String(photo.File_ID) !== String(photoToDelete.File_ID)));
+      setPhotoToDelete(null);
+    } catch (error) {
+      setPhotoDeleteError(error instanceof Error ? error.message : '無法連線，請稍後再試');
+    } finally {
+      setIsDeletingPhoto(false);
+    }
   };
 
   // core.php?action=list 讀取帳號行程，不是收藏關係查詢；卡片連到可編輯的 /planner/{id}。
@@ -297,12 +325,23 @@ export default function ProfilePage() {
                 <span className={`mt-3 text-[10px] sm:text-xs font-bold tracking-widest uppercase transition-colors ${isUploading ? 'text-[#F04D79]' : 'text-neutral-400 group-hover:text-neutral-600'}`}>{isUploading ? '上傳中...' : '新增照片'}</span>
               </div>
               
-              {userFiles.map((file) => (
+              {userFiles.map((file, index) => (
                 <div key={file.File_ID} className="aspect-square rounded-2xl bg-neutral-100 overflow-hidden border border-neutral-200 shadow-sm relative group cursor-pointer">
                    <img src={file.File_URL} alt="Uploaded" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
                    <div className="absolute inset-0 bg-neutral-900/40 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center backdrop-blur-[2px]">
                      <a href={file.File_URL} target="_blank" rel="noreferrer" className="size-10 sm:size-12 bg-white/20 hover:bg-white text-white hover:text-neutral-900 rounded-full flex items-center justify-center backdrop-blur-md transition-all shadow-lg transform translate-y-4 group-hover:translate-y-0 duration-300"><Eye size={20} /></a>
                    </div>
+                   {/* 刪除按鈕常駐顯示，手機不必依靠 hover 才能操作。 */}
+                   <button
+                     type="button"
+                     aria-label={`刪除照片 ${index + 1}`}
+                     title="刪除照片"
+                     disabled={isDeletingPhoto || isUploading}
+                     onClick={() => { setPhotoDeleteError(''); setPhotoToDelete(file); }}
+                     className="absolute right-2 top-2 z-10 flex size-9 items-center justify-center rounded-full bg-white text-neutral-700 shadow-md transition-colors hover:bg-red-50 hover:text-red-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-600 disabled:cursor-wait disabled:opacity-50"
+                   >
+                     <Trash2 className="size-4" />
+                   </button>
                 </div>
               ))}
             </div>
@@ -356,6 +395,24 @@ export default function ProfilePage() {
       </div>
 
       {followListType && currentAccount && <FollowListModal account={currentAccount} viewerAccount={currentAccount} listType={followListType} isOwnList onClose={() => setFollowListType(null)} onOwnFollowingChanged={() => setFollowStats((stats) => ({ ...stats, followingCount: Math.max(0, stats.followingCount - 1) }))} />}
+
+      {/* 確認視窗只在本人相簿提供，不會把刪除控制加入他人個人頁。 */}
+      {photoToDelete && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm">
+          <div role="dialog" aria-modal="true" aria-labelledby="delete-photo-title" className="w-full max-w-sm rounded-2xl bg-white p-6 text-neutral-900 shadow-xl">
+            <h2 id="delete-photo-title" className="text-lg font-bold">刪除照片？</h2>
+            <p className="mt-2 text-sm leading-relaxed text-neutral-600">刪除後將無法復原，確定要移除這張旅遊照片嗎？</p>
+            <img src={photoToDelete.File_URL} alt="待刪除的旅遊照片" className="mt-4 h-40 w-full rounded-xl bg-neutral-100 object-contain" />
+            {photoDeleteError && <p role="alert" className="mt-3 text-sm text-red-600">{photoDeleteError}</p>}
+            <div className="mt-5 flex gap-3">
+              <button type="button" disabled={isDeletingPhoto} onClick={() => setPhotoToDelete(null)} className="flex-1 rounded-lg border border-neutral-300 py-2.5 text-sm font-medium disabled:opacity-50">取消</button>
+              <button type="button" disabled={isDeletingPhoto} onClick={handleDeletePhoto} className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-red-600 py-2.5 text-sm font-bold text-white hover:bg-red-700 disabled:opacity-50">
+                {isDeletingPhoto ? <><Loader2 className="size-4 animate-spin" />刪除中…</> : '確定刪除'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ================= 社群連結設定 Modal ================= */}
       {isLinkModalOpen && (

@@ -570,7 +570,8 @@ function CommunityContent() {
           </div>
         </div>
 
-        <div className="relative mx-auto flex max-w-7xl gap-2 overflow-x-auto px-5 md:px-8 no-scrollbar">
+        {/* 分類列上下留白，讓原生捲軸與按鈕、陰影分開，避免底部被截切。 */}
+        <div className="relative mx-auto flex max-w-7xl gap-2 overflow-x-auto px-5 pb-3 pt-1 md:px-8">
           {tabs.map((tab) => (
             <button
               key={tab.id}

@@ -3,13 +3,13 @@
 // 讀取目前路徑，與下方導覽設定比對；不自行保存另一份路由 state。
 import { usePathname } from "next/navigation"; 
 import { Link } from "./Link";
-import { Plane, Map, Calendar, MessagesSquare } from "lucide-react";
+import { Map, Calendar, MessagesSquare } from "lucide-react";
 
 type TopNavProps = {
   mobile?: boolean; // Header 在手機底欄傳入 true，桌機導覽省略時預設 false。
 };
 
-// 桌機與手機共用四個目的地，只切換排列、間距與選取樣式；不呼叫後端 API。
+// 桌機與手機共用三個目的地；首頁改由頁首 Logo 返回，不呼叫後端 API。
 export function TopNav({ mobile = false }: TopNavProps) {
   // 導航後由 Hook 取得新 pathname 並重新繪製；不含網址的 query string。
   const pathname = usePathname(); 
@@ -17,7 +17,6 @@ export function TopNav({ mobile = false }: TopNavProps) {
   // path 同時是導航目標與列表 key；label 為文字，icon 為對應的圖示元件。
   // 增減導覽入口集中修改此陣列，兩種版面會沿用同一份設定。
   const navItems = [
-    { path: "/", label: "首頁", icon: Plane },
     { path: "/destinations", label: "旅遊景點", icon: Map },
     { path: "/planner", label: "行程規劃", icon: Calendar },
     { path: "/community", label: "動態牆", icon: MessagesSquare },
