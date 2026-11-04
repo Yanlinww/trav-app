@@ -380,7 +380,7 @@ export default function LoginPage() {
                   type="email" 
                   placeholder="信箱 Email 或 帳號" 
                   required 
-                  className="w-full pl-11 py-3.5 bg-gray-50 border rounded-lg text-sm outline-none focus:border-black transition-colors" 
+                  className="w-full pl-11 py-3.5 bg-gray-50 border rounded-lg text-sm text-gray-900 placeholder:text-gray-500 placeholder:opacity-100 outline-none focus:border-black transition-colors"
                   value={email} 
                   onChange={(e) => setEmail(e.target.value)} 
                 />
@@ -393,7 +393,7 @@ export default function LoginPage() {
                   type={showPassword ? "text" : "password"} 
                   placeholder="密碼" 
                   required 
-                  className="w-full pl-11 py-3.5 bg-gray-50 border rounded-lg text-sm outline-none focus:border-black transition-colors" 
+                  className="w-full pl-11 py-3.5 bg-gray-50 border rounded-lg text-sm text-gray-900 placeholder:text-gray-500 placeholder:opacity-100 outline-none focus:border-black transition-colors"
                   value={password} 
                   onChange={(e) => setPassword(e.target.value)} 
                 />

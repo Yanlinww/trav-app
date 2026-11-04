@@ -155,7 +155,7 @@ export default function RegisterPage() {
                   type="text"
                   placeholder="想被怎麼稱呼？（您的暱稱）"
                   required
-                  className="w-full pl-11 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-1 focus:ring-black focus:border-black outline-none transition-all placeholder:font-light"
+                  className="w-full pl-11 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-900 placeholder:text-gray-500 placeholder:opacity-100 focus:ring-1 focus:ring-black focus:border-black outline-none transition-all placeholder:font-light"
                   onChange={(e) => setNickname(e.target.value)}
                 />
               </div>
@@ -169,7 +169,7 @@ export default function RegisterPage() {
                   type="email"
                   placeholder="請輸入 Email 地址"
                   required
-                  className="w-full pl-11 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-1 focus:ring-black focus:border-black outline-none transition-all placeholder:font-light"
+                  className="w-full pl-11 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-900 placeholder:text-gray-500 placeholder:opacity-100 focus:ring-1 focus:ring-black focus:border-black outline-none transition-all placeholder:font-light"
                   onChange={(e) => setEmail(e.target.value)}
                 />
               </div>
@@ -183,7 +183,7 @@ export default function RegisterPage() {
                   type="password"
                   placeholder="設定登入密碼 (至少 6 位數)"
                   required
-                  className="w-full pl-11 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-1 focus:ring-black focus:border-black outline-none transition-all placeholder:font-light"
+                  className="w-full pl-11 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-900 placeholder:text-gray-500 placeholder:opacity-100 focus:ring-1 focus:ring-black focus:border-black outline-none transition-all placeholder:font-light"
                   onChange={(e) => setPassword(e.target.value)}
                 />
               </div>
