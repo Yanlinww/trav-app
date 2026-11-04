@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
+import { WeatherWidget } from "./components/WeatherWidget";
 import { Link } from "./components/Link";
 import { ArrowRight, ArrowUpRight, Check, Clock3, Coffee, Compass, Footprints, MapPin, Moon, Sparkles, Star, Sun, Utensils, Wallet } from "lucide-react";
 import { destinations } from "./data/destinations";
@@ -55,7 +57,8 @@ export default function Home() {
                     <div className="relative mx-auto w-full max-w-lg pb-9 pl-2 pr-5 md:pb-12 md:pr-8">
                         <div aria-hidden="true" className="absolute inset-0 bottom-9 left-7 rotate-[4deg] rounded-t-[10rem] rounded-b-[2rem] bg-[#e6dfd0]" />
                         <div className="relative h-[360px] overflow-hidden rounded-t-[10rem] rounded-b-[2rem] sm:h-[440px] lg:h-[475px]">
-                            <img src={destinations[3].image} alt={destinations[3].imageAlt || destinations[3].name} fetchPriority="high" className="h-full w-full object-cover" />
+                            {/* 首屏照片優先下載；sizes 讓瀏覽器依版面挑選合適的圖片寬度。 */}
+                            <Image src={destinations[3].image} alt={destinations[3].imageAlt || destinations[3].name} fill sizes="(min-width: 640px) 480px, calc(100vw - 68px)" loading="eager" fetchPriority="high" className="object-cover" />
                             <div className="absolute inset-0 bg-gradient-to-t from-[#18362d]/75 via-transparent to-transparent" />
                             <div className="absolute bottom-9 left-7 right-7 text-white">
                                 <span className="mb-3 inline-flex items-center gap-2 text-[10px] tracking-[0.22em]"><Sun size={14} /> FIND YOUR OWN PACE</span>
@@ -74,6 +77,9 @@ export default function Home() {
                     </div>
                 </div>
             </section>
+
+            {/* 天氣元件向 PHP 只讀 API 取得處理好的資料，不依賴會員或行程資料庫。 */}
+            <WeatherWidget />
 
             {/* 心情選擇與示意行程屬於同一功能，共用區塊底色與綠色選中狀態。 */}
             <section id="day-plan" aria-labelledby="day-plan-title" className="scroll-mt-24 border-y border-[#d7dfcf] bg-[#e9ede3]">
@@ -126,11 +132,12 @@ export default function Home() {
                             </p>
                         </div>
                         
-                        {/* 標籤按鈕列表 */}
+                        {/* 標籤按鈕以 aria-pressed 同步選取狀態，讓螢幕閱讀器使用者不必依賴顏色判斷。 */}
                         <div className="flex flex-wrap gap-2">
                             {soloTags.map((tag) => (
                                 <button
                                     key={tag}
+                                    aria-pressed={selectedTag === tag}
                                     onClick={() => setSelectedTag(selectedTag === tag ? null : tag)}
                                     className={`px-4 py-2 text-xs tracking-wider border rounded-full transition-all duration-300 font-bold ${
                                         selectedTag === tag
@@ -157,11 +164,18 @@ export default function Home() {
                                     {/* 卡片主體 (大圓角設計 rounded-3xl) */}
                                     <div className="group cursor-pointer flex flex-col h-full bg-white rounded-3xl border border-neutral-100 shadow-[0_4px_20px_rgba(0,0,0,0.02)] hover:shadow-[0_10px_40px_rgba(0,0,0,0.08)] hover:border-neutral-200 transition-all duration-300 p-3">
                                         
-                                        {/* 圖片容器 */}
+                                        {/* 固定容器高度避免圖片載入時版面跳動，relative 提供 fill 的定位基準。
+                                            sizes 對應桌機三欄、平板兩欄與手機單欄，讓瀏覽器選擇合適的圖片尺寸。
+                                            卡片使用 lazy 延後下載，優先把網路資源留給首屏內容。 */}
                                         <div className="relative h-[320px] overflow-hidden mb-4 bg-neutral-100 rounded-[1.25rem]">
-                                            <img
+                                            <Image
                                                 src={destination.image}
                                                 alt={destination.imageAlt || destination.name}
+                                                fill
+                                                sizes="(min-width: 1024px) 33vw, (min-width: 768px) 50vw, 100vw"
+                                                loading="lazy"
+                                                // 外部範例沿用來源圖片，僅對專案內圖片啟用伺服器最佳化。
+                                                unoptimized={!destination.image.startsWith("/")}
                                                 className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
                                             />
                                             {/* 左上角：分類標籤 */}

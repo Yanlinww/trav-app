@@ -19,7 +19,7 @@ export function Header() {
   // loading 期間顯示骨架；還原完成後才依 user 切換會員資訊或登入／註冊入口。
   const { user, logout, loading } = useAuth();
   // 頭像與暱稱來自共用會員物件；login 更新資料後，本元件隨 Context 更新，不另查會員 API。
-  const avatarUrl = (user as any)?.avatar;
+  const avatarUrl = user?.avatar;
   // /planner/{id} 編輯頁隱藏手機底欄；/planner 行程列表仍保留。
   const showMobileBottomNav = !pathname.startsWith("/planner/");
 
@@ -126,8 +126,17 @@ export function Header() {
         </div>
 
         {/* 漢堡按鈕只在 md 以下出現，切換 mobileMenuOpen 與 Menu／X 圖示。
+            44px 觸控範圍方便手機點擊；焦點外框協助鍵盤使用者辨識目前位置。
+            aria-label／expanded 提供按鈕名稱與展開狀態；選單掛載時才以 controls 關聯其 ID。
             md 斷點只控制 CSS 顯示，不會把兩個選單的 React state 自動重置。 */}
-        <button className="md:hidden p-2 text-neutral-600" onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>
+        <button
+          type="button"
+          aria-label={mobileMenuOpen ? "關閉帳號選單" : "開啟帳號選單"}
+          aria-expanded={mobileMenuOpen}
+          aria-controls={mobileMenuOpen ? "mobile-account-menu" : undefined}
+          className="flex size-11 items-center justify-center rounded-md text-neutral-600 focus-visible:outline-2 focus-visible:outline-offset-2 md:hidden"
+          onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+        >
           {mobileMenuOpen ? <X className="size-6" /> : <Menu className="size-6" />}
         </button>
       </nav>
@@ -135,7 +144,7 @@ export function Header() {
       {/* 手機帳號選單只在展開時掛載；最大高度扣除頁首與底欄，超出內容可捲動。
           showMobileBottomNav=false 時只扣頁首高度，避免編輯頁仍保留不存在的底欄空間。 */}
       {mobileMenuOpen && (
-        <div className={`absolute inset-x-0 top-full z-40 overflow-y-auto border-t border-neutral-100 bg-white shadow-xl animate-in fade-in slide-in-from-top-2 duration-200 md:hidden ${showMobileBottomNav ? 'max-h-[calc(100dvh-8.5rem)]' : 'max-h-[calc(100dvh-4rem)]'}`}>
+        <div id="mobile-account-menu" className={`absolute inset-x-0 top-full z-40 overflow-y-auto border-t border-neutral-100 bg-white shadow-xl animate-in fade-in slide-in-from-top-2 duration-200 md:hidden ${showMobileBottomNav ? 'max-h-[calc(100dvh-8.5rem)]' : 'max-h-[calc(100dvh-4rem)]'}`}>
           <div className="container mx-auto px-4 py-6 flex flex-col gap-4">
             {loading ? (
               <div className="flex flex-col gap-3">

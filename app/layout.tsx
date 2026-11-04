@@ -14,14 +14,20 @@ export default function RootLayout({
     // 僅抑制根元素的 hydration 差異警告，不會修正伺服器與瀏覽器的內容差異。
     <html lang="zh-TW" suppressHydrationWarning>
       <body className="min-h-screen flex flex-col">
+        {/* 鍵盤使用者可略過每頁重複導覽；僅取得焦點時顯示入口。 */}
+        <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[100] focus:rounded-md focus:bg-white focus:px-4 focus:py-3 focus:text-neutral-900 focus:shadow-lg">
+          跳至主要內容
+        </a>
         {/* Header 與頁面共用會員顯示資料；Provider 本身不驗證後端登入身分。 */}
         <AuthProvider>
           {/* 共用頁首，包含桌機導覽與手機底欄。 */}
           <Header />
           {/* 手機預留底欄高度與裝置安全區，md 以上取消預留。 */}
           <div className="flex flex-1 flex-col pb-[calc(4.5rem+env(safe-area-inset-bottom))] md:pb-0">
-            {/* 主內容撐開剩餘高度，讓短頁面的頁尾保持在下方。 */}
-            <main className="flex-1">
+            {/* 主內容撐開剩餘高度，讓短頁面的頁尾保持在下方。
+                ID 對應跳轉入口；tabIndex=-1 允許接收焦點，但不增加一般 Tab 順序中的停留點。
+                scroll-mt-20 預留頂部導覽空間，避免錨點跳轉後內容被遮住。 */}
+            <main id="main-content" tabIndex={-1} className="flex-1 scroll-mt-20">
               {children}
             </main>
             {/* 靜態頁尾；以下文字項目目前沒有連結或 API 行為。 */}

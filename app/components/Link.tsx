@@ -1,36 +1,22 @@
 'use client';
 
 import React from "react";
-import { useRouter } from "next/navigation";
+import NextLink from "next/link";
 
-// 自訂站內連結，以 router.push 導航；不是 next/link，未提供其完整功能。
+// 保留既有 to 介面，統一由 Next.js 處理站內導航與瀏覽器的開新分頁操作。
 interface LinkProps {
     to: string; // 站內目的地路徑。
     children: React.ReactNode; // 連結中的文字、圖示或元件。
     className?: string; // 父元件控制外觀，未提供時使用下方的空字串預設值。
-    onClick?: () => void; // 導航前的額外操作，例如關閉手機選單。
+    onClick?: () => void; // 沿用舊名稱，實際交由 onNavigate 在站內導航前執行，例如關閉手機選單。
 }
 
 export function Link({ to, children, className = "", onClick }: LinkProps) {
-    // 目的地由呼叫端傳入；此元件不查詢登入狀態，也不代替目標頁做權限驗證。
-    const router = useRouter();
-
-    const handleClick = (e: React.MouseEvent) => {
-        // 取消瀏覽器預設導航，改交由 Next.js 路由器換頁；不阻止事件冒泡。
-        e.preventDefault();
-        
-        // 先執行回呼，不傳事件、不等待非同步完成；同步拋錯時不會繼續導航。
-        if (onClick) onClick();
-        
-        // 新增一筆瀏覽器歷史紀錄；目前未另行處理 Ctrl／Command 點擊等分支。
-        router.push(to);
-    };
-
-    // href 保留連結目的地；點擊時執行 handleClick，不在渲染階段就呼叫導航。
-    // children 直接成為連結內容，例如 TopNav 的圖示與名稱，不另建一份內容狀態。
+    // 選單收合等回呼僅在本頁導航執行；Ctrl／Command 點擊不應改動目前頁面。
+    // 暫停預抓以維持原有網路請求量，避免一次載入大量行程詳情。
     return (
-        <a href={to} onClick={handleClick} className={className} style={{ cursor: 'pointer' }}>
+        <NextLink href={to} onNavigate={onClick} prefetch={false} className={className} style={{ cursor: 'pointer' }}>
             {children}
-        </a>
+        </NextLink>
     );
 }
