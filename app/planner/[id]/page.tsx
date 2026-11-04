@@ -1230,8 +1230,9 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
     <div className={`itinerary-page fixed inset-0 md:top-16 ${isMobilePanelOpen ? 'z-[60]' : 'z-40'} md:z-40 flex flex-col bg-[#F4F2ED] font-sans text-slate-800`}>
 
       {/* 左側是行程資料與每日清單，中央是地圖，右側是個人記帳或行李。 */}
-      <div className="flex flex-1 overflow-visible xl:overflow-hidden">
-        <div className={`${mobilePlannerView === 'list' ? 'flex' : 'hidden'} w-full md:flex md:w-[380px] shrink-0 bg-white border-r border-slate-100 flex-col z-10 shadow-[4px_0_24px_rgba(0,0,0,0.01)] relative`}>
+      {/* min-h-0 讓內部清單能縮在視窗內捲動；清單模式另避開固定底欄。 */}
+      <div className={`flex min-h-0 flex-1 overflow-hidden ${mobilePlannerView === 'list' ? 'pb-[calc(5rem+env(safe-area-inset-bottom))] xl:pb-0' : ''}`}>
+        <div className={`${mobilePlannerView === 'list' ? 'flex' : 'hidden'} min-h-0 w-full md:flex md:w-[380px] shrink-0 bg-white border-r border-slate-100 flex-col z-10 shadow-[4px_0_24px_rgba(0,0,0,0.01)] relative`}>
           <div className="relative aspect-video w-full shrink-0 overflow-hidden bg-slate-100 group md:h-40 md:aspect-auto">
             <img
               src={coverImageWithVersion(coverImage, coverImageVersion)}
@@ -1311,7 +1312,7 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
           </div>
 
           {/* DndContext 管理拖曳事件；SortableContext 只接收當天 ID，避免跨天排序。 */}
-          <div className="flex-1 overflow-y-auto p-5 space-y-3.5 bg-slate-50/30">
+          <div role="region" aria-label="當日行程清單" tabIndex={0} className="min-h-0 flex-1 overflow-y-auto p-5 space-y-3.5 bg-slate-50/30">
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
               <SortableContext items={currentDayItems.map(item => item.id)} strategy={verticalListSortingStrategy}>
                 {currentDayItems.map((item, index) => {
@@ -1598,7 +1599,8 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
               <div className="absolute left-4 top-20 z-[110] md:top-4 md:hidden">
                 <button type="button" onClick={() => switchMobilePlannerView('list')} className="flex size-11 items-center justify-center rounded-xl border border-slate-200 bg-white/95 text-slate-600 shadow-lg backdrop-blur transition hover:bg-slate-100" aria-label="切換至清單"><LayoutGrid size={18} /></button>
               </div>
-              <div className="absolute left-1/2 top-20 z-[100] w-[calc(100%-8rem)] max-w-sm -translate-x-1/2 rounded-xl border border-slate-200 bg-white/95 px-2 shadow-lg backdrop-blur md:hidden">
+              {/* 手機外層只負責定位，外框與白底統一由搜尋輸入框提供。 */}
+              <div className="absolute left-1/2 top-20 z-[100] w-[calc(100%-8rem)] max-w-sm -translate-x-1/2 md:hidden">
                 <PlaceAutocomplete
                   value={newItemTitle}
                   onChange={setNewItemTitle}

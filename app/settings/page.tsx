@@ -261,7 +261,14 @@ export default function SettingsPage() {
 
   // UI 互動狀態
   const [isSaving, setIsSaving] = useState(false); // 記錄是否正在打 API 儲存中 (決定按鈕要不要轉圈圈)
-  const [showSuccessHint, setShowSuccessHint] = useState(false); // 記錄畫面上方要不要跳出「儲存成功」的綠色橫幅
+  const [showSuccessHint, setShowSuccessHint] = useState(false); // 控制與登入成功同風格的儲存成功彈窗。
+
+  // 成功提示顯示 3 秒後關閉；手動關閉或離開頁面時取消計時。
+  useEffect(() => {
+    if (!showSuccessHint) return;
+    const timer = setTimeout(() => setShowSuccessHint(false), 1000);
+    return () => clearTimeout(timer)
+  }, [showSuccessHint]);
 
   // =======================================================
   // 離開頁面防護機制 (Unsaved Changes Guard) 的狀態
@@ -407,9 +414,8 @@ export default function SettingsPage() {
         setSavedAvatar(finalAvatarUrl);
         setAvatarFile(null); // 上傳完畢，清空暫存的檔案
 
-        // 顯示畫面上方綠色的「變更已成功儲存」橫幅，並設定 3 秒後自動關閉
+        // 後端確認儲存成功後才顯示彈窗，自動關閉由 Effect 統一處理。
         setShowSuccessHint(true);
-        setTimeout(() => setShowSuccessHint(false), 3000);
       } else {
         alert("儲存失敗：" + data.message);
       }
@@ -495,7 +501,20 @@ export default function SettingsPage() {
 
   return (
     <div className="min-h-screen bg-[#FBFBFB] pt-12 pb-24">
-      <div className="container mx-auto px-6 max-w-5xl">
+      {/* 沿用登入成功的白色卡片、藍灰勾選圖示與模糊遮罩，顯示在整個畫面中央。 */}
+      {showSuccessHint && (
+        <div role="dialog" aria-modal="true" aria-labelledby="profile-save-title" aria-describedby="profile-save-message" onKeyDown={(e) => { if (e.key === 'Escape') setShowSuccessHint(false); }} className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-sm rounded-3xl border border-[#d7e4ec] bg-white p-8 text-center shadow-[0_20px_50px_rgba(66,96,120,0.22)] animate-in zoom-in-95 fade-in duration-200">
+            <div className="mx-auto flex size-16 items-center justify-center rounded-full bg-[#edf4f8]">
+              <CheckCircle2 aria-hidden="true" className="size-8 text-[#5e7891]" />
+            </div>
+            <h3 id="profile-save-title" className="mt-5 text-xl font-bold text-[#30485f]">儲存成功</h3>
+            <p id="profile-save-message" className="mt-2 text-sm font-medium leading-6 text-[#718da1]">個人檔案的變更已成功儲存。</p>
+            <button type="button" autoFocus onClick={() => setShowSuccessHint(false)} className="mt-6 rounded-xl bg-[#5e7891] px-8 py-3 text-sm font-bold text-white transition hover:bg-[#4c657d] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#5e7891]">完成</button>
+          </div>
+        </div>
+      )}
+      <div inert={showSuccessHint} className="container mx-auto px-6 max-w-5xl">
 
         {/* ========================================= */}
         {/* 頁面大標題區塊 */}
@@ -522,14 +541,6 @@ export default function SettingsPage() {
           {/* 右側主要內容區塊 (根據 activeTab 變數的值，動態決定要 render 哪一塊 HTML) */}
           {/* ========================================= */}
           <main className="flex-1 bg-white border border-neutral-100 rounded-sm p-8 md:p-12 shadow-sm relative overflow-hidden">
-
-            {/* 儲存成功時的綠色提示條 (透過 absolute 絕對定位固定在右側區塊的最上方) */}
-            {/* 只有當 showSuccessHint 是 true 時，這塊 HTML 才會出現在畫面上 */}
-            {showSuccessHint && (
-              <div className="absolute top-0 left-0 right-0 bg-neutral-900 text-white px-6 py-3 flex items-center justify-center gap-2 text-xs tracking-wider transition-all animate-in slide-in-from-top duration-300">
-                <CheckCircle2 className="size-4 text-amber-400 fill-neutral-900" /><span>變更已成功儲存</span>
-              </div>
-            )}
 
             {/* [分頁 1 內容]：個人檔案編輯 */}
             {activeTab === 'profile' && (
