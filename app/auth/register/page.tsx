@@ -87,7 +87,7 @@ export default function RegisterPage() {
               <CheckCircle2 aria-hidden="true" className="size-8 text-[#5e7891]" />
             </div>
             <h3 id="register-success-title" className="mt-5 text-xl font-bold text-[#30485f]">註冊成功</h3>
-            <p id="register-success-message" className="mt-2 text-sm font-medium leading-6 text-[#718da1]">歡迎加入 TRAVMADE！<br />正在前往登入頁面…</p>
+            <p id="register-success-message" className="mt-2 text-sm font-medium leading-6 text-[#718da1]">歡迎加入 Travmate！<br />正在前往登入頁面…</p>
             <div className="mt-6 flex justify-center">
               <Loader2 aria-label="正在前往登入頁面" className="size-5 animate-spin text-[#5e7891]" />
             </div>
@@ -110,7 +110,7 @@ export default function RegisterPage() {
         <div className="hidden md:flex flex-col w-1/2 bg-gray-50 p-10 items-center justify-center text-center border-r border-gray-100">
           <div className="space-y-6 flex flex-col items-center">
             <h3 className="text-2xl font-light text-gray-900 tracking-wider">
-              加入 旅伴travmade！<br />開啟你的專屬獨旅！
+              加入 旅伴 Travmate！<br />開啟你的專屬獨旅！
             </h3>
             <p className="text-sm text-gray-500 font-light tracking-wide">
               只需幾秒鐘，輕鬆打造你的洗滌心靈旅程
@@ -199,7 +199,7 @@ export default function RegisterPage() {
                   onChange={(e) => setAgreeTerms(e.target.checked)}
                 />
                 <span className="text-xs text-gray-500 font-light group-hover:text-gray-800 transition-colors">
-                  我已閱讀並同意 <span className="font-medium underline underline-offset-2">旅伴travmade 會員服務條款</span>
+                  我已閱讀並同意 <span className="font-medium underline underline-offset-2">旅伴 Travmate 會員服務條款</span>
                 </span>
               </label>
             </div>

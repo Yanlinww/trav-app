@@ -1,8 +1,15 @@
 import React from "react";
+import type { Metadata } from "next";
 import { Header } from "./components/Header";
 import { Plane } from "lucide-react";
 import "./globals.css";
 import { AuthProvider } from "./context/AuthContext";
+
+// 全站共用的瀏覽器分頁標題與網站簡介。
+export const metadata: Metadata = {
+  title: "Travmate",
+  description: "Travmate 旅伴，規劃台灣旅程、探索公開行程並分享旅行回憶。",
+};
 
 /** 根佈局：共用會員資料、頁首與頁尾，children 為目前路由的頁面內容。 */
 export default function RootLayout({
@@ -38,7 +45,7 @@ export default function RootLayout({
                   <div>
                     <div className="flex items-center gap-2 mb-4">
                       <Plane className="size-6" />
-                      <span className="font-bold text-lg">旅遊探索</span>
+                      <span className="font-bold text-lg">Travmate</span>
                     </div>
                     <p className="text-gray-400 text-sm">
                       探索台灣，創造美好回憶
@@ -68,7 +75,7 @@ export default function RootLayout({
                   </div>
                 </div>
                 <div className="border-t border-gray-800 mt-8 pt-8 text-center text-sm text-gray-400">
-                  © 2026 旅遊探索. All rights reserved.
+                  © 2026 Travmate. All rights reserved.
                 </div>
               </div>
             </footer>

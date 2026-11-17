@@ -240,7 +240,7 @@ export default function LoginPage() {
       const data = await res.json();
       
       if (data.status === 'success' && data.user) {
-        setSuccessInfo({ isOpen: true, message: "登入成功，歡迎回來 TRAVMADE！" });
+        setSuccessInfo({ isOpen: true, message: "登入成功，歡迎回來 Travmate！" });
         login(data.user);
         setTimeout(() => { router.push("/"); }, 1500);
       } else {
@@ -330,7 +330,7 @@ export default function LoginPage() {
           <div className="hidden md:flex flex-col w-1/2 bg-gray-50 p-10 items-center justify-center text-center border-r border-gray-100">
             <div className="space-y-6 flex flex-col items-center">
               <h3 className="text-2xl font-light text-gray-900 tracking-wider">
-                探索台灣 <br /> 就在 TRAVMADE
+                探索台灣 <br /> 就在 Travmate
               </h3>
               
               {/* 視覺卡片插圖模擬 */}
@@ -363,7 +363,7 @@ export default function LoginPage() {
             <div className="flex flex-col items-center text-center mb-8">
               <Plane className="size-8 mb-4 text-black" />
               <h2 className="text-2xl font-light text-gray-900 tracking-widest mb-1">
-                登入 TRAVMADE
+                登入 Travmate
               </h2>
               <p className="text-xs text-gray-400 uppercase tracking-widest font-medium">
                 Your Exclusive Solo Journey
@@ -415,7 +415,7 @@ export default function LoginPage() {
                   onChange={(e) => setAgreeTerms(e.target.checked)} 
                 />
                 <span className="text-xs text-gray-500">
-                  我同意 <span className="font-medium underline">TRAVMADE 服務條款</span>
+                  我同意 <span className="font-medium underline">Travmate 服務條款</span>
                 </span>
               </label>
 

@@ -74,7 +74,7 @@ function auth_login(mysqli $conn): void {
                 // 比對成功只回傳會員資料；此處沒有建立 PHP session 或本站登入權杖。
                 echo json_encode([
                     "status" => "success",
-                    "message" => "登入成功！歡迎回來 TRAVMADE！",
+                    "message" => "登入成功！歡迎回來 Travmate！",
                     "user" => [
                         "id" => $user['Account'],        // 把 Account 當作前端的 user.id
                         "email" => $user['Email'],

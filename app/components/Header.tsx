@@ -31,13 +31,13 @@ export function Header() {
         <Link to="/" className="flex shrink-0 items-center gap-3">
           <Image
             src="/brand/travmade-logo.png"
-            alt="Travmade 旅行小熊 Logo"
+            alt="Travmate 旅行小熊 Logo"
             width={56}
             height={56}
             priority
             className="size-12 shrink-0 object-contain sm:size-14"
           />
-          <span className="font-black text-xl tracking-widest text-neutral-900 uppercase">Travmade</span>
+          <span className="font-black text-xl tracking-widest text-neutral-900 uppercase">Travmate</span>
         </Link>
 
         {/* 桌機導覽靠右排列，與右側會員區保留間距；導覽項目與選取樣式由 TopNav 管理。 */}
