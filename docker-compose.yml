@@ -1,35 +1,69 @@
+# Docker Compose 的多服務設定檔；YAML 用縮排表示上下層關係。
+# 本檔啟動 Next.js 前端與 PHP 後端，沒有建立 MySQL 容器。
 services:
+    # 前端服務名稱；Compose 預設網路中的其他服務可用此名稱找到它。
     frontend:
+        # 使用現成的 Node.js 20 映像；alpine 是體積較小的 Linux 基底。
+        # 此標籤指定主要版本與基底，並非鎖定每一次下載都完全相同的映像。
         image: node:20-alpine
+        # 容器的固定名稱，方便在 Docker Desktop 或 logs 指令辨識。
         container_name: trav-app-frontend
+        # 容器內執行下方 command 時所在的資料夾，不是 Windows 主機路徑。
         working_dir: /app
+        # 格式為「主機連接埠:容器連接埠」。本機瀏覽器用 localhost:3001 開啟前端。
         ports:
             - "3001:3000"
         volumes:
+            # 將本檔所在的專案目錄掛載到容器 /app；兩邊直接使用同一份程式檔案。
             - .:/app
+            # 套件由 Docker 具名卷保存，隔開 Windows 主機的 node_modules。
             - frontend_node_modules:/app/node_modules
+            # 將 Next.js 開發輸出與快取另外存放，不寫入主機專案的 .next。
             - frontend_next_cache:/app/.next
+        # 傳入容器的環境變數；同名項目會優先於下方 env_file 的值。
         environment:
+            # 目前是開發環境，並非正式營運的 production 模式。
             - NODE_ENV=development
+            # Next.js 伺服器端把 /backend/ 請求轉送到名為 backend 的服務。
+            # http 預設使用 80 埠；這是容器間位址，不是瀏覽器要開的網址。
             - INTERNAL_API_ORIGIN=http://backend
+            # 讓相關檔案監看工具採輪詢方式檢查變更，協助偵測掛載目錄的修改。
+            # 是否使用到各變數仍取決於實際工具；輪詢也會增加檔案檢查工作。
             - WATCHPACK_POLLING=true
             - CHOKIDAR_USEPOLLING=true
+        # sh -c：用容器內的 shell 執行引號內指令。
+        # 若 next 執行檔不存在，先依 package-lock.json 安裝套件，再啟動開發伺服器。
+        # dev:docker 在 package.json 對應 next dev --webpack。
+        # 這不是每次都安裝，也不會僅因 package-lock.json 改變就自動重新安裝。
         command: sh -c "if [ ! -x node_modules/.bin/next ]; then npm ci; fi; npm run dev:docker"
+        # 容器退出時套用自動重啟政策；不是網站健康檢查。
+        # 手動停止後暫不自動重啟，直到手動啟動或 Docker daemon 重新啟動。
         restart: always
+        # 從本機檔案載入額外環境變數；本檔只引用檔名，不在此列出金鑰。
         env_file:
             - .env.local
 
+    # PHP 後端服務；前端容器可用 http://backend 連線。
     backend:
+        # 此服務依 Dockerfile 建立映像，而不是直接使用一個現成映像設定。
         build:
+            # 建置時可使用的來源範圍為專案目錄，供 Dockerfile 的 COPY 等指令使用。
             context: .
+            # 目前 Dockerfile 以 php:8.2-apache 為基底，安裝 mysqli 並放入 PHP 檔案。
             dockerfile: Dockerfile
         container_name: trav-app-backend
+        # 主機 localhost:8080 連到容器 Apache 的 80 埠。
+        # 前端容器間連線使用 backend:80，不需要繞到主機的 8080。
         ports:
             - "8080:80"
         volumes:
+            # 將本機 PHP 目錄掛到 Apache 網站根目錄，修改後可由容器讀取。
+            # 此掛載會遮住映像在同一路徑原有的內容；不是另複製一份互不相干的檔案。
             - ./backend/trav-api:/var/www/html
         restart: always
 
+# 宣告上方使用的兩個 Docker 具名卷；卷內內容不會因單純刪除容器而自動消失。
+# 刪除卷本身仍會移除其內容，因此這些卷不等於備份，也不是 MySQL 的儲存位置。
 volumes:
     frontend_node_modules:
     frontend_next_cache:
