@@ -1225,15 +1225,16 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
   const selectedMapGroup = currentDayMapGroups.find(group => group.visits.some(({ item }) => item.id === selectedMapItem?.id));
 
   return (
-    // 手機面板可覆蓋全站 Header；md 以上固定退到它下方，並預留 4rem 高度。
+    // 一般清單避開全站 Header；手機記帳／行李展開時才覆蓋頁首。
     // 層級由斷點決定，不受手機開關殘留狀態影響；導覽與會員資訊統一使用 layout 的 Header。
-    <div className={`itinerary-page fixed inset-0 md:top-16 ${isMobilePanelOpen ? 'z-[60]' : 'z-40'} md:z-40 flex flex-col bg-[#F4F2ED] font-sans text-slate-800`}>
+    <div className={`itinerary-page fixed inset-x-0 bottom-0 ${isMobilePanelOpen ? 'top-0 z-[60]' : 'top-16 z-40'} md:top-16 md:z-40 flex flex-col bg-[#F4F2ED] font-sans text-slate-800`}>
 
       {/* 左側是行程資料與每日清單，中央是地圖，右側是個人記帳或行李。 */}
       {/* min-h-0 讓內部清單能縮在視窗內捲動；清單模式另避開固定底欄。 */}
       <div className={`flex min-h-0 flex-1 overflow-hidden ${mobilePlannerView === 'list' ? 'pb-[calc(5rem+env(safe-area-inset-bottom))] xl:pb-0' : ''}`}>
         <div className={`${mobilePlannerView === 'list' ? 'flex' : 'hidden'} min-h-0 w-full md:flex md:w-[380px] shrink-0 bg-white border-r border-slate-100 flex-col z-10 shadow-[4px_0_24px_rgba(0,0,0,0.01)] relative`}>
-          <div className="relative aspect-video w-full shrink-0 overflow-hidden bg-slate-100 group md:h-40 md:aspect-auto">
+          {/* 手機封面限制為 5rem，避免隨螢幕寬度增高而擠壓每日清單。 */}
+          <div className="relative h-20 w-full shrink-0 overflow-hidden bg-slate-100 group md:h-40">
             <img
               src={coverImageWithVersion(coverImage, coverImageVersion)}
               alt="行程封面"
@@ -1259,7 +1260,7 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
             </button>
           </div>
 
-          <div className="px-6 py-5 border-b border-slate-50 shrink-0 group/header relative">
+          <div className="px-4 py-3 md:px-6 md:py-5 border-b border-slate-50 shrink-0 group/header relative">
             {/* 閱讀／編輯主資料切換，日期草稿使用 YYYY-MM-DD。 */}
             {isEditingInfo ? (
               <div className="space-y-3 animate-in fade-in duration-200">
@@ -1276,23 +1277,23 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
               </div>
             ) : (
               <>
-                <h1 className="text-xl font-bold text-slate-900 tracking-wide mb-2 truncate">{itineraryData.title}</h1>
+                <h1 className="pr-20 text-base md:pr-0 md:text-xl font-bold text-slate-900 tracking-wide mb-1 md:mb-2 truncate">{itineraryData.title}</h1>
                 <div className="flex items-center text-xs font-medium text-slate-400 tracking-wide">
                   <Calendar size={14} className="mr-2 opacity-70" />
                   {itineraryData.startDate} - {itineraryData.endDate}
                 </div>
-                <button onClick={() => { setEditInfoTitle(itineraryData.title); setEditInfoStart(itineraryData.startDate.replace(/\//g, '-')); setEditInfoEnd(itineraryData.endDate.replace(/\//g, '-')); setIsEditingInfo(true); }} className="absolute right-4 top-5 inline-flex items-center gap-1.5 rounded-full bg-slate-900 px-3 py-2 text-xs font-bold text-white shadow-sm transition-all hover:bg-[#F04D79] md:right-6 md:bg-slate-50 md:p-2 md:text-slate-400 md:opacity-0 md:group-hover/header:opacity-100 md:hover:text-white" title="編輯行程名稱與日期" aria-label="編輯行程名稱與日期"><Edit2 size={16} /><span className="md:hidden">編輯</span></button>
+                <button onClick={() => { setEditInfoTitle(itineraryData.title); setEditInfoStart(itineraryData.startDate.replace(/\//g, '-')); setEditInfoEnd(itineraryData.endDate.replace(/\//g, '-')); setIsEditingInfo(true); }} className="absolute right-4 top-2 inline-flex min-h-11 items-center gap-1.5 rounded-full bg-slate-900 px-3 py-2 text-xs font-bold text-white shadow-sm transition-all hover:bg-[#F04D79] md:top-5 md:right-6 md:min-h-0 md:bg-slate-50 md:p-2 md:text-slate-400 md:opacity-0 md:group-hover/header:opacity-100 md:hover:text-white" title="編輯行程名稱與日期" aria-label="編輯行程名稱與日期"><Edit2 size={16} /><span className="md:hidden">編輯</span></button>
               </>
             )}
           </div>
 
-          <div className="flex gap-1 border-b border-slate-100 bg-white p-3 md:hidden">
+          <div className="flex shrink-0 gap-1 border-b border-slate-100 bg-white px-3 py-1 md:hidden">
             <button type="button" onClick={() => switchMobilePlannerView('list')} className={`flex flex-1 items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-bold transition-colors ${mobilePlannerView === 'list' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-400 hover:bg-slate-50 hover:text-slate-600'}`}><LayoutGrid size={16} />清單</button>
             <button type="button" onClick={() => switchMobilePlannerView('map')} className={`flex flex-1 items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-bold transition-colors ${mobilePlannerView === 'map' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-400 hover:bg-slate-50 hover:text-slate-600'}`}><MapIcon size={16} />地圖</button>
           </div>
 
           {/* Day 分頁由行程起迄日期算出，不需要另外儲存每日分頁資料。 */}
-          <div className="flex overflow-x-auto hide-scrollbar px-6 border-b border-slate-100 gap-6">
+          <div className="flex shrink-0 overflow-x-auto hide-scrollbar px-4 md:px-6 border-b border-slate-100 gap-6">
             {(() => {
               const start = new Date(itineraryData.startDate); const end = new Date(itineraryData.endDate);
               const totalDays = Math.max(1, Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1);
@@ -1307,12 +1308,14 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
             })()}
           </div>
 
-          <div className="px-6 py-2.5 bg-white border-b border-slate-100 text-[11px] font-bold tracking-wide">
+          {/* 手機新增入口放在清單外，保留固定操作位置，也不覆蓋行程卡片。 */}
+          <div className="flex shrink-0 items-center justify-between gap-2 px-4 py-1 md:px-6 md:py-2.5 bg-white border-b border-slate-100 text-[11px] font-bold tracking-wide">
             <span className="text-slate-500">Day {activeDay} 行程摘要</span>
+            <button type="button" onClick={() => openAddItemModal()} className="inline-flex min-h-11 items-center gap-1 rounded-lg px-3 text-xs font-bold text-[#F04D79] hover:bg-slate-50 md:hidden"><Plus size={16} />新增地點</button>
           </div>
 
           {/* DndContext 管理拖曳事件；SortableContext 只接收當天 ID，避免跨天排序。 */}
-          <div role="region" aria-label="當日行程清單" tabIndex={0} className="min-h-0 flex-1 overflow-y-auto p-5 space-y-3.5 bg-slate-50/30">
+          <div role="region" aria-label="當日行程清單" tabIndex={0} className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3 md:p-5 space-y-3.5 bg-slate-50/30">
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
               <SortableContext items={currentDayItems.map(item => item.id)} strategy={verticalListSortingStrategy}>
                 {currentDayItems.map((item, index) => {
@@ -1333,7 +1336,7 @@ const handleKeywordSearch = async (keyword: string, searchCenter = mapCenter) =>
                 <p className="mt-1 text-xs leading-5 text-slate-400">從地圖搜尋景點，或建立一個自訂地點開始規劃。</p>
               </div>
             )}
-            <div className="sticky bottom-0 z-10 -mx-5 mt-2 px-5 pt-3 pb-1 bg-slate-50/95 backdrop-blur-sm">
+            <div className="sticky bottom-0 z-10 -mx-5 mt-2 hidden px-5 pt-3 pb-1 bg-slate-50/95 backdrop-blur-sm md:block">
               <button onClick={() => openAddItemModal()} className="w-full py-3.5 bg-[#F04D79] text-white rounded-2xl hover:bg-pink-600 flex items-center justify-center gap-2 text-sm font-bold tracking-wide shadow-md transition-all duration-300"><Plus size={17} /> 新增地點</button>
             </div>
           </div>
